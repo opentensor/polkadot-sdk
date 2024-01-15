@@ -23,6 +23,7 @@ use polkadot_parachain_primitives::primitives::HeadData;
 use scale_info::TypeInfo;
 use sp_runtime::RuntimeDebug;
 use sp_std::prelude::*;
+use sp_trie::CompactProof;
 
 pub use polkadot_core_primitives::InboundDownwardMessage;
 pub use polkadot_parachain_primitives::primitives::{
@@ -191,53 +192,35 @@ pub enum ServiceQuality {
 /// This is send as PoV (proof of validity block) to the relay-chain validators. There it will be
 /// passed to the parachain validation Wasm blob to be validated.
 #[derive(codec::Encode, codec::Decode, Clone)]
-pub struct ParachainBlockData<B: BlockT> {
-	/// The header of the parachain block.
-	header: B::Header,
-	/// The extrinsics of the parachain block.
-	extrinsics: sp_std::vec::Vec<B::Extrinsic>,
-	/// The data that is required to emulate the storage accesses executed by all extrinsics.
-	storage_proof: sp_trie::CompactProof,
+pub struct ParachainBlockData<Block> {
+	/// The blocks and their associated storage proofs.
+	blocks_with_proofs: Vec<(Block, CompactProof)>,
 }
 
-impl<B: BlockT> ParachainBlockData<B> {
+impl<Block: BlockT> ParachainBlockData<Block> {
 	/// Creates a new instance of `Self`.
-	pub fn new(
-		header: <B as BlockT>::Header,
-		extrinsics: sp_std::vec::Vec<<B as BlockT>::Extrinsic>,
-		storage_proof: sp_trie::CompactProof,
-	) -> Self {
-		Self { header, extrinsics, storage_proof }
-	}
-
-	/// Convert `self` into the stored block.
-	pub fn into_block(self) -> B {
-		B::new(self.header, self.extrinsics)
-	}
-
-	/// Convert `self` into the stored header.
-	pub fn into_header(self) -> B::Header {
-		self.header
-	}
-
-	/// Returns the header.
-	pub fn header(&self) -> &B::Header {
-		&self.header
-	}
-
-	/// Returns the extrinsics.
-	pub fn extrinsics(&self) -> &[B::Extrinsic] {
-		&self.extrinsics
+	pub fn new(blocks: Vec<(Block, CompactProof)>) -> Self {
+		Self { blocks_with_proofs: blocks }
 	}
 
 	/// Returns the [`CompactProof`](sp_trie::CompactProof).
-	pub fn storage_proof(&self) -> &sp_trie::CompactProof {
-		&self.storage_proof
+	pub fn storage_proofs(&self) -> impl Iterator<Item = &CompactProof> {
+		self.blocks_with_proofs.iter().map(|b| &b.1)
+	}
+
+	/// Returns the blocks.
+	pub fn blocks(&self) -> impl Iterator<Item = &Block> {
+		self.blocks_with_proofs.iter().map(|b| &b.0)
+	}
+
+	/// Convert `self` into the stored blocks.
+	pub fn into_blocks(self) -> Vec<Block> {
+		self.blocks_with_proofs.into_iter().map(|b| b.0).collect()
 	}
 
 	/// Deconstruct into the inner parts.
-	pub fn deconstruct(self) -> (B::Header, sp_std::vec::Vec<B::Extrinsic>, sp_trie::CompactProof) {
-		(self.header, self.extrinsics, self.storage_proof)
+	pub fn deconstruct(self) -> sp_std::vec::Vec<(Block, CompactProof)> {
+		self.blocks_with_proofs
 	}
 }
 

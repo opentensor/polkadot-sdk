@@ -31,6 +31,10 @@
 //! The main limitation is block propagation time - i.e. the new blocks created by an author
 //! must be propagated to the next author before their turn.
 
+use crate::{
+	collator::{self as collator_util, SlotClaim},
+	collators::is_para_scheduled,
+};
 use codec::{Codec, Encode};
 use cumulus_client_collator::service::ServiceInterface as CollatorServiceInterface;
 use cumulus_client_consensus_common::{
@@ -43,15 +47,11 @@ use cumulus_primitives_core::{
 	relay_chain::Hash as PHash, CollectCollationInfo, PersistedValidationData,
 };
 use cumulus_relay_chain_interface::RelayChainInterface;
-
+use futures::prelude::*;
 use polkadot_node_primitives::SubmitCollationParams;
-use polkadot_node_subsystem::messages::{
-	CollationGenerationMessage, RuntimeApiMessage, RuntimeApiRequest,
-};
+use polkadot_node_subsystem::messages::CollationGenerationMessage;
 use polkadot_overseer::Handle as OverseerHandle;
 use polkadot_primitives::{CollatorPair, Id as ParaId, OccupiedCoreAssumption};
-
-use futures::{channel::oneshot, prelude::*};
 use sc_client_api::{backend::AuxStore, BlockBackend, BlockOf};
 use sc_consensus::BlockImport;
 use sc_consensus_aura::standalone as aura_internal;
@@ -66,8 +66,6 @@ use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, Member};
 use sp_timestamp::Timestamp;
 use std::{convert::TryFrom, sync::Arc, time::Duration};
-
-use crate::collator::{self as collator_util, SlotClaim};
 
 /// Parameters for [`run`].
 pub struct Params<BI, CIDP, Client, Backend, RClient, CHP, SO, Proposer, CS> {
@@ -385,7 +383,11 @@ where
 							.await;
 
 						parent_hash = new_block_hash;
-						parent_header = block_data.into_header();
+						parent_header = if let Some(block) = block_data.blocks().last() {
+							block.header().clone()
+						} else {
+							break
+						};
 					},
 					Ok(None) => {
 						tracing::debug!(target: crate::LOG_TARGET, "No block proposal");
@@ -460,42 +462,4 @@ async fn max_ancestry_lookback(
 			0
 		},
 	}
-}
-
-// Checks if there exists a scheduled core for the para at the provided relay parent.
-//
-// Falls back to `false` in case of an error.
-async fn is_para_scheduled(
-	relay_parent: PHash,
-	para_id: ParaId,
-	overseer_handle: &mut OverseerHandle,
-) -> bool {
-	let (tx, rx) = oneshot::channel();
-	let request = RuntimeApiRequest::AvailabilityCores(tx);
-	overseer_handle
-		.send_msg(RuntimeApiMessage::Request(relay_parent, request), "LookaheadCollator")
-		.await;
-
-	let cores = match rx.await {
-		Ok(Ok(cores)) => cores,
-		Ok(Err(error)) => {
-			tracing::error!(
-				target: crate::LOG_TARGET,
-				?error,
-				?relay_parent,
-				"Failed to query availability cores runtime API",
-			);
-			return false
-		},
-		Err(oneshot::Canceled) => {
-			tracing::error!(
-				target: crate::LOG_TARGET,
-				?relay_parent,
-				"Sender for availability cores runtime request dropped",
-			);
-			return false
-		},
-	};
-
-	cores.iter().any(|core| core.para_id() == Some(para_id))
 }

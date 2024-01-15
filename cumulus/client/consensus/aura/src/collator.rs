@@ -228,8 +228,8 @@ where
 			tracing::info!(
 				target: crate::LOG_TARGET,
 				"PoV size {{ header: {}kb, extrinsics: {}kb, storage_proof: {}kb }}",
-				block_data.header().encode().len() as f64 / 1024f64,
-				block_data.extrinsics().encode().len() as f64 / 1024f64,
+				block_data.blocks().iter().map(|b| b.header().encoded_size()).sum::<usize>() as f64 / 1024f64,
+				block_data.blocks().iter().map(|b| b.extrinsics().encoded_size()).sum::<usize>() as f64 / 1024f64,
 				block_data.storage_proof().encode().len() as f64 / 1024f64,
 			);
 

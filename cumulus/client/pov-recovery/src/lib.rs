@@ -394,9 +394,11 @@ where
 			},
 		};
 
-		let block = block_data.into_block();
+		let blocks = block_data.into_blocks();
 
-		let parent = *block.header().parent_hash();
+		let Some(first_block) = blocks.first() else { return };
+
+		let parent = *first_block.header().parent_hash();
 
 		match self.parachain_client.block_status(parent) {
 			Ok(BlockStatus::Unknown) => {
@@ -414,7 +416,12 @@ where
 						"Waiting for recovery of parent.",
 					);
 
-					self.waiting_for_parent.entry(parent).or_default().push(block);
+					blocks.into_iter().for_each(|b| {
+						self.waiting_for_parent
+							.entry(*b.header().parent_hash())
+							.or_default()
+							.push(b);
+					});
 					return
 				} else {
 					tracing::debug!(
@@ -443,7 +450,9 @@ where
 			_ => (),
 		}
 
-		self.import_block(block);
+		blocks.into_iter().for_each(|b| {
+			self.import_block(b);
+		});
 	}
 
 	/// Import the given `block`.

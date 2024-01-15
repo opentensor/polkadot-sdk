@@ -116,16 +116,19 @@ where
 			.produce_candidate(&last_head, relay_parent, &validation_data)
 			.await?;
 
+		let block_header_len = candidate.block.header().encoded_size();
+		let block_extrinsics_len = candidate.block.extrinsics().encoded_size();
+		let storage_proof_len = candidate.proof.encoded_size();
 		let block_hash = candidate.block.header().hash();
 
-		let (collation, b) = self.service.build_collation(&last_head, block_hash, candidate)?;
+		let (collation, _) = self.service.build_collation(&last_head, block_hash, candidate)?;
 
 		tracing::info!(
 			target: LOG_TARGET,
 			"PoV size {{ header: {}kb, extrinsics: {}kb, storage_proof: {}kb }}",
-			b.header().encode().len() as f64 / 1024f64,
-			b.extrinsics().encode().len() as f64 / 1024f64,
-			b.storage_proof().encode().len() as f64 / 1024f64,
+			block_header_len as f64 / 1024f64,
+			block_extrinsics_len as f64 / 1024f64,
+			storage_proof_len as f64 / 1024f64,
 		);
 
 		if let MaybeCompressedPoV::Compressed(ref pov) = collation.proof_of_validity {
