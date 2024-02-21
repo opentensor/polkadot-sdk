@@ -16,6 +16,6 @@ targets = ["x86_64-unknown-linux-gnu"]
 proc-macro = true
 
 [dependencies]
-quote = "1.0.28"
-syn = { version = "2.0.38", features = ["full", "parsing"] }
+quote = "1.0.35"
+syn = { version = "2.0.43", features = ["full", "parsing"] }
 sp-core-hashing = { path = "..", default-features = false}
