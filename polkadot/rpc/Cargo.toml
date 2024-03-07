@@ -7,7 +7,7 @@ license.workspace = true
 description = "Polkadot specific RPC functionality."
 
 [dependencies]
-jsonrpsee = { version = "0.16.2", features = ["server"] }
+jsonrpsee = { version = "0.22.2", features = ["server"] }
 polkadot-primitives = { path = "../primitives" }
 sc-client-api = { path = "../../substrate/client/api" }
 sp-blockchain = { path = "../../substrate/primitives/blockchain" }
