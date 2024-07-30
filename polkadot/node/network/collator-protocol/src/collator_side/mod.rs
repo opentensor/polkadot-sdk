@@ -201,6 +201,7 @@ struct PeerData {
 	view: View,
 	/// Network protocol version.
 	version: CollationVersion,
+	waiting: HashSet<Hash>,
 }
 
 /// A type wrapping a collation and it's designated core index.
@@ -493,8 +494,8 @@ async fn distribute_collation<Context>(
 	gum::debug!(
 		target: LOG_TARGET,
 		para_id = %id,
-		candidate_relay_parent = %candidate_relay_parent,
-		relay_parent_mode = ?relay_parent_mode,
+		?candidate_relay_parent,
+		?relay_parent_mode,
 		?candidate_hash,
 		pov_hash = ?pov.hash(),
 		core = ?our_core,
@@ -1199,7 +1200,7 @@ async fn handle_peer_view_change<Context>(
 	peer_id: PeerId,
 	view: View,
 ) {
-	let PeerData { view: current, version } = match state.peer_data.get_mut(&peer_id) {
+	let PeerData { view: current, version, waiting } = match state.peer_data.get_mut(&peer_id) {
 		Some(peer_data) => peer_data,
 		None => return,
 	};
@@ -1229,9 +1230,14 @@ async fn handle_peer_view_change<Context>(
 					new_leaf = ?added,
 					"New leaf in peer's view is unknown",
 				);
+
+				waiting.insert(added);
+
 				continue
 			},
 		};
+
+		gum::trace!(target: LOG_TARGET, ?block_hashes, ?added, %peer_id, "Checking for collations to advertise");
 
 		for block_hash in block_hashes {
 			let per_relay_parent = match state.per_relay_parent.get_mut(block_hash) {
@@ -1283,10 +1289,11 @@ async fn handle_network_msg<Context>(
 					return Ok(())
 				},
 			};
-			state
-				.peer_data
-				.entry(peer_id)
-				.or_insert_with(|| PeerData { view: View::default(), version });
+			state.peer_data.entry(peer_id).or_insert_with(|| PeerData {
+				view: View::default(),
+				version,
+				waiting: Default::default(),
+			});
 
 			if let Some(authority_ids) = maybe_authority {
 				gum::trace!(
@@ -1311,7 +1318,7 @@ async fn handle_network_msg<Context>(
 		},
 		OurViewChange(view) => {
 			gum::trace!(target: LOG_TARGET, ?view, "Own view change");
-			handle_our_view_change(ctx.sender(), state, view).await?;
+			handle_our_view_change(ctx, state, view).await?;
 		},
 		PeerMessage(remote, msg) => {
 			handle_incoming_peer_message(ctx, runtime, state, remote, msg).await?;
@@ -1333,21 +1340,19 @@ async fn handle_network_msg<Context>(
 }
 
 /// Handles our view changes.
-async fn handle_our_view_change<Sender>(
-	sender: &mut Sender,
+#[overseer::contextbounds(CollatorProtocol, prefix = self::overseer)]
+async fn handle_our_view_change<Context>(
+	ctx: &mut Context,
 	state: &mut State,
 	view: OurView,
-) -> Result<()>
-where
-	Sender: CollatorProtocolSenderTrait,
-{
+) -> Result<()> {
 	let current_leaves = state.active_leaves.clone();
 
 	let removed = current_leaves.iter().filter(|(h, _)| !view.contains(h));
 	let added = view.iter().filter(|h| !current_leaves.contains_key(h));
 
 	for leaf in added {
-		let mode = prospective_parachains_mode(sender, *leaf).await?;
+		let mode = prospective_parachains_mode(ctx.sender(), *leaf).await?;
 
 		if let Some(span) = view.span_per_head().get(leaf).cloned() {
 			let per_leaf_span = PerLeafSpan::new(span, "collator-side");
@@ -1360,7 +1365,7 @@ where
 		if mode.is_enabled() {
 			if let Some(ref mut implicit_view) = state.implicit_view {
 				implicit_view
-					.activate_leaf(sender, *leaf)
+					.activate_leaf(ctx.sender(), *leaf)
 					.await
 					.map_err(Error::ImplicitViewFetchError)?;
 
@@ -1373,6 +1378,32 @@ where
 						.per_relay_parent
 						.entry(*block_hash)
 						.or_insert_with(|| PerRelayParent::new(mode));
+				}
+
+				for (peer_id, peer_data) in state.peer_data.iter_mut() {
+					gum::trace!(target: LOG_TARGET, ?allowed_ancestry, %peer_id, "Checking for collations to advertise");
+
+					if !peer_data.waiting.remove(leaf) {
+						continue
+					}
+
+					for block_hash in allowed_ancestry {
+						let per_relay_parent = match state.per_relay_parent.get_mut(block_hash) {
+							Some(per_relay_parent) => per_relay_parent,
+							None => continue,
+						};
+						advertise_collation(
+							ctx,
+							*block_hash,
+							per_relay_parent,
+							&peer_id,
+							peer_data.version,
+							&state.peer_ids,
+							&mut state.advertisement_timeouts,
+							&state.metrics,
+						)
+						.await;
+					}
 				}
 			}
 		}

@@ -398,6 +398,7 @@ where
 			},
 		};
 
+		/*
 		let block = block_data.into_block();
 
 		let parent = *block.header().parent_hash();
@@ -448,6 +449,7 @@ where
 		}
 
 		self.import_block(block);
+		*/
 	}
 
 	/// Import the given `block`.

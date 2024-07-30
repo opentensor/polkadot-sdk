@@ -48,7 +48,7 @@ pub mod slot_based;
 // Since we only search for parent blocks which have already been imported,
 // we can guarantee that all imported blocks respect the unincluded segment
 // rules specified by the parachain's runtime and thus will never be too deep.
-const PARENT_SEARCH_DEPTH: usize = 10;
+const PARENT_SEARCH_DEPTH: usize = 50;
 
 /// Check the `local_validation_code_hash` against the validation code hash in the relay chain
 /// state.

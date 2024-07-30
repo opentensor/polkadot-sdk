@@ -112,10 +112,10 @@ pub mod consensus {
 
 	/// Maximum number of blocks simultaneously accepted by the Runtime, not yet included
 	/// into the relay chain.
-	pub const UNINCLUDED_SEGMENT_CAPACITY: u32 = 3;
+	pub const UNINCLUDED_SEGMENT_CAPACITY: u32 = 50;
 	/// How many parachain blocks are processed by the relay chain per parent. Limits the
 	/// number of blocks authored per slot.
-	pub const BLOCK_PROCESSING_VELOCITY: u32 = 1;
+	pub const BLOCK_PROCESSING_VELOCITY: u32 = 55;
 	/// Relay chain slot duration, in milliseconds.
 	pub const RELAY_CHAIN_SLOT_DURATION_MILLIS: u32 = 6000;
 
@@ -131,7 +131,7 @@ pub mod consensus {
 	/// up by `pallet_aura` to implement `fn slot_duration()`.
 	///
 	/// Change this to adjust the block time.
-	pub const MILLISECS_PER_BLOCK: u64 = 6000;
+	pub const MILLISECS_PER_BLOCK: u64 = 500;
 	pub const SLOT_DURATION: u64 = MILLISECS_PER_BLOCK;
 }
 

@@ -63,7 +63,7 @@ where
 
 		let para_slot_duration = SlotDuration::from_millis(Aura::<T>::slot_duration().into());
 		let para_slot_from_relay =
-			Slot::from_timestamp(relay_chain_timestamp.into(), para_slot_duration);
+			Slot::from_timestamp((relay_chain_timestamp - 2000).into(), para_slot_duration);
 
 		// Check that we are not too far in the future. Since we expect `V` parachain blocks
 		// during the relay chain slot, we can allow for `V` parachain slots into the future.

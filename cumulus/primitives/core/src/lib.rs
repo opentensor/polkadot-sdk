@@ -201,52 +201,18 @@ pub enum ServiceQuality {
 /// passed to the parachain validation Wasm blob to be validated.
 #[derive(codec::Encode, codec::Decode, Clone)]
 pub struct ParachainBlockData<B: BlockT> {
-	/// The header of the parachain block.
-	header: B::Header,
-	/// The extrinsics of the parachain block.
-	extrinsics: alloc::vec::Vec<B::Extrinsic>,
-	/// The data that is required to emulate the storage accesses executed by all extrinsics.
-	storage_proof: sp_trie::CompactProof,
+	blocks: alloc::vec::Vec<(B, sp_trie::CompactProof)>,
 }
 
 impl<B: BlockT> ParachainBlockData<B> {
 	/// Creates a new instance of `Self`.
-	pub fn new(
-		header: <B as BlockT>::Header,
-		extrinsics: alloc::vec::Vec<<B as BlockT>::Extrinsic>,
-		storage_proof: sp_trie::CompactProof,
-	) -> Self {
-		Self { header, extrinsics, storage_proof }
-	}
-
-	/// Convert `self` into the stored block.
-	pub fn into_block(self) -> B {
-		B::new(self.header, self.extrinsics)
-	}
-
-	/// Convert `self` into the stored header.
-	pub fn into_header(self) -> B::Header {
-		self.header
-	}
-
-	/// Returns the header.
-	pub fn header(&self) -> &B::Header {
-		&self.header
-	}
-
-	/// Returns the extrinsics.
-	pub fn extrinsics(&self) -> &[B::Extrinsic] {
-		&self.extrinsics
-	}
-
-	/// Returns the [`CompactProof`](sp_trie::CompactProof).
-	pub fn storage_proof(&self) -> &sp_trie::CompactProof {
-		&self.storage_proof
+	pub fn new(blocks: alloc::vec::Vec<(B, sp_trie::CompactProof)>) -> Self {
+		Self { blocks }
 	}
 
 	/// Deconstruct into the inner parts.
-	pub fn deconstruct(self) -> (B::Header, alloc::vec::Vec<B::Extrinsic>, sp_trie::CompactProof) {
-		(self.header, self.extrinsics, self.storage_proof)
+	pub fn deconstruct(self) -> alloc::vec::Vec<(B, sp_trie::CompactProof)> {
+		self.blocks
 	}
 }
 

@@ -732,9 +732,9 @@ where
 			relay_chain_slot_duration,
 			proposer,
 			collator_service,
-			authoring_duration: Duration::from_millis(2000),
+			authoring_duration: Duration::from_millis(166),
 			reinitialize: false,
-			slot_drift: Duration::from_secs(1),
+			slot_drift: Duration::from_secs(2),
 		};
 
 		// We have a separate function only to be able to use `docify::export` on this piece of

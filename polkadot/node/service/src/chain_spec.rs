@@ -154,7 +154,7 @@ fn default_parachains_host_configuration(
 		minimum_validation_upgrade_delay: 5,
 		async_backing_params: AsyncBackingParams {
 			max_candidate_depth: 3,
-			allowed_ancestry_len: 2,
+			allowed_ancestry_len: 5,
 		},
 		node_features: bitvec::vec::BitVec::from_element(
 			1u8 << (FeatureIndex::ElasticScalingMVP as usize) |

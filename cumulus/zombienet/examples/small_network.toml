@@ -6,10 +6,12 @@ chain = "rococo-local"
   [[relaychain.nodes]]
   name = "alice"
   validator = true
+  args = ["-lparachain::collator-protocol=trace,parachain::candidate-validation=trace,parachain::pvf=trace"]
 
   [[relaychain.nodes]]
   name = "bob"
   validator = true
+  args = ["-lparachain::collator-protocol=trace,parachain::candidate-validation=trace,parachain::pvf=trace"]
 
 [[parachains]]
 id = 2000
@@ -22,4 +24,4 @@ chain = "asset-hub-rococo-local"
   validator = true
   image = "parity/polkadot-parachain:latest"
   command = "polkadot-parachain"
-  args = ["--force-authoring"]
+  args = ["--force-authoring", "--experimental-use-slot-based", "-lparachain::collator-protocol=trace,parachain::candidate-validation=trace,aura=trace"]

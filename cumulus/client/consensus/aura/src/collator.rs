@@ -247,8 +247,9 @@ where
 
 		let hash = candidate.block.header().hash();
 		if let Some((collation, block_data)) =
-			self.collator_service.build_collation(parent_header, hash, candidate)
+			self.collator_service.build_collation(parent_header, vec![candidate])
 		{
+			/*
 			tracing::info!(
 				target: crate::LOG_TARGET,
 				"PoV size {{ header: {}kb, extrinsics: {}kb, storage_proof: {}kb }}",
@@ -256,6 +257,7 @@ where
 				block_data.extrinsics().encode().len() as f64 / 1024f64,
 				block_data.storage_proof().encode().len() as f64 / 1024f64,
 			);
+			*/
 
 			if let MaybeCompressedPoV::Compressed(ref pov) = collation.proof_of_validity {
 				tracing::info!(

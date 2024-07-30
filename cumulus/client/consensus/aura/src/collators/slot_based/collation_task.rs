@@ -14,6 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with Cumulus.  If not, see <http://www.gnu.org/licenses/>.
 
+use std::collections::HashMap;
+
 use codec::Encode;
 
 use cumulus_client_collator::service::ServiceInterface as CollatorServiceInterface;
@@ -22,7 +24,7 @@ use cumulus_relay_chain_interface::RelayChainInterface;
 use polkadot_node_primitives::{MaybeCompressedPoV, SubmitCollationParams};
 use polkadot_node_subsystem::messages::CollationGenerationMessage;
 use polkadot_overseer::Handle as OverseerHandle;
-use polkadot_primitives::{CollatorPair, Id as ParaId};
+use polkadot_primitives::{CollatorPair, Hash as RHash, Id as ParaId};
 
 use futures::prelude::*;
 
@@ -74,9 +76,35 @@ where
 	)
 	.await;
 
+	let mut collected = HashMap::<RHash, Vec<CollatorMessage<Block>>>::new();
+
 	let collator_service = params.collator_service;
 	while let Some(collator_message) = params.collator_receiver.next().await {
-		handle_collation_message(collator_message, &collator_service, &mut overseer_handle).await;
+		let relay_parent = collator_message.relay_parent;
+		let entry = collected.entry(collator_message.relay_parent);
+
+		let messages = entry.or_default();
+
+		if messages.is_empty() {
+			messages.push(collator_message);
+		} else {
+			if messages.last().unwrap().parachain_candidate.block.header().hash() ==
+				*collator_message.parachain_candidate.block.header().parent_hash()
+			{
+				tracing::error!("INSERTING {}", messages.len());
+				messages.push(collator_message);
+			}
+		}
+
+		if messages.len() == 12 {
+			handle_collation_message(
+				std::mem::take(messages),
+				&collator_service,
+				&mut overseer_handle,
+			)
+			.await;
+			collected.remove(&relay_parent);
+		}
 	}
 }
 
@@ -84,29 +112,28 @@ where
 /// This builds the collation from the [`CollatorMessage`] and submits it to
 /// the collation-generation subsystem of the relay chain.
 async fn handle_collation_message<Block: BlockT>(
-	message: CollatorMessage<Block>,
+	messages: Vec<CollatorMessage<Block>>,
 	collator_service: &impl CollatorServiceInterface<Block>,
 	overseer_handle: &mut OverseerHandle,
 ) {
-	let CollatorMessage {
-		parent_header,
-		parachain_candidate,
-		validation_code_hash,
-		relay_parent,
-		core_index,
-	} = message;
+	let parent_header = messages.first().unwrap().parent_header.clone();
+	let validation_code_hash = messages.first().unwrap().validation_code_hash.clone();
+	let relay_parent = messages.first().unwrap().relay_parent.clone();
+	let core_index = messages.first().unwrap().core_index.clone();
 
-	let hash = parachain_candidate.block.header().hash();
-	let number = *parachain_candidate.block.header().number();
-	let (collation, block_data) =
-		match collator_service.build_collation(&parent_header, hash, parachain_candidate) {
-			Some(collation) => collation,
-			None => {
-				tracing::warn!(target: LOG_TARGET, %hash, ?number, ?core_index, "Unable to build collation.");
-				return;
-			},
-		};
+	let candidates = messages.into_iter().map(|c| c.parachain_candidate).collect::<Vec<_>>();
 
+	let (collation, block_data) = match collator_service.build_collation(&parent_header, candidates)
+	{
+		Some(collation) => collation,
+		None => {
+			// tracing::warn!(target: LOG_TARGET, %hash, ?number, ?core_index, "Unable to build
+			// collation.");
+			return;
+		},
+	};
+
+	/*
 	tracing::info!(
 		target: LOG_TARGET,
 		"PoV size {{ header: {:.2}kB, extrinsics: {:.2}kB, storage_proof: {:.2}kB }}",
@@ -114,6 +141,7 @@ async fn handle_collation_message<Block: BlockT>(
 		block_data.extrinsics().encoded_size() as f64 / 1024f64,
 		block_data.storage_proof().encoded_size() as f64 / 1024f64,
 	);
+	*/
 
 	if let MaybeCompressedPoV::Compressed(ref pov) = collation.proof_of_validity {
 		tracing::info!(
@@ -123,7 +151,8 @@ async fn handle_collation_message<Block: BlockT>(
 		);
 	}
 
-	tracing::debug!(target: LOG_TARGET, ?core_index, %hash, %number, "Submitting collation for core.");
+	// tracing::debug!(target: LOG_TARGET, ?core_index, %hash, %number, "Submitting collation for
+	// core.");
 	overseer_handle
 		.send_msg(
 			CollationGenerationMessage::SubmitCollation(SubmitCollationParams {

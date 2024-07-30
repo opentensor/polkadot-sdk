@@ -432,6 +432,7 @@ where
 						// and provides sybil-resistance, as it should.
 						collator.collator_service().announce_block(new_block_hash, None);
 
+						/*
 						if let Some(ref export_pov) = export_pov {
 							export_pov_to_path::<Block>(
 								export_pov.clone(),
@@ -443,6 +444,7 @@ where
 								*relay_parent_header.number(),
 							);
 						}
+						*/
 
 						// Send a submit-collation message to the collation generation subsystem,
 						// which then distributes this to validators.
@@ -466,7 +468,7 @@ where
 							.await;
 
 						parent_hash = new_block_hash;
-						parent_header = block_data.into_header();
+						// parent_header = block_data.into_header();
 					},
 					Ok(None) => {
 						tracing::debug!(target: crate::LOG_TARGET, "No block proposal");

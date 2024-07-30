@@ -54,8 +54,7 @@ pub trait ServiceInterface<Block: BlockT> {
 	fn build_collation(
 		&self,
 		parent_header: &Block::Header,
-		block_hash: Block::Hash,
-		candidate: ParachainCandidate<Block>,
+		candidates: Vec<ParachainCandidate<Block>>,
 	) -> Option<(Collation, ParachainBlockData<Block>)>;
 
 	/// Inform networking systems that the block should be announced after a signal has
@@ -215,44 +214,61 @@ where
 	/// This also returns the unencoded parachain block data, in case that is desired.
 	pub fn build_collation(
 		&self,
-		parent_header: &Block::Header,
-		block_hash: Block::Hash,
-		candidate: ParachainCandidate<Block>,
+		mut parent_header: Block::Header,
+		candidates: Vec<ParachainCandidate<Block>>,
 	) -> Option<(Collation, ParachainBlockData<Block>)> {
-		let (header, extrinsics) = candidate.block.deconstruct();
+		let mut last_head_data = None;
+		let mut upward_messages = Vec::new();
+		let mut horizontal_messages = Vec::new();
+		let mut blocks = Vec::new();
+		let mut processed_downward_messages = 0;
+		let mut last_hrmp_watermark = None;
 
-		let compact_proof = match candidate
-			.proof
-			.into_compact_proof::<HashingFor<Block>>(*parent_header.state_root())
-		{
-			Ok(proof) => proof,
-			Err(e) => {
-				tracing::error!(target: "cumulus-collator", "Failed to compact proof: {:?}", e);
-				return None
-			},
-		};
+		for (i, candidate) in candidates.into_iter().enumerate() {
+			let compact_proof = match candidate
+				.proof
+				.into_compact_proof::<HashingFor<Block>>(*parent_header.state_root())
+			{
+				Ok(proof) => proof,
+				Err(e) => {
+					tracing::error!(target: "cumulus-collator", "Failed to compact proof: {:?} {i}", e);
+					return None
+				},
+			};
 
-		// Create the parachain block data for the validators.
-		let collation_info = self
-			.fetch_collation_info(block_hash, &header)
-			.map_err(|e| {
-				tracing::error!(
-					target: LOG_TARGET,
-					error = ?e,
-					"Failed to collect collation info.",
-				)
-			})
-			.ok()
-			.flatten()?;
+			// Create the parachain block data for the validators.
+			let collation_info = self
+				.fetch_collation_info(candidate.block.header().hash(), candidate.block.header())
+				.map_err(|e| {
+					tracing::error!(
+						target: LOG_TARGET,
+						error = ?e,
+						"Failed to collect collation info.",
+					)
+				})
+				.ok()
+				.flatten()?;
 
-		let block_data = ParachainBlockData::<Block>::new(header, extrinsics, compact_proof);
+			parent_header = candidate.block.header().clone();
+
+			processed_downward_messages += collation_info.processed_downward_messages;
+			blocks.push((candidate.block, compact_proof));
+
+			horizontal_messages.extend(collation_info.horizontal_messages);
+
+			upward_messages.extend(collation_info.upward_messages);
+
+			last_head_data = Some(collation_info.head_data);
+			last_hrmp_watermark = Some(collation_info.hrmp_watermark);
+		}
+
+		let block_data = ParachainBlockData::<Block>::new(blocks);
 
 		let pov = polkadot_node_primitives::maybe_compress_pov(PoV {
 			block_data: BlockData(block_data.encode()),
 		});
 
-		let upward_messages = collation_info
-			.upward_messages
+		let upward_messages = upward_messages
 			.try_into()
 			.map_err(|e| {
 				tracing::error!(
@@ -262,8 +278,7 @@ where
 				)
 			})
 			.ok()?;
-		let horizontal_messages = collation_info
-			.horizontal_messages
+		let horizontal_messages = horizontal_messages
 			.try_into()
 			.map_err(|e| {
 				tracing::error!(
@@ -276,11 +291,11 @@ where
 
 		let collation = Collation {
 			upward_messages,
-			new_validation_code: collation_info.new_validation_code,
-			processed_downward_messages: collation_info.processed_downward_messages,
+			new_validation_code: None,
+			processed_downward_messages,
 			horizontal_messages,
-			hrmp_watermark: collation_info.hrmp_watermark,
-			head_data: collation_info.head_data,
+			hrmp_watermark: last_hrmp_watermark.unwrap(),
+			head_data: last_head_data.unwrap(),
 			proof_of_validity: MaybeCompressedPoV::Compressed(pov),
 		};
 
@@ -313,10 +328,9 @@ where
 	fn build_collation(
 		&self,
 		parent_header: &Block::Header,
-		block_hash: Block::Hash,
-		candidate: ParachainCandidate<Block>,
+		candidates: Vec<ParachainCandidate<Block>>,
 	) -> Option<(Collation, ParachainBlockData<Block>)> {
-		CollatorService::build_collation(self, parent_header, block_hash, candidate)
+		CollatorService::build_collation(self, parent_header.clone(), candidates)
 	}
 
 	fn announce_with_barrier(

@@ -40,7 +40,10 @@ use sp_inherents::CreateInherentDataProviders;
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, Member};
 use sp_timestamp::Timestamp;
-use std::{sync::Arc, time::Duration};
+use std::{
+	sync::Arc,
+	time::{Duration, Instant},
+};
 
 use super::CollatorMessage;
 use crate::{
@@ -151,6 +154,7 @@ where
 		};
 
 		let time_until_next_slot = time_until_next_slot(slot_duration.as_duration(), self.drift);
+		tracing::error!("NEXT {time_until_next_slot:?} {slot_duration:?}");
 		tokio::time::sleep(time_until_next_slot).await;
 		let timestamp = sp_timestamp::Timestamp::current();
 		Ok(SlotInfo {
@@ -233,11 +237,7 @@ where
 				return;
 			};
 
-			let Some(expected_cores) =
-				expected_core_count(relay_chain_slot_duration, para_slot.slot_duration)
-			else {
-				return
-			};
+			let expected_cores = 1;
 
 			let Ok(RelayChainData {
 				relay_parent_header,
@@ -246,6 +246,7 @@ where
 				scheduled_cores,
 			}) = relay_chain_fetcher.get_relay_chain_data().await
 			else {
+				tracing::error!("NO RELAY CHAIN DATA");
 				continue;
 			};
 
@@ -264,6 +265,7 @@ where
 				crate::collators::find_parent(relay_parent, para_id, &*para_backend, &relay_client)
 					.await
 			else {
+				tracing::error!("COULD NOT FIND A PARENT: {relay_parent:?}");
 				continue
 			};
 
@@ -424,6 +426,7 @@ struct RelayChainCachingFetcher<RI> {
 	relay_client: RI,
 	para_id: ParaId,
 	last_data: Option<(RelayHash, RelayChainData)>,
+	last_update: Instant,
 }
 
 impl<RI> RelayChainCachingFetcher<RI>
@@ -431,7 +434,7 @@ where
 	RI: RelayChainInterface + Clone + 'static,
 {
 	pub fn new(relay_client: RI, para_id: ParaId) -> Self {
-		Self { relay_client, para_id, last_data: None }
+		Self { relay_client, para_id, last_data: None, last_update: Instant::now() }
 	}
 
 	/// Fetch required [`RelayChainData`] from the relay chain.
@@ -444,6 +447,8 @@ where
 		};
 
 		match &self.last_data {
+			Some((last_seen_hash, data)) if self.last_update.elapsed() < Duration::from_secs(5) =>
+				Ok(data.clone()),
 			Some((last_seen_hash, data)) if *last_seen_hash == relay_parent => {
 				tracing::trace!(target: crate::LOG_TARGET, %relay_parent, "Using cached data for relay parent.");
 				Ok(data.clone())
@@ -452,6 +457,7 @@ where
 				tracing::trace!(target: crate::LOG_TARGET, %relay_parent, "Relay chain best block changed, fetching new data from relay chain.");
 				let data = self.update_for_relay_parent(relay_parent).await?;
 				self.last_data = Some((relay_parent, data.clone()));
+				self.last_update = Instant::now();
 				Ok(data)
 			},
 		}

@@ -276,16 +276,10 @@ fn asset_hub_rococo_like_local_config(
 	.with_chain_type(ChainType::Local)
 	.with_genesis_config_patch(asset_hub_rococo_genesis(
 		// initial collators.
-		vec![
-			(
-				get_account_id_from_seed::<sr25519::Public>("Alice"),
-				get_collator_keys_from_seed::<AuraId>("Alice"),
-			),
-			(
-				get_account_id_from_seed::<sr25519::Public>("Bob"),
-				get_collator_keys_from_seed::<AuraId>("Bob"),
-			),
-		],
+		vec![(
+			get_account_id_from_seed::<sr25519::Public>("Alice"),
+			get_collator_keys_from_seed::<AuraId>("Alice"),
+		)],
 		vec![
 			get_account_id_from_seed::<sr25519::Public>("Alice"),
 			get_account_id_from_seed::<sr25519::Public>("Bob"),
