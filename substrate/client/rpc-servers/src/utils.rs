@@ -126,6 +126,37 @@ pub(crate) fn get_proxy_ip<B>(req: &http::Request<B>) -> Option<IpAddr> {
 	None
 }
 
+<<<<<<< HEAD
+=======
+/// Get the `deny_unsafe` setting based on the address and the RPC methods exposed by the interface.
+pub fn deny_unsafe(addr: &SocketAddr, methods: &RpcMethods) -> DenyUnsafe {
+	match (addr.ip().is_loopback(), methods) {
+		(_, RpcMethods::Unsafe) | (true, RpcMethods::Auto) => DenyUnsafe::No,
+		_ => DenyUnsafe::Yes,
+	}
+}
+
+pub(crate) fn format_listen_addrs(addr: &[SocketAddr]) -> String {
+	let mut s = String::new();
+
+	let mut it = addr.iter().peekable();
+
+	while let Some(addr) = it.next() {
+		s.push_str(&addr.to_string());
+
+		if it.peek().is_some() {
+			s.push(',');
+		}
+	}
+
+	if addr.len() == 1 {
+		s.push(',');
+	}
+
+	s
+}
+
+>>>>>>> 4e7c9e7 (rpc server: fix deny unsafe on RpcMethods::Auto (#5678))
 #[cfg(test)]
 mod tests {
 	use super::*;
