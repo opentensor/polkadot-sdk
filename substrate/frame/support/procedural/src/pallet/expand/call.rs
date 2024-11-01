@@ -351,7 +351,7 @@ pub fn expand_call(def: &mut Def) -> proc_macro2::TokenStream {
 	}
 	assert_eq!(authorize_fn_weight.len(), methods.len());
 
-	quote::quote_spanned!(proc_macro2::Span::call_site() =>
+	quote::quote_spanned!(span =>
 		#[doc(hidden)]
 		mod warnings {
 			#(
