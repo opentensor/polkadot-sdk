@@ -226,7 +226,7 @@ pub fn expand_outer_dispatch(
 				&self,
 				source: #scrate::pallet_prelude::TransactionSource,
 			) -> ::core::option::Option<#scrate::pallet_prelude::TransactionValidityWithRefund>
-			> {
+			{
 				match self {
 					#(
 						#pallet_attrs

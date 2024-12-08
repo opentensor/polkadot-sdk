@@ -150,7 +150,6 @@ benchmarks! {
 		let (session_index, key_owner_proof, validator_id) = setup_validator_set::<T>(n);
 		let dispute_proof = setup_dispute::<T>(session_index, validator_id);
 	}: {
-		#[allow(deprecated)]
 		let result = Pallet::<T>::report_dispute_lost_unsigned(
 			origin,
 			Box::new(dispute_proof),
@@ -164,12 +163,12 @@ benchmarks! {
 
 	// in this setup we have a single `ForInvalid` dispute
 	// submitted for a past session
-	authorize_report_dispute_lost_general {
+	authorize_report_dispute_lost {
 		let n in 4..<<T as super::Config>::BenchmarkingConfig as BenchmarkingConfiguration>::MAX_VALIDATORS;
 
 		let (session_index, key_owner_proof, validator_id) = setup_validator_set::<T>(n);
 		let dispute_proof = setup_dispute::<T>(session_index, validator_id);
-		let call = Call::<T>::report_dispute_lost_general {
+		let call = Call::<T>::report_dispute_lost {
 			dispute_proof: Box::new(dispute_proof),
 			key_owner_proof,
 		};

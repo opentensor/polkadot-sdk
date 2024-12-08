@@ -357,7 +357,7 @@ impl<T: Config> HandleReports<T> for () {
 
 pub trait WeightInfo {
 	fn report_dispute_lost(validator_count: ValidatorSetCount) -> Weight;
-	fn authorize_report_dispute_lost_general() -> Weight;
+	fn authorize_report_dispute_lost() -> Weight;
 }
 
 pub struct TestWeightInfo;
@@ -365,7 +365,7 @@ impl WeightInfo for TestWeightInfo {
 	fn report_dispute_lost(_validator_count: ValidatorSetCount) -> Weight {
 		Weight::zero()
 	}
-	fn authorize_report_dispute_lost_general() -> Weight {
+	fn authorize_report_dispute_lost() -> Weight {
 		Weight::zero()
 	}
 }
@@ -451,35 +451,38 @@ pub mod pallet {
 	#[pallet::call(weight = <T as Config>::WeightInfo)]
 	impl<T: Config> Pallet<T> {
 		#[pallet::call_index(0)]
-		#[pallet::weight(<T as Config>::WeightInfo::report_dispute_lost(
-			key_owner_proof.validator_count()
-		))]
-		#[deprecated(note = "Use `report_dispute_lost_general` instead.")]
+		#[pallet::weight(
+			<T as Config>::WeightInfo::report_dispute_lost(
+				key_owner_proof.validator_count()
+			)
+			// We need to include the weight for the `validate_unsigned` logic.
+			// The validation logic weight is same as the authorization logic.
+			.saturating_add(<T as Config>::WeightInfo::authorize_report_dispute_lost())
+		)]
 		pub fn report_dispute_lost_unsigned(
 			origin: OriginFor<T>,
 			// box to decrease the size of the call
 			dispute_proof: Box<DisputeProof>,
 			key_owner_proof: T::KeyOwnerProof,
 		) -> DispatchResultWithPostInfo {
-			ensure_none(origin)?;
+			// TODO TODO: maybe have some ensure_none_ref and ensure_authorized_ref???
+			let is_none = ensure_none(origin.clone()).is_ok();
+			let is_authorized = ensure_authorized(origin).is_ok();
 
-			Self::do_report_dispute_lost(dispute_proof, key_owner_proof)
-		}
+			ensure!(is_none || is_authorized, DispatchError::BadOrigin);
 
-		#[pallet::call_index(1)]
-		#[pallet::weight(<T as Config>::WeightInfo::report_dispute_lost(
-			key_owner_proof.validator_count()
-		))]
-		#[pallet::authorize(Pallet::<T>::validate_report_dispute_lost_call)]
-		pub fn report_dispute_lost_general(
-			origin: OriginFor<T>,
-			// box to decrease the size of the call
-			dispute_proof: Box<DisputeProof>,
-			key_owner_proof: T::KeyOwnerProof,
-		) -> DispatchResultWithPostInfo {
-			ensure_authorized(origin)?;
+			let key_owner_proof_validator_count = key_owner_proof.validator_count();
+			let mut post_info = Self::do_report_dispute_lost(dispute_proof, key_owner_proof)?;
 
-			Self::do_report_dispute_lost(dispute_proof, key_owner_proof)
+			if is_authorized {
+				// The call comes from authorization, we no longer include the weight for the
+				// `validate_unsigned` logic.
+				post_info.actual_weight = Some(<T as Config>::WeightInfo::report_dispute_lost(
+					key_owner_proof_validator_count,
+				));
+			}
+
+			Ok(post_info)
 		}
 	}
 
