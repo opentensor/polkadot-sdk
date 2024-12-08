@@ -52,7 +52,7 @@ fn expand_weight(
 		},
 		CallWeightDef::Inherited(t) => {
 			// Expand `<<T as Config>::WeightInfo>::$prefix$call_name()`.
-			let n = &syn::Ident::new(&format!("{}{}", prefix, method.name), t.span());
+			let n = &syn::Ident::new(&format!("{}{}", prefix, method.name), method.name.span());
 			quote!({ < #t > :: #n () })
 		},
 	}
@@ -293,37 +293,35 @@ pub fn expand_call(def: &mut Def) -> proc_macro2::TokenStream {
 			if let Some(authorize_def) = &method.authorize {
 				let authorize_fn = &authorize_def.expr;
 				let attr_fn_getter = syn::Ident::new(
-					&format!("macro_inner_authorize_call_for_{}", method.name),
+					&format!("__macro_inner_authorize_call_for_{}", method.name),
 					authorize_fn.span(),
 				);
+				let source = syn::Ident::new("source", span);
 
 				let typed_authorize_fn = quote::quote_spanned!(authorize_fn.span() => {
 					// Closure don't have a writable type. So we fix the authorize token stream to
-					// be any implementation of this generic F.
-					// This also allows to have good type inference on the closure.
-					fn #attr_fn_getter<
-						#type_impl_gen,
-						F: Fn(
+					// be any implementation of a specific function.
+					// This allows to have good type inference on the closure.
+					//
+					// Then we wrap this into an implementation for `Pallet` in order to get access
+					// to `Self` as `Pallet` instead of `Call`.
+					impl<#type_impl_gen> Pallet<#type_use_gen> #where_clause {
+						#[doc(hidden)]
+						fn #attr_fn_getter() -> impl Fn(
 							#frame_support::pallet_prelude::TransactionSource,
 							#( &#arg_type ),*
-						) -> ::core::result::Result<
-							(
-								#frame_support::pallet_prelude::ValidTransaction,
-								#frame_support::pallet_prelude::Weight,
-							),
-							#frame_support::pallet_prelude::TransactionValidityError,
-						>
-					>(f: F) -> F {
-						f
+						) -> #frame_support::pallet_prelude::TransactionValidityWithRefund {
+							#authorize_fn
+						}
 					}
 
-					#attr_fn_getter::<#type_use_gen, _>(#authorize_fn)
+					Pallet::<#type_use_gen>::#attr_fn_getter()
 				});
 
 				// `source` is from outside this block, so we can't use the authorize_fn span.
 				quote::quote!(
 					let authorize_fn = #typed_authorize_fn;
-					let res = authorize_fn(source, #( #arg_name, )*);
+					let res = authorize_fn(#source, #( #arg_name, )*);
 
 					Some(res)
 				)
