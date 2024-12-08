@@ -389,33 +389,29 @@ pub mod pallet {
 		#[pallet::weight(<T as Config>::WeightInfo::validate_unsigned_and_then_heartbeat(
 			heartbeat.validators_len,
 		))]
+		#[pallet::authorize(|_source, heartbeat, sig|
+			Pallet::<T>::validate_heartbeat(heartbeat, sig).map(|v| (v, Weight::zero()))
+		)]
 		pub fn heartbeat(
 			origin: OriginFor<T>,
 			heartbeat: Heartbeat<BlockNumberFor<T>>,
 			// since signature verification is done in `validate_unsigned`
 			// we can skip doing it here again.
 			_signature: <T::AuthorityId as RuntimeAppPublic>::Signature,
-		) -> DispatchResult {
-			ensure_none(origin)?;
+		) -> DispatchResultWithPostInfo {
+			let is_none = ensure_none(origin.clone()).is_ok();
+			let is_authorized = ensure_authorized(origin).is_ok();
 
-			Self::do_verified_heartbeat(heartbeat)
-		}
+			ensure!(is_none || is_authorized, DispatchError::BadOrigin);
 
-		/// ## Complexity:
-		/// - `O(K)` where K is length of `Keys` (heartbeat.validators_len)
-		///   - `O(K)`: decoding of length `K`
-		#[pallet::call_index(1)]
-		#[pallet::weight(<T as Config>::WeightInfo::heartbeat_general(heartbeat.validators_len))]
-		#[pallet::authorize(|_source, heartbeat, sig| Pallet::<T>::validate_heartbeat(heartbeat, sig).map(|v| (v, Weight::zero())))]
-		pub fn heartbeat_general(
-			origin: OriginFor<T>,
-			heartbeat: Heartbeat<BlockNumberFor<T>>,
-			// since signature verification is done in `authorize` we can skip doing it here again.
-			_signature: <T::AuthorityId as RuntimeAppPublic>::Signature,
-		) -> DispatchResult {
-			ensure_authorized(origin)?;
+			let heartbeat_validators_len = heartbeat.validators_len;
+			Self::do_verified_heartbeat(heartbeat)?;
 
-			Self::do_verified_heartbeat(heartbeat)
+			if is_authorized {
+				Ok(Some(T::WeightInfo::heartbeat(heartbeat_validators_len)).into())
+			} else {
+				Ok(().into())
+			}
 		}
 	}
 
@@ -603,7 +599,7 @@ impl<T: Config> Pallet<T> {
 
 			let signature = key.sign(&heartbeat.encode()).ok_or(OffchainErr::FailedSigning)?;
 
-			Ok(Call::heartbeat_general { heartbeat, signature })
+			Ok(Call::heartbeat { heartbeat, signature })
 		};
 
 		if Self::is_online(authority_index) {

@@ -109,16 +109,7 @@ mod benchmarks {
 	}
 
 	#[benchmark]
-	fn heartbeat_general(k: Linear<1, MAX_KEYS>) -> Result<(), BenchmarkError> {
-		let (input_heartbeat, signature) = create_heartbeat::<T>(k)?;
-
-		#[extrinsic_call]
-		_(RawOrigin::None, input_heartbeat, signature);
-
-		Ok(())
-	}
-
-	fn authorize_hearbeat_general(k: Linear<1, MAX_KEYS>) -> Result<(), BenchmarkError> {
+	fn authorize_hearbeat(k: Linear<1, MAX_KEYS>) -> Result<(), BenchmarkError> {
 		let (input_heartbeat, signature) = create_heartbeat::<T>(k)?;
 		let call = Call::<T>::heartbeat { heartbeat: input_heartbeat, signature };
 

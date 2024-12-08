@@ -52,8 +52,8 @@ use core::marker::PhantomData;
 /// Weight functions needed for `pallet_im_online`.
 pub trait WeightInfo {
 	fn validate_unsigned_and_then_heartbeat(k: u32, ) -> Weight;
-	fn heartbeat_general(k: u32, ) -> Weight;
-	fn authorize_heartbeat_general() -> Weight;
+	fn heartbeat(k: u32, ) -> Weight;
+	fn authorize_heartbeat() -> Weight;
 }
 
 /// Weights for `pallet_im_online` using the Substrate node and recommended hardware.
@@ -82,11 +82,11 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 			.saturating_add(T::DbWeight::get().writes(1_u64))
 			.saturating_add(Weight::from_parts(0, 1761).saturating_mul(k.into()))
 	}
-	fn heartbeat_general(_k: u32, ) -> Weight {
+	fn heartbeat(_k: u32, ) -> Weight {
 		// TODO TODO
 		Weight::zero()
 	}
-	fn authorize_heartbeat_general() -> Weight {
+	fn authorize_heartbeat() -> Weight {
 		// TODO TODO
 		Weight::zero()
 	}
@@ -117,11 +117,11 @@ impl WeightInfo for () {
 			.saturating_add(RocksDbWeight::get().writes(1_u64))
 			.saturating_add(Weight::from_parts(0, 1761).saturating_mul(k.into()))
 	}
-	fn heartbeat_general(_k: u32, ) -> Weight {
+	fn heartbeat(_k: u32, ) -> Weight {
 		// TODO TODO
 		Weight::zero()
 	}
-	fn authorize_heartbeat_general() -> Weight {
+	fn authorize_heartbeat() -> Weight {
 		// TODO TODO
 		Weight::zero()
 	}
