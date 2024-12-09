@@ -235,6 +235,8 @@ pub trait BlockImportOperation<Block: BlockT> {
 
 	/// Configure whether to create a block gap if newly imported block is missing parent
 	fn set_create_gap(&mut self, create_gap: bool);
+
+	fn import_state_db(&mut self, state_db: sp_trie::PrefixedMemoryDB<HashingFor<Block>>);
 }
 
 /// Interface for performing operations on the backend.

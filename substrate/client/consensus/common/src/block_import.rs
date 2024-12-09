@@ -23,6 +23,7 @@ use sp_runtime::{
 	traits::{Block as BlockT, HashingFor, Header as HeaderT, NumberFor},
 	DigestItem, Justification, Justifications,
 };
+use sp_state_machine::MemoryDB;
 use std::{any::Any, borrow::Cow, collections::HashMap, sync::Arc};
 
 use sp_consensus::{BlockOrigin, Error};
@@ -128,16 +129,19 @@ pub enum StorageChanges<Block: BlockT> {
 
 /// Imported state data. A vector of key-value pairs that should form a trie.
 #[derive(PartialEq, Eq, Clone)]
-pub struct ImportedState<B: BlockT> {
-	/// Target block hash.
-	pub block: B::Hash,
-	/// State keys and values.
-	pub state: sp_state_machine::KeyValueStates,
+pub enum ImportedState<Block: BlockT> {
+	FromKeyValue(sp_state_machine::KeyValueStates),
+	FromProof { is_final: bool, proof: sp_trie::PrefixedMemoryDB<HashingFor<Block>> },
 }
 
 impl<B: BlockT> std::fmt::Debug for ImportedState<B> {
 	fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-		fmt.debug_struct("ImportedState").field("block", &self.block).finish()
+		fmt.debug_tuple("ImportedState")
+			.field(&match self {
+				Self::FromKeyValue(_) => "FromKeyValue",
+				Self::FromProof { .. } => "FromProof",
+			})
+			.finish()
 	}
 }
 
@@ -300,6 +304,16 @@ impl<Block: BlockT> BlockImportParams<Block> {
 	/// Check if this block contains state import action
 	pub fn with_state(&self) -> bool {
 		matches!(self.state_action, StateAction::ApplyChanges(StorageChanges::Import(_)))
+	}
+
+	pub fn is_final_state(&self) -> bool {
+		matches!(
+			self.state_action,
+			StateAction::ApplyChanges(StorageChanges::Import(ImportedState::FromProof {
+				is_final: true,
+				..
+			}))
+		)
 	}
 }
 

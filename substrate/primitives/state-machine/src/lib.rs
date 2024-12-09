@@ -978,11 +978,12 @@ mod execution {
 	/// Check storage range proof on pre-created proving backend.
 	///
 	/// See `read_range_proof_check_with_child`.
-	pub fn read_range_proof_check_with_child_on_proving_backend<H>(
-		proving_backend: &TrieBackend<MemoryDB<H>, H>,
+	pub fn read_range_proof_check_with_child_on_proving_backend<H, S>(
+		proving_backend: &TrieBackend<S, H>,
 		start_at: &[Vec<u8>],
 	) -> Result<(KeyValueStates, usize), Box<dyn Error>>
 	where
+		S: TrieBackendStorage<H>,
 		H: Hasher,
 		H::Out: Ord + Codec,
 	{

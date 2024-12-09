@@ -35,7 +35,7 @@ use std::{
 
 use sp_consensus::{error::Error as ConsensusError, BlockOrigin};
 use sp_runtime::{
-	traits::{Block as BlockT, Header as _, NumberFor},
+	traits::{Block as BlockT, HashingFor, Header as _, NumberFor},
 	Justifications,
 };
 
@@ -333,6 +333,7 @@ pub(crate) async fn verify_single_block_metered<B: BlockT, V: Verifier<B>>(
 			.await,
 	)? {
 		BlockImportStatus::ImportedUnknown { .. } => (),
+		BlockImportStatus::ImportedKnown { .. } if block.import_existing => (),
 		r => {
 			// Any other successful result means that the block is already imported.
 			return Ok(SingleBlockVerificationOutcome::Imported(r))

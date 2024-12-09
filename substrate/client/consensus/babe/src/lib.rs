@@ -1350,6 +1350,7 @@ where
 		let hash = block.post_hash();
 		let parent_hash = *block.header.parent_hash();
 		let number = *block.header.number();
+		let final_state = block.is_final_state();
 
 		block.fork_choice = Some(ForkChoiceStrategy::Custom(true));
 		// Reset block weight.
@@ -1360,15 +1361,20 @@ where
 		});
 
 		// First make the client import the state.
-		let import_result = self.inner.import_block(block).await;
-		let aux = match import_result {
-			Ok(ImportResult::Imported(aux)) => aux,
-			Ok(r) =>
-				return Err(ConsensusError::ClientImport(format!(
-					"Unexpected import result: {:?}",
-					r
-				))),
-			Err(r) => return Err(r.into()),
+		let import_result = self
+			.inner
+			.import_block(block)
+			.await
+			.map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
+
+		if dbg!(!final_state) {
+			return Ok(import_result)
+		}
+
+		let ImportResult::Imported(aux) = import_result else {
+			return Err(ConsensusError::ClientImport(format!(
+				"Unexpected import result: {import_result:?}",
+			)))
 		};
 
 		// Read epoch info from the imported state.

@@ -269,7 +269,7 @@ impl<B: BlockT> StateStrategy<B> {
 			})
 			.collect::<Vec<_>>();
 
-		if !results.is_empty() {
+		if !results.is_empty() && self.state_sync.is_complete() {
 			// We processed the target block
 			results.iter().filter_map(|result| result.as_ref().err()).for_each(|e| {
 				error!(

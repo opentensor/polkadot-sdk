@@ -44,7 +44,8 @@ use sc_client_api::{
 	ProofProvider, UnpinWorkerMessage, UsageProvider,
 };
 use sc_consensus::{
-	BlockCheckParams, BlockImportParams, ForkChoiceStrategy, ImportResult, StateAction,
+	BlockCheckParams, BlockImportParams, ForkChoiceStrategy, ImportResult, ImportedState,
+	StateAction,
 };
 use sc_executor::RuntimeVersion;
 use sc_telemetry::{telemetry, TelemetryHandle, SUBSTRATE_INFO};
@@ -77,7 +78,9 @@ use sp_state_machine::{
 	ChildStorageCollection, KeyValueStates, KeyValueStorageLevel, StorageCollection,
 	MAX_NESTED_TRIE_DEPTH,
 };
-use sp_trie::{proof_size_extension::ProofSizeExt, CompactProof, MerkleValue, StorageProof};
+use sp_trie::{
+	proof_size_extension::ProofSizeExt, CompactProof, MemoryDB, MerkleValue, StorageProof,
+};
 use std::{
 	collections::{HashMap, HashSet},
 	marker::PhantomData,
@@ -630,7 +633,7 @@ where
 
 		let storage_changes = match storage_changes {
 			Some(storage_changes) => {
-				let storage_changes = match storage_changes {
+				match storage_changes {
 					sc_consensus::StorageChanges::Changes(storage_changes) => {
 						self.backend.begin_state_operation(&mut operation.op, parent_hash)?;
 						let (main_sc, child_sc, offchain_sc, tx, _, tx_index) =
@@ -646,9 +649,9 @@ where
 
 						Some((main_sc, child_sc))
 					},
-					sc_consensus::StorageChanges::Import(changes) => {
+					sc_consensus::StorageChanges::Import(ImportedState::FromKeyValue(state)) => {
 						let mut storage = sp_storage::Storage::default();
-						for state in changes.state.0.into_iter() {
+						for state in state.0.into_iter() {
 							if state.parent_storage_keys.is_empty() && state.state_root.is_empty() {
 								for (key, value) in state.key_values.into_iter() {
 									storage.top.insert(key, value);
@@ -694,9 +697,14 @@ where
 						}
 						None
 					},
-				};
-
-				storage_changes
+					sc_consensus::StorageChanges::Import(ImportedState::FromProof {
+						proof,
+						..
+					}) => {
+						operation.op.import_state_db(proof);
+						None
+					},
+				}
 			},
 			None => None,
 		};
@@ -755,6 +763,8 @@ where
 
 		operation.op.insert_aux(aux)?;
 
+		//TODO: Should we notify when importing only parts of the state? Maybe yes, but also should
+		// make consumers aware that the full state is not yet available.
 		let should_notify_every_block = !self.every_import_notification_sinks.lock().is_empty();
 
 		// Notify when we are already synced to the tip of the chain
@@ -1405,22 +1415,28 @@ where
 		root: Block::Hash,
 		proof: CompactProof,
 		start_key: &[Vec<u8>],
-	) -> sp_blockchain::Result<(KeyValueStates, usize)> {
-		let mut db = sp_state_machine::MemoryDB::<HashingFor<Block>>::new(&[]);
-		// Compact encoding
-		let _ = sp_trie::decode_compact::<sp_state_machine::LayoutV0<HashingFor<Block>>, _, _>(
-			&mut db,
-			proof.iter_compact_encoded_nodes(),
-			Some(&root),
-		)
-		.map_err(|e| sp_blockchain::Error::from_state(Box::new(e)))?;
-		let proving_backend = sp_state_machine::TrieBackendBuilder::new(db, root).build();
-		let state = read_range_proof_check_with_child_on_proving_backend::<HashingFor<Block>>(
+	) -> sp_blockchain::Result<(
+		(KeyValueStates, usize),
+		sp_trie::PrefixedMemoryDB<HashingFor<Block>>,
+	)> {
+		let db = proof
+			.to_prefixed_memory_db(Some(&root))
+			.map_err(|e| sp_blockchain::Error::from_state(Box::new(e)))?
+			.0;
+		// TODO: Read range proof fails with the prefixed memory db...
+		let non_prefix_db = proof
+			.to_memory_db(Some(&root))
+			.map_err(|e| sp_blockchain::Error::from_state(Box::new(e)))?
+			.0;
+
+		let proving_backend =
+			sp_state_machine::TrieBackendBuilder::new(non_prefix_db, root).build();
+		let state = read_range_proof_check_with_child_on_proving_backend::<HashingFor<Block>, _>(
 			&proving_backend,
 			start_key,
 		)?;
 
-		Ok(state)
+		Ok(((state), db))
 	}
 }
 

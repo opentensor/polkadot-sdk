@@ -146,8 +146,15 @@ where
 			encoded
 		});
 
+		//TODO: `state_at` should not return `Ok` until we have imported all proofs.
+		let final_state = block.is_final_state();
+
 		// Run inner block import.
 		let inner_import_result = self.inner.import_block(block).await?;
+
+		if !final_state {
+			return Ok(inner_import_result)
+		}
 
 		match self.backend.state_at(hash) {
 			Ok(_) => {},

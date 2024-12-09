@@ -836,6 +836,7 @@ pub struct BlockImportOperation<Block: BlockT> {
 	commit_state: bool,
 	create_gap: bool,
 	index_ops: Vec<IndexOperation>,
+	import_db: Option<PrefixedMemoryDB<HashingFor<Block>>>,
 }
 
 impl<Block: BlockT> BlockImportOperation<Block> {
@@ -992,6 +993,11 @@ impl<Block: BlockT> sc_client_api::backend::BlockImportOperation<Block>
 
 	fn set_create_gap(&mut self, create_gap: bool) {
 		self.create_gap = create_gap;
+	}
+
+	fn import_state_db(&mut self, state_db: sp_trie::PrefixedMemoryDB<HashingFor<Block>>) {
+		self.import_db = Some(state_db);
+		self.commit_state = true;
 	}
 }
 
@@ -1536,7 +1542,7 @@ impl<Block: BlockT> Backend<Block> {
 				}
 			}
 
-			let finalized = if operation.commit_state {
+			let finalized = if operation.commit_state || operation.import_db.is_some() {
 				let mut changeset: sc_state_db::ChangeSet<Vec<u8>> =
 					sc_state_db::ChangeSet::default();
 				let mut ops: u64 = 0;
@@ -1568,6 +1574,24 @@ impl<Block: BlockT> Backend<Block> {
 						}
 					}
 				}
+
+				if let Some(mut db) = operation.import_db {
+					for (mut key, (val, rc)) in db.drain() {
+						self.storage.db.sanitize_key(&mut key);
+
+						if rc > 0 {
+							if rc == 1 {
+								changeset.inserted.push((key, val.to_vec()));
+							} else {
+								changeset.inserted.push((key.clone(), val.to_vec()));
+								for _ in 0..rc - 1 {
+									changeset.inserted.push((key.clone(), val.to_vec()));
+								}
+							}
+						}
+					}
+				}
+
 				self.state_usage.tally_writes_nodes(ops, bytes);
 				self.state_usage.tally_removed_nodes(removal, bytes_removal);
 
@@ -1586,13 +1610,16 @@ impl<Block: BlockT> Backend<Block> {
 				}
 				self.state_usage.tally_writes(ops, bytes);
 				let number_u64 = number.saturated_into::<u64>();
-				let commit = self
-					.storage
-					.state_db
-					.insert_block(&hash, number_u64, pending_block.header.parent_hash(), changeset)
-					.map_err(|e: sc_state_db::Error<sp_database::error::DatabaseError>| {
-						sp_blockchain::Error::from_state_db(e)
-					})?;
+
+				let commit = sc_state_db::CommitSet { data: changeset, meta: Default::default() };
+
+				// 			let commit = self
+				// .storage
+				// .state_db
+				// .insert_block(&hash, number_u64, pending_block.header.parent_hash(), changeset)
+				// .map_err(|e: sc_state_db::Error<sp_database::error::DatabaseError>| {
+				// 	sp_blockchain::Error::from_state_db(e)
+				// })?;
 				apply_state_commit(&mut transaction, commit);
 				if number <= last_finalized_num {
 					// Canonicalize in the db when re-importing existing blocks with state.
@@ -2120,6 +2147,7 @@ impl<Block: BlockT> sc_client_api::backend::Backend<Block> for Backend<Block> {
 			commit_state: false,
 			create_gap: true,
 			index_ops: Default::default(),
+			import_db: None,
 		})
 	}
 

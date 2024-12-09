@@ -56,7 +56,7 @@ use sc_network_common::sync::message::{
 };
 use sc_network_types::PeerId;
 use sp_arithmetic::traits::Saturating;
-use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata};
+use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata, HeaderMetadataCache};
 use sp_consensus::{BlockOrigin, BlockStatus};
 use sp_runtime::{
 	traits::{
@@ -709,7 +709,7 @@ where
 						self.update_peer_common_number(&peer, number);
 					}
 					let state_sync_complete =
-						self.state_sync.as_ref().map_or(false, |s| s.target_hash() == hash);
+						self.state_sync.as_ref().map_or(false, |s| s.is_complete());
 					if state_sync_complete {
 						info!(
 							target: LOG_TARGET,

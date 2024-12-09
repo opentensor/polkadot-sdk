@@ -29,9 +29,10 @@ use sc_consensus::ImportedState;
 use smallvec::SmallVec;
 use sp_core::storage::well_known_keys;
 use sp_runtime::{
-	traits::{Block as BlockT, Header, NumberFor},
+	traits::{Block as BlockT, HashingFor, Header, NumberFor},
 	Justifications,
 };
+use sp_state_machine::MemoryDB;
 use std::{collections::HashMap, fmt, sync::Arc};
 
 /// Generic state sync provider. Used for mocking in tests.
@@ -167,7 +168,7 @@ where
 				target_justifications,
 				complete: false,
 				imported_bytes: 0,
-				skip_proof,
+				skip_proof: false,
 			},
 			state: HashMap::default(),
 		}
@@ -263,57 +264,48 @@ where
 			debug!(target: LOG_TARGET, "Missing proof");
 			return ImportResult::BadResponse
 		}
-		let complete = if !self.metadata.skip_proof {
-			debug!(target: LOG_TARGET, "Importing state from {} trie nodes", response.proof.len());
-			let proof_size = response.proof.len() as u64;
-			let proof = match CompactProof::decode(&mut response.proof.as_ref()) {
-				Ok(proof) => proof,
-				Err(e) => {
-					debug!(target: LOG_TARGET, "Error decoding proof: {:?}", e);
-					return ImportResult::BadResponse
-				},
-			};
-			let (values, completed) = match self.client.verify_range_proof(
-				self.metadata.target_root(),
-				proof,
-				self.metadata.last_key.as_slice(),
-			) {
-				Err(e) => {
-					debug!(
-						target: LOG_TARGET,
-						"StateResponse failed proof verification: {}",
-						e,
-					);
-					return ImportResult::BadResponse
-				},
-				Ok(values) => values,
-			};
-			debug!(target: LOG_TARGET, "Imported with {} keys", values.len());
-
-			let complete = completed == 0;
-			if !complete && !values.update_last_key(completed, &mut self.metadata.last_key) {
-				debug!(target: LOG_TARGET, "Error updating key cursor, depth: {}", completed);
-			};
-
-			self.process_state_verified(values);
-			self.metadata.imported_bytes += proof_size;
-			complete
-		} else {
-			self.process_state_unverified(response)
+		debug!(target: LOG_TARGET, "Importing state from {} trie nodes", response.proof.len());
+		let proof_size = response.proof.len() as u64;
+		let proof = match CompactProof::decode(&mut response.proof.as_ref()) {
+			Ok(proof) => proof,
+			Err(e) => {
+				debug!(target: LOG_TARGET, "Error decoding proof: {:?}", e);
+				return ImportResult::BadResponse
+			},
 		};
-		if complete {
-			self.metadata.complete = true;
-			let target_hash = self.metadata.target_hash();
-			ImportResult::Import(
-				target_hash,
-				self.metadata.target_header.clone(),
-				ImportedState { block: target_hash, state: std::mem::take(&mut self.state).into() },
-				self.metadata.target_body.clone(),
-				self.metadata.target_justifications.clone(),
-			)
-		} else {
-			ImportResult::Continue
-		}
+		let ((values, completed), db) = match self.client.verify_range_proof(
+			self.metadata.target_root(),
+			proof,
+			self.metadata.last_key.as_slice(),
+		) {
+			Err(e) => {
+				debug!(
+					target: LOG_TARGET,
+					"StateResponse failed proof verification: {}",
+					e,
+				);
+				return ImportResult::BadResponse
+			},
+			Ok(values) => values,
+		};
+		debug!(target: LOG_TARGET, "Imported with {} keys", values.len());
+
+		let complete = completed == 0;
+		if !complete && !values.update_last_key(completed, &mut self.metadata.last_key) {
+			debug!(target: LOG_TARGET, "Error updating key cursor, depth: {}", completed);
+		};
+
+		self.process_state_verified(values);
+		self.metadata.imported_bytes += proof_size;
+
+		self.metadata.complete = dbg!(complete);
+		ImportResult::Import(
+			self.metadata.target_hash(),
+			self.metadata.target_header.clone(),
+			ImportedState::FromProof { is_final: complete, proof: db },
+			self.metadata.target_body.clone(),
+			self.metadata.target_justifications.clone(),
+		)
 	}
 
 	/// Produce next state request.

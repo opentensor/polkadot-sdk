@@ -468,11 +468,19 @@ where
 	) -> Result<ImportResult, ConsensusError> {
 		let hash = block.post_hash();
 		let number = *block.header.number();
+		let final_state = block.is_final_state();
+
 		// Force imported state finality.
 		block.finalized = true;
-		let import_result = (&*self.inner).import_block(block).await;
+
+		let import_result = (&*self.inner).import_block(block).await?;
+
+		if !final_state {
+			return Ok(import_result);
+		}
+
 		match import_result {
-			Ok(ImportResult::Imported(aux)) => {
+			ImportResult::Imported(aux) => {
 				// We've just imported a new state. We trust the sync module has verified
 				// finality proofs and that the state is correct and final.
 				// So we can read the authority list and set id from the state.
@@ -506,8 +514,7 @@ where
 					.unbounded_send(VoterCommand::ChangeAuthorities(new_set));
 				Ok(ImportResult::Imported(aux))
 			},
-			Ok(r) => Ok(r),
-			Err(e) => Err(ConsensusError::ClientImport(e.to_string())),
+			r => Ok(r),
 		}
 	}
 }

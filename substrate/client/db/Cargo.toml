@@ -20,6 +20,7 @@ codec = { features = [
 	"derive",
 ], workspace = true, default-features = true }
 hash-db = { workspace = true, default-features = true }
+trie-db = { workspace = true, default-features = true }
 kvdb = { workspace = true }
 kvdb-memorydb = { workspace = true }
 kvdb-rocksdb = { optional = true, workspace = true }

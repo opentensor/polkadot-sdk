@@ -351,6 +351,9 @@ impl<BlockHash: Hash, Key: Hash, D: MetaDb> StateDbSync<BlockHash, Key, D> {
 		// `pruning.note_canonical`) are collected into the same `CommitSet` and are committed to
 		// the database atomically to keep their consistency when restarting the node
 		let mut commit = CommitSet::default();
+
+		//TODO
+		return Ok(commit);
 		if self.mode == PruningMode::ArchiveAll {
 			return Ok(commit)
 		}
@@ -367,6 +370,9 @@ impl<BlockHash: Hash, Key: Hash, D: MetaDb> StateDbSync<BlockHash, Key, D> {
 
 	/// Returns the block number of the last canonicalized block.
 	fn last_canonicalized(&self) -> LastCanonicalized {
+		//TODO: Just done because `insert_block` is not yet working
+		return LastCanonicalized::NotCanonicalizing;
+
 		if self.mode == PruningMode::ArchiveAll {
 			LastCanonicalized::NotCanonicalizing
 		} else {

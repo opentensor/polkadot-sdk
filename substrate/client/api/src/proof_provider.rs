@@ -18,7 +18,7 @@
 
 //! Proof utilities
 use crate::{CompactProof, StorageProof};
-use sp_runtime::traits::Block as BlockT;
+use sp_runtime::traits::{Block as BlockT, HashingFor};
 use sp_state_machine::{KeyValueStates, KeyValueStorageLevel};
 use sp_storage::ChildInfo;
 
@@ -89,5 +89,8 @@ pub trait ProofProvider<Block: BlockT> {
 		root: Block::Hash,
 		proof: CompactProof,
 		start_keys: &[Vec<u8>],
-	) -> sp_blockchain::Result<(KeyValueStates, usize)>;
+	) -> sp_blockchain::Result<(
+		(KeyValueStates, usize),
+		sp_trie::PrefixedMemoryDB<HashingFor<Block>>,
+	)>;
 }
