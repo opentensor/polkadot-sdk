@@ -14,20 +14,23 @@
 // You should have received a copy of the GNU General Public License
 // along with Cumulus.  If not, see <http://www.gnu.org/licenses/>.
 
+use std::{collections::HashMap, pin::Pin};
+
 use codec::Encode;
 
 use cumulus_client_collator::service::ServiceInterface as CollatorServiceInterface;
-use cumulus_relay_chain_interface::RelayChainInterface;
+use cumulus_relay_chain_interface::{RelayChainInterface, RelayChainResult};
 
 use polkadot_node_primitives::{MaybeCompressedPoV, SubmitCollationParams};
 use polkadot_node_subsystem::messages::CollationGenerationMessage;
 use polkadot_overseer::Handle as OverseerHandle;
-use polkadot_primitives::{CollatorPair, Id as ParaId};
+use polkadot_primitives::{CollatorPair, Hash as RHash, Header as RHeader, Id as ParaId};
 
 use futures::prelude::*;
 
 use sc_utils::mpsc::TracingUnboundedReceiver;
-use sp_runtime::traits::{Block as BlockT, Header};
+use schnellru::{ByLength, LruMap};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 
 use super::CollatorMessage;
 
@@ -77,6 +80,14 @@ pub async fn run_collation_task<Block, RClient, CS>(
 		return
 	};
 
+	let mut relay_storage_root_to_hash = match RelayStorageRootToHash::new(&relay_client).await {
+		Ok(r) => r,
+		Err(error) => {
+			tracing::error!(target: LOG_TARGET, ?error, "Failed to get relay chain import notifications stream");
+			return
+		},
+	};
+
 	cumulus_client_collator::initialize_collator_subsystems(
 		&mut overseer_handle,
 		collator_key,
@@ -94,11 +105,56 @@ pub async fn run_collation_task<Block, RClient, CS>(
 
 				handle_collation_message(message, &collator_service, &mut overseer_handle).await;
 			},
-			block_import_msg = block_import_handle.next().fuse() => {
-				// TODO: Implement me.
-				// Issue: https://github.com/paritytech/polkadot-sdk/issues/6495
-				let _ = block_import_msg;
-			}
+			(block, storage_proof) = block_import_handle.next().fuse() => {
+				let Some(relay_parent) = extract_relay_parent(block.header(), &mut relay_storage_root_to_hash) else {
+					continue
+				};
+			},
+			_ = relay_storage_root_to_hash.process().fuse() => {}
+		}
+	}
+}
+
+fn extract_relay_parent<Header: HeaderT>(
+	header: &Header,
+	relay_storage_root_to_hash: &mut RelayStorageRootToHash,
+) -> Option<RHash> {
+	let digest = header.digest();
+
+	if let Some(relay_parent) = cumulus_primitives_core::extract_relay_parent(digest) {
+		return Some(relay_parent)
+	}
+
+	if let Some(relay_parent) =
+		cumulus_primitives_core::rpsr_digest::extract_relay_parent_storage_root(digest)
+			.and_then(|(r, _)| relay_storage_root_to_hash.root_to_hash(r))
+	{
+		return Some(relay_parent)
+	}
+
+	None
+}
+
+struct RelayStorageRootToHash {
+	root_to_hash: LruMap<RHash, RHash>,
+	import_notifications: Pin<Box<dyn Stream<Item = RHeader> + Send>>,
+}
+
+impl RelayStorageRootToHash {
+	async fn new(relay_interface: &impl RelayChainInterface) -> RelayChainResult<Self> {
+		Ok(Self {
+			root_to_hash: LruMap::new(ByLength::new(50)),
+			import_notifications: relay_interface.import_notification_stream().await?,
+		})
+	}
+
+	fn root_to_hash(&mut self, root: RHash) -> Option<RHash> {
+		self.root_to_hash.get(&root).cloned()
+	}
+
+	async fn process(&mut self) {
+		while let Some(new_block) = self.import_notifications.next().await {
+			self.root_to_hash.insert(*new_block.state_root(), new_block.hash());
 		}
 	}
 }
