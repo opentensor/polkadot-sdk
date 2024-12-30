@@ -60,13 +60,16 @@ where
 	}
 
 	/// Fetch required [`RelayChainData`] from the relay chain.
+	///
 	/// If this data has been fetched in the past for the incoming hash, it will reuse
 	/// cached data.
+	///
+	/// Returns `None` if the data could not be fetched from the relay chain.
 	pub async fn get_mut_relay_chain_data(
 		&mut self,
 		relay_parent: RelayHash,
 		claim_queue_offset: ClaimQueueOffset,
-	) -> Result<&mut RelayChainData, ()> {
+	) -> Option<&mut RelayChainData> {
 		let insert_data = if self.cached_data.peek(&relay_parent).is_some() {
 			tracing::trace!(target: crate::LOG_TARGET, %relay_parent, "Using cached data for relay parent.");
 			None
@@ -75,12 +78,13 @@ where
 			Some(self.update_for_relay_parent(relay_parent, claim_queue_offset).await?)
 		};
 
-		Ok(self
-			.cached_data
-			.get_or_insert(relay_parent, || {
-				insert_data.expect("`insert_data` exists if not cached yet; qed")
-			})
-			.expect("There is space for at least one element; qed"))
+		Some(
+			self.cached_data
+				.get_or_insert(relay_parent, || {
+					insert_data.expect("`insert_data` exists if not cached yet; qed")
+				})
+				.expect("There is space for at least one element; qed"),
+		)
 	}
 
 	/// Fetch fresh data from the relay chain for the given relay parent hash.
@@ -88,7 +92,7 @@ where
 		&self,
 		relay_parent: RelayHash,
 		claim_queue_offset: ClaimQueueOffset,
-	) -> Result<RelayChainData, ()> {
+	) -> Option<RelayChainData> {
 		let scheduled_cores = cores_scheduled_for_para(
 			relay_parent,
 			self.para_id,
@@ -101,7 +105,7 @@ where
 			self.relay_client.header(BlockId::Hash(relay_parent)).await
 		else {
 			tracing::warn!(target: crate::LOG_TARGET, "Unable to fetch latest relay chain block header.");
-			return Err(())
+			return None
 		};
 
 		let max_pov_size = match self
@@ -109,15 +113,15 @@ where
 			.persisted_validation_data(relay_parent, self.para_id, OccupiedCoreAssumption::Included)
 			.await
 		{
-			Ok(None) => return Err(()),
+			Ok(None) => return None,
 			Ok(Some(pvd)) => pvd.max_pov_size,
 			Err(err) => {
 				tracing::error!(target: crate::LOG_TARGET, ?err, "Failed to gather information from relay-client");
-				return Err(())
+				return None
 			},
 		};
 
-		Ok(RelayChainData {
+		Some(RelayChainData {
 			relay_parent_header,
 			scheduled_cores,
 			max_pov_size,

@@ -150,6 +150,7 @@ pub fn run<Block, P, BI, CIDP, Client, Backend, RClient, CHP, Proposer, CS, Spaw
 	let (tx, rx) = tracing_unbounded("mpsc_builder_to_collator", 100);
 	let collator_task_params = collation_task::Params {
 		relay_client: relay_client.clone(),
+		para_client: para_client.clone(),
 		collator_key,
 		para_id,
 		reinitialize,
@@ -158,7 +159,7 @@ pub fn run<Block, P, BI, CIDP, Client, Backend, RClient, CHP, Proposer, CS, Spaw
 		block_import_handle,
 	};
 
-	let collation_task_fut = run_collation_task::<Block, _, _>(collator_task_params);
+	let collation_task_fut = run_collation_task::<Block, _, _, _>(collator_task_params);
 
 	let block_builder_params = block_builder_task::BuilderTaskParams {
 		create_inherent_data_providers,

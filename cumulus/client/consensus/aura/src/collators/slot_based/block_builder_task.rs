@@ -247,7 +247,7 @@ where
 				match core_selector(&*para_client, parent.hash, *parent.header.number()) {
 					Ok(core_selector) => core_selector,
 					Err(err) => {
-						tracing::trace!(
+						tracing::debug!(
 							target: crate::LOG_TARGET,
 							"Unable to retrieve the core selector from the runtime API: {}",
 							err
@@ -256,7 +256,7 @@ where
 					},
 				};
 
-			let Ok(RelayChainData {
+			let Some(RelayChainData {
 				relay_parent_header,
 				max_pov_size,
 				scheduled_cores,

@@ -14,30 +14,28 @@
 // You should have received a copy of the GNU General Public License
 // along with Cumulus.  If not, see <http://www.gnu.org/licenses/>.
 
-use std::{collections::HashMap, pin::Pin};
-
+use super::{core_selector, relay_chain_data_cache::RelayChainDataCache, CollatorMessage};
 use codec::Encode;
-
 use cumulus_client_collator::service::ServiceInterface as CollatorServiceInterface;
+use cumulus_primitives_core::{GetCoreSelectorApi, PersistedValidationData};
 use cumulus_relay_chain_interface::{RelayChainInterface, RelayChainResult};
-
+use futures::prelude::*;
 use polkadot_node_primitives::{MaybeCompressedPoV, SubmitCollationParams};
 use polkadot_node_subsystem::messages::CollationGenerationMessage;
 use polkadot_overseer::Handle as OverseerHandle;
 use polkadot_primitives::{CollatorPair, Hash as RHash, Header as RHeader, Id as ParaId};
-
-use futures::prelude::*;
-
 use sc_utils::mpsc::TracingUnboundedReceiver;
 use schnellru::{ByLength, LruMap};
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
-
-use super::CollatorMessage;
+use sp_api::ProvideRuntimeApi;
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One};
+use std::{pin::Pin, sync::Arc};
 
 const LOG_TARGET: &str = "aura::cumulus::collation_task";
 
 /// Parameters for the collation task.
-pub struct Params<Block: BlockT, RClient, CS> {
+pub struct Params<Block: BlockT, Client, RClient, CS> {
+	/// A handle to the parachain client.
+	pub para_client: Arc<Client>,
 	/// A handle to the relay-chain client.
 	pub relay_client: RClient,
 	/// The collator key used to sign collations before submitting to validators.
@@ -60,7 +58,7 @@ pub struct Params<Block: BlockT, RClient, CS> {
 /// collations to the relay chain. It listens for new best relay chain block notifications and
 /// handles collator messages. If our parachain is scheduled on a core and we have a candidate,
 /// the task will build a collation and send it to the relay chain.
-pub async fn run_collation_task<Block, RClient, CS>(
+pub async fn run_collation_task<Block, Client, RClient, CS>(
 	Params {
 		relay_client,
 		collator_key,
@@ -69,18 +67,22 @@ pub async fn run_collation_task<Block, RClient, CS>(
 		collator_service,
 		mut collator_receiver,
 		mut block_import_handle,
-	}: Params<Block, RClient, CS>,
+		para_client,
+	}: Params<Block, Client, RClient, CS>,
 ) where
 	Block: BlockT,
 	CS: CollatorServiceInterface<Block> + Send + Sync + 'static,
 	RClient: RelayChainInterface + Clone + 'static,
+	Client: ProvideRuntimeApi<Block> + Send + Sync,
+	Client::Api: GetCoreSelectorApi<Block>,
 {
 	let Ok(mut overseer_handle) = relay_client.overseer_handle() else {
 		tracing::error!(target: LOG_TARGET, "Failed to get overseer handle.");
 		return
 	};
 
-	let mut relay_storage_root_to_hash = match RelayStorageRootToHash::new(&relay_client).await {
+	let mut relay_storage_root_to_hash = match RelayStorageRootToBlockHash::new(&relay_client).await
+	{
 		Ok(r) => r,
 		Err(error) => {
 			tracing::error!(target: LOG_TARGET, ?error, "Failed to get relay chain import notifications stream");
@@ -96,6 +98,8 @@ pub async fn run_collation_task<Block, RClient, CS>(
 	)
 	.await;
 
+	let mut relay_chain_data_cache = RelayChainDataCache::new(relay_client.clone(), para_id);
+
 	loop {
 		futures::select! {
 			collator_message = collator_receiver.next() => {
@@ -107,7 +111,35 @@ pub async fn run_collation_task<Block, RClient, CS>(
 			},
 			(block, storage_proof) = block_import_handle.next().fuse() => {
 				let Some(relay_parent) = extract_relay_parent(block.header(), &mut relay_storage_root_to_hash) else {
+					tracing::debug!(target: LOG_TARGET, block_hash = ?block.hash(), "Could not extract relay parent from parachain block");
 					continue
+				};
+
+				// Retrieve the core selector.
+				let (core_selector, claim_queue_offset) =
+					match core_selector(&*para_client, *block.header().parent_hash(), *block.header().number() - One::one()) {
+						Ok(core_selector) => core_selector,
+						Err(err) => {
+							tracing::trace!(
+								target: crate::LOG_TARGET,
+								"Unable to retrieve the core selector from the runtime API: {}",
+								err
+							);
+							continue
+						},
+					};
+
+				let Some(relay_data) = relay_chain_data_cache.get_mut_relay_chain_data(relay_parent, claim_queue_offset).await else {
+					tracing::debug!(target: LOG_TARGET, block_hash = ?block.hash(), "Failed to retrieve required relay chain data");
+					continue
+				};
+
+
+				let core_selector = core_selector.0 as usize % scheduled_cores.len();
+				let Some(core_index) = scheduled_cores.get(core_selector) else {
+					// This cannot really happen, as we modulo the core selector with the
+					// scheduled_cores length and we check that the scheduled_cores is not empty.
+					continue;
 				};
 			},
 			_ = relay_storage_root_to_hash.process().fuse() => {}
@@ -117,7 +149,7 @@ pub async fn run_collation_task<Block, RClient, CS>(
 
 fn extract_relay_parent<Header: HeaderT>(
 	header: &Header,
-	relay_storage_root_to_hash: &mut RelayStorageRootToHash,
+	relay_storage_root_to_block_hash: &mut RelayStorageRootToBlockHash,
 ) -> Option<RHash> {
 	let digest = header.digest();
 
@@ -127,7 +159,7 @@ fn extract_relay_parent<Header: HeaderT>(
 
 	if let Some(relay_parent) =
 		cumulus_primitives_core::rpsr_digest::extract_relay_parent_storage_root(digest)
-			.and_then(|(r, _)| relay_storage_root_to_hash.root_to_hash(r))
+			.and_then(|(r, _)| relay_storage_root_to_block_hash.root_to_hash(r))
 	{
 		return Some(relay_parent)
 	}
@@ -135,12 +167,13 @@ fn extract_relay_parent<Header: HeaderT>(
 	None
 }
 
-struct RelayStorageRootToHash {
+/// Maps from relay chain storage root to relay chain block hash.
+struct RelayStorageRootToBlockHash {
 	root_to_hash: LruMap<RHash, RHash>,
 	import_notifications: Pin<Box<dyn Stream<Item = RHeader> + Send>>,
 }
 
-impl RelayStorageRootToHash {
+impl RelayStorageRootToBlockHash {
 	async fn new(relay_interface: &impl RelayChainInterface) -> RelayChainResult<Self> {
 		Ok(Self {
 			root_to_hash: LruMap::new(ByLength::new(50)),
@@ -152,6 +185,7 @@ impl RelayStorageRootToHash {
 		self.root_to_hash.get(&root).cloned()
 	}
 
+	/// Process relay chain import notifications.
 	async fn process(&mut self) {
 		while let Some(new_block) = self.import_notifications.next().await {
 			self.root_to_hash.insert(*new_block.state_root(), new_block.hash());

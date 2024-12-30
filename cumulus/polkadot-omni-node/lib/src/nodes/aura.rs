@@ -60,7 +60,7 @@ use sc_service::{Configuration, Error, TaskManager};
 use sc_telemetry::TelemetryHandle;
 use sc_transaction_pool::TransactionPoolHandle;
 use sp_api::ProvideRuntimeApi;
-use sp_core::traits::{SpawnEssentialNamed, SpawnNamed};
+use sp_core::traits::SpawnEssentialNamed;
 use sp_inherents::CreateInherentDataProviders;
 use sp_keystore::KeystorePtr;
 use sp_runtime::{
@@ -375,7 +375,7 @@ where
 			reinitialize: false,
 			slot_drift: Duration::from_secs(1),
 			block_import_handle,
-			spawner: task_manager.spawn_handle(),
+			spawner: task_manager.spawn_essential_handle(),
 		};
 
 		// We have a separate function only to be able to use `docify::export` on this piece of
