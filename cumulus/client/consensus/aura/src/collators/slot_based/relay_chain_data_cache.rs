@@ -48,7 +48,7 @@ pub struct RelayChainDataCache<RI> {
 
 impl<RI> RelayChainDataCache<RI>
 where
-	RI: RelayChainInterface + Clone + 'static,
+	RI: RelayChainInterface,
 {
 	pub fn new(relay_client: RI, para_id: ParaId) -> Self {
 		Self {

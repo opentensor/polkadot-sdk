@@ -242,9 +242,8 @@ where
 
 		let Some(candidate) = maybe_candidate else { return Ok(None) };
 
-		let hash = candidate.block.header().hash();
 		if let Some((collation, block_data)) =
-			self.collator_service.build_collation(parent_header, hash, candidate)
+			self.collator_service.build_collation(parent_header.clone(), vec![candidate])
 		{
 			block_data.log_size_info();
 

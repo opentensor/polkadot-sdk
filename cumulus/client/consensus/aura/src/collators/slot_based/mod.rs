@@ -141,7 +141,7 @@ pub fn run<Block, P, BI, CIDP, Client, Backend, RClient, CHP, Proposer, CS, Spaw
 	BI: BlockImport<Block> + ParachainBlockImportMarker + Send + Sync + 'static,
 	Proposer: ProposerInterface<Block> + Send + Sync + 'static,
 	CS: CollatorServiceInterface<Block> + Send + Sync + Clone + 'static,
-	CHP: consensus_common::ValidationCodeHashProvider<Block::Hash> + Send + 'static,
+	CHP: consensus_common::ValidationCodeHashProvider<Block::Hash> + Clone + Send + 'static,
 	P: Pair + 'static,
 	P::Public: AppPublic + Member + Codec,
 	P::Signature: TryFrom<Vec<u8>> + Member + Codec,
@@ -157,9 +157,10 @@ pub fn run<Block, P, BI, CIDP, Client, Backend, RClient, CHP, Proposer, CS, Spaw
 		collator_service: collator_service.clone(),
 		collator_receiver: rx,
 		block_import_handle,
+		code_hash_provider: code_hash_provider.clone(),
 	};
 
-	let collation_task_fut = run_collation_task::<Block, _, _, _>(collator_task_params);
+	let collation_task_fut = run_collation_task::<Block, _, _, _, _>(collator_task_params);
 
 	let block_builder_params = block_builder_task::BuilderTaskParams {
 		create_inherent_data_providers,
@@ -206,6 +207,7 @@ struct CollatorMessage<Block: BlockT> {
 	pub validation_code_hash: ValidationCodeHash,
 	/// Core index that this block should be submitted on
 	pub core_index: CoreIndex,
+	pub scheduled_cores: Vec<CoreIndex>,
 }
 
 /// Fetch the `CoreSelector` and `ClaimQueueOffset` for `parent_hash`.

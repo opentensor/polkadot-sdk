@@ -118,7 +118,7 @@ where
 
 		let block_hash = candidate.block.header().hash();
 
-		let (collation, b) = self.service.build_collation(&last_head, block_hash, candidate)?;
+		let (collation, b) = self.service.build_collation(last_head, vec![candidate])?;
 
 		b.log_size_info();
 

@@ -62,6 +62,7 @@ where
 }
 
 /// The result of [`ParachainConsensus::produce_candidate`].
+#[derive(Clone)]
 pub struct ParachainCandidate<B> {
 	/// The block that was built for this candidate.
 	pub block: B,

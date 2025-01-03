@@ -388,7 +388,7 @@ where
 				validation_data.max_pov_size / 2
 			} as usize;
 
-			let Ok(Some(candidate)) = collator
+			let Ok(Some(parachain_candidate)) = collator
 				.build_block_and_import(
 					&parent_header,
 					&slot_claim,
@@ -403,7 +403,7 @@ where
 				continue;
 			};
 
-			let new_block_hash = candidate.block.header().hash();
+			let new_block_hash = parachain_candidate.block.header().hash();
 
 			// Announce the newly built block to our peers.
 			collator.collator_service().announce_block(new_block_hash, None);
@@ -411,9 +411,10 @@ where
 			if let Err(err) = collator_sender.unbounded_send(CollatorMessage {
 				relay_parent,
 				parent_header,
-				parachain_candidate: candidate,
+				parachain_candidate,
 				validation_code_hash,
 				core_index: *core_index,
+				scheduled_cores: scheduled_cores.clone(),
 			}) {
 				tracing::error!(target: crate::LOG_TARGET, ?err, "Unable to send block to collation task.");
 				return
