@@ -192,7 +192,6 @@ impl<Block: BlockT> PerRelayParent<Block> {
 struct CollationTask<Block: BlockT, RI, CHP, Client, CS> {
 	per_relay_parent: HashMap<RHash, PerRelayParent<Block>>,
 	relay_import_notifications: Fuse<Pin<Box<dyn Stream<Item = RHeader> + Send>>>,
-	relay_interface: RI,
 	code_hash_provider: CHP,
 	para_client: Arc<Client>,
 	relay_data_cache: RelayChainDataCache<RI>,
@@ -219,12 +218,12 @@ where
 		collator_service: CS,
 		overseer_handle: OverseerHandle,
 	) -> RelayChainResult<Self> {
-		let relay_data_cache = RelayChainDataCache::new(relay_interface.clone(), para_id);
+		let relay_import_notifications = relay_interface.import_notification_stream().await?.fuse();
+		let relay_data_cache = RelayChainDataCache::new(relay_interface, para_id);
 
 		Ok(Self {
 			per_relay_parent: Default::default(),
-			relay_import_notifications: relay_interface.import_notification_stream().await?.fuse(),
-			relay_interface,
+			relay_import_notifications,
 			code_hash_provider,
 			para_client,
 			root_to_hash: LruMap::new(ByLength::new(50)),

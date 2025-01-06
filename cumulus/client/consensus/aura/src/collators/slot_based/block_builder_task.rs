@@ -21,13 +21,14 @@ use cumulus_client_consensus_common::{self as consensus_common, ParachainBlockIm
 use cumulus_client_consensus_proposer::ProposerInterface;
 use cumulus_primitives_aura::AuraUnincludedSegmentApi;
 use cumulus_primitives_core::{GetCoreSelectorApi, PersistedValidationData};
-use cumulus_relay_chain_interface::RelayChainInterface;
+use cumulus_relay_chain_interface::{RelayChainInterface, RelayChainResult};
 
-use polkadot_primitives::Id as ParaId;
+use polkadot_primitives::{Hash as RHash, Header as RHeader, Id as ParaId};
 
 use futures::prelude::*;
 use sc_client_api::{backend::AuxStore, BlockBackend, BlockOf, UsageProvider};
 use sc_consensus::BlockImport;
+use schnellru::LruMap;
 use sp_api::ProvideRuntimeApi;
 use sp_application_crypto::AppPublic;
 use sp_blockchain::HeaderBackend;
@@ -37,7 +38,7 @@ use sp_inherents::CreateInherentDataProviders;
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, Member};
 use sp_timestamp::Timestamp;
-use std::{sync::Arc, time::Duration};
+use std::{pin::Pin, sync::Arc, time::Duration};
 
 use super::CollatorMessage;
 use crate::{
@@ -419,6 +420,26 @@ where
 				tracing::error!(target: crate::LOG_TARGET, ?err, "Unable to send block to collation task.");
 				return
 			}
+		}
+	}
+}
+
+struct RelayParentToBuildOn {
+	relay_import_notifications: Pin<Box<dyn Stream<Item = RHeader> + Send>>,
+	root_to_hash: LruMap<RHash, RHash>,
+}
+
+impl RelayParentToBuildOn {
+	async fn new(relay_interface: &impl RelayChainInterface) -> RelayChainResult<Self> {
+		let relay_import_notifications = relay_interface.import_notification_stream().await?;
+
+		Ok(Self { relay_import_notifications, root_to_hash: LruMap::new(50.into()) })
+	}
+
+	/// Returns the relay parent to build on.
+	fn relay_parent_to_build_on(&mut self) -> RHash {
+		while let Some(header) = self.relay_import_notifications.next().now_or_never() {
+			self.root_to_hash.insert(*header.storage_root(), header.hash())
 		}
 	}
 }
