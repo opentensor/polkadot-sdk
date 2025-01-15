@@ -156,3 +156,7 @@ full_crypto = [
 # It should not be used in production since the implementation and interface may still
 # be subject to significant changes.
 bls-experimental = ["w3f-bls"]
+
+# Unused. This is a stub since stable2412 does not contain the `bandernatch_vrfs` crate since it is
+# not released to crates.io. We just add this empty feature here to make Cargo happy:
+bandersnatch-experimental = []
