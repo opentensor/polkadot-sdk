@@ -79,8 +79,7 @@ pub mod relay_state_snapshot;
 pub mod validate_block;
 
 use unincluded_segment::{
-	Ancestor, HrmpChannelUpdate, HrmpWatermarkUpdate, OutboundBandwidthLimits, SegmentTracker,
-	UsedBandwidth,
+	HrmpChannelUpdate, HrmpWatermarkUpdate, OutboundBandwidthLimits, SegmentTracker,
 };
 
 pub use consensus_hook::{ConsensusHook, ExpectParentIncluded};
@@ -108,6 +107,7 @@ pub use consensus_hook::{ConsensusHook, ExpectParentIncluded};
 /// ```
 pub use cumulus_pallet_parachain_system_proc_macro::register_validate_block;
 pub use relay_state_snapshot::{MessagingStateSnapshot, RelayChainStateProof};
+pub use unincluded_segment::{Ancestor, UsedBandwidth};
 
 pub use pallet::*;
 
