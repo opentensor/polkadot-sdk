@@ -38,7 +38,7 @@ use sp_inherents::CreateInherentDataProviders;
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, Member};
 use sp_timestamp::Timestamp;
-use std::{pin::Pin, sync::Arc, time::Duration};
+use std::{marker::PhantomData, pin::Pin, sync::Arc, time::Duration};
 
 use super::CollatorMessage;
 use crate::{
@@ -304,7 +304,7 @@ where
 			collator.collator_service().check_block_status(parent_hash, &parent_header);
 
 			let Ok(relay_slot) =
-				sc_consensus_babe::find_pre_digest::<RelayBlock>(relay_parent_header)
+				sc_consensus_babe::find_pre_digest::<RelayBlock>(&relay_parent_header)
 					.map(|babe_pre_digest| babe_pre_digest.slot())
 			else {
 				tracing::error!(target: crate::LOG_TARGET, "Relay chain does not contain babe slot. This should never happen.");
@@ -433,22 +433,63 @@ where
 	}
 }
 
-struct RelayParentToBuildOn {
+struct RelayParentToBuildOn<Block, Client> {
+	best_relay_block: RHeader,
 	relay_import_notifications: Pin<Box<dyn Stream<Item = RHeader> + Send>>,
-	root_to_hash: LruMap<RHash, RHash>,
+	root_to_header: LruMap<RHash, RHeader>,
+	para_client: Arc<Client>,
+	_marker: PhantomData<Block>,
 }
 
-impl RelayParentToBuildOn {
-	async fn new(relay_interface: &impl RelayChainInterface) -> RelayChainResult<Self> {
+impl<Block, Client> RelayParentToBuildOn<Client>
+where
+	Block: BlockT,
+	Client: HeaderBackend<Block>,
+{
+	async fn new(
+		relay_interface: &impl RelayChainInterface,
+		para_client: Arc<Client>,
+	) -> RelayChainResult<Self> {
 		let relay_import_notifications = relay_interface.import_notification_stream().await?;
 
-		Ok(Self { relay_import_notifications, root_to_hash: LruMap::new(50.into()) })
+		let best_relay_block = relay_interface.best_block_hash().await?;
+
+		Ok(Self {
+			relay_import_notifications,
+			root_to_header: LruMap::new(50.into()),
+			best_relay_block,
+			para_client,
+			_marker: Default::default(),
+		})
 	}
 
 	/// Returns the relay parent to build on.
 	fn relay_parent_to_build_on(&mut self) -> RHash {
 		while let Some(header) = self.relay_import_notifications.next().now_or_never() {
-			self.root_to_hash.insert(*header.storage_root(), header.hash())
+			self.root_to_header.insert(*header.storage_root(), header)
 		}
+
+		let best_para_block = self.para_client.info().best_hash;
+		let Ok(Some(para_header)) = self.para_client.header(BlockId::Hash(best_para_block)) else {
+			// Should not happen..
+			return self.best_relay_block.hash()
+		};
+	}
+
+	fn extract_relay_parent(&mut self, header: &Block::Header) -> Option<RHash> {
+		let digest = header.digest();
+
+		if let Some(relay_parent) = cumulus_primitives_core::extract_relay_parent(digest) {
+			return Some(relay_parent)
+		}
+
+		if let Some(relay_parent) =
+			cumulus_primitives_core::rpsr_digest::extract_relay_parent_storage_root(digest)
+				.and_then(|(r, _)| self.root_to_header.get(&r).map(|h| h.hash()))
+		{
+			return Some(relay_parent)
+		}
+
+		None
 	}
 }
