@@ -36,7 +36,10 @@ use sp_consensus_aura::{AuraApi, Slot};
 use sp_core::crypto::Pair;
 use sp_inherents::CreateInherentDataProviders;
 use sp_keystore::KeystorePtr;
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT, Member};
+use sp_runtime::{
+	generic::BlockId,
+	traits::{Block as BlockT, Header as HeaderT, Member},
+};
 use sp_timestamp::Timestamp;
 use std::{marker::PhantomData, pin::Pin, sync::Arc, time::Duration};
 
@@ -453,10 +456,15 @@ where
 		let relay_import_notifications = relay_interface.import_notification_stream().await?;
 
 		let best_relay_block = relay_interface.best_block_hash().await?;
+		let best_relay_block_header =
+			relay_interface.header(BlockId::Hash(best_relay_block)).await?.unwrap();
+
+		let mut root_to_header = LruMap::new(50.into());
+		root_to_header.insert(best_relay_block_header.storage_root(), best_relay_block_header);
 
 		Ok(Self {
 			relay_import_notifications,
-			root_to_header: LruMap::new(50.into()),
+			root_to_header,
 			best_relay_block,
 			para_client,
 			_marker: Default::default(),
@@ -466,11 +474,21 @@ where
 	/// Returns the relay parent to build on.
 	fn relay_parent_to_build_on(&mut self) -> RHash {
 		while let Some(header) = self.relay_import_notifications.next().now_or_never() {
+			//TODO: Do we need a better best block selection?
+			if header.number() > self.best_relay_block.number() {
+				self.best_relay_block = header.clone();
+			}
+
 			self.root_to_header.insert(*header.storage_root(), header)
 		}
 
 		let best_para_block = self.para_client.info().best_hash;
 		let Ok(Some(para_header)) = self.para_client.header(BlockId::Hash(best_para_block)) else {
+			// Should not happen..
+			return self.best_relay_block.hash()
+		};
+
+		let Some(best_para_block_relay_parent) = self.extract_relay_parent(&para_header) else {
 			// Should not happen..
 			return self.best_relay_block.hash()
 		};
