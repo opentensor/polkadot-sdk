@@ -33,7 +33,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_application_crypto::AppPublic;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_aura::{AuraApi, Slot};
-use sp_core::crypto::Pair;
+use sp_core::crypto::{Pair, UncheckedInto};
 use sp_inherents::CreateInherentDataProviders;
 use sp_keystore::KeystorePtr;
 use sp_runtime::{
@@ -41,7 +41,12 @@ use sp_runtime::{
 	traits::{Block as BlockT, Header as HeaderT, Member},
 };
 use sp_timestamp::Timestamp;
-use std::{marker::PhantomData, pin::Pin, sync::Arc, time::Duration};
+use std::{
+	marker::PhantomData,
+	pin::Pin,
+	sync::Arc,
+	time::{Duration, SystemTime},
+};
 
 use super::CollatorMessage;
 use crate::{
@@ -436,21 +441,25 @@ where
 	}
 }
 
-struct RelayParentToBuildOn<Block, Client> {
+struct RelayParentToBuildOn<Block, Client, RI> {
 	best_relay_block: RHeader,
 	relay_import_notifications: Pin<Box<dyn Stream<Item = RHeader> + Send>>,
 	root_to_header: LruMap<RHash, RHeader>,
+	hash_to_header: LruMap<RHash, RHeader>,
 	para_client: Arc<Client>,
+	max_para_blocks_per_relay: usize,
+	relay_interface: RI,
 	_marker: PhantomData<Block>,
 }
 
-impl<Block, Client> RelayParentToBuildOn<Client>
+impl<Block, Client, RI> RelayParentToBuildOn<Block, Client, RI>
 where
 	Block: BlockT,
 	Client: HeaderBackend<Block>,
+RI: RelayChainInterface
 {
 	async fn new(
-		relay_interface: &impl RelayChainInterface,
+		relay_interface: RI,
 		para_client: Arc<Client>,
 	) -> RelayChainResult<Self> {
 		let relay_import_notifications = relay_interface.import_notification_stream().await?;
@@ -460,13 +469,21 @@ where
 			relay_interface.header(BlockId::Hash(best_relay_block)).await?.unwrap();
 
 		let mut root_to_header = LruMap::new(50.into());
-		root_to_header.insert(best_relay_block_header.storage_root(), best_relay_block_header);
+		root_to_header
+			.insert(best_relay_block_header.state_root(), best_relay_block_header.clone());
+
+		let mut hash_to_header = LruMap::new(50.into());
+		hash_to_header.insert(best_relay_block_header.hash(), best_relay_block_header);
 
 		Ok(Self {
 			relay_import_notifications,
 			root_to_header,
-			best_relay_block,
+			hash_to_header,
+			best_relay_block: best_relay_block_header,
 			para_client,
+			relay_interface,
+			// TODO: Calculate this
+			max_para_blocks_per_relay: 6,
 			_marker: Default::default(),
 		})
 	}
@@ -479,9 +496,10 @@ where
 				self.best_relay_block = header.clone();
 			}
 
-			self.root_to_header.insert(*header.storage_root(), header)
+			self.root_to_header.insert(*header.state_root(), header)
 		}
 
+		//TODO: Use `SelectChain`?
 		let best_para_block = self.para_client.info().best_hash;
 		let Ok(Some(para_header)) = self.para_client.header(BlockId::Hash(best_para_block)) else {
 			// Should not happen..
@@ -492,6 +510,72 @@ where
 			// Should not happen..
 			return self.best_relay_block.hash()
 		};
+
+		let Ok(Some(relay_header)) = self.relay_interface.header(BlockId::Hash(best_para_block_relay_parent)) else {
+			// Should not happen..
+			return self.best_relay_block.hash()
+		}
+
+		let best_para_block_relay_slot = Self::relay_slot_for_header(&relay_header);
+		let current_relay_slot = Self::current_relay_chain_slot();
+
+		//TODO: 2 needs to be configurable/depending on schedule lookahead
+		if best_para_block_relay_slot + 2 < current_relay_slot {
+			return self.determine_best_relay_block_to_build_on(current_slot).await;
+		}
+
+		let mut on_same_parent = 0;
+		let mut next_hash = para_header.parent_hash();
+
+		loop {
+			let Ok(Some(next_header)) = self.para_client.header(BlockId::Hash(next_hash)) else {
+				break;
+			};
+
+			let Some(relay_parent) = self.extract_relay_parent(&next_header) else {
+				break;
+			};
+
+			if relay_parent == best_para_block_relay_parent {
+				next_hash = next_header.parent_hash();
+				on_same_parent += 1;
+			} else {
+				break;
+			}
+		}
+
+		if on_same_parent >= self.max_para_blocks_per_relay {
+			self.determine_best_relay_block_to_build_on(current_slot).await
+		} else {
+			best_para_block_relay_parent
+		}
+	}
+
+	fn current_relay_chain_slot() -> Slot {
+		SystemTime::now()
+			.duration_since(SystemTime::UNIX_EPOCH)
+			.unwrap_or_default()
+			.as_milli_secs() /
+			6000
+	}
+
+	async fn determine_best_relay_block_to_build_on(&self, current_slot: Slot) -> RHash {
+		let best_relay_block = self.relay_interface.best_block_hash().await?;
+
+		let mut header = self.relay_interface.header(BlockId::Hash(best_relay_block)).unwrap().unwrap();
+		let mut header_slot = Self::relay_slot_for_header(&header);
+
+		//TODO: Take into account `current_slot` maybe already being at its end
+		while header_slot > current_slot - 2.into() {
+			header = self.relay_interface.header(BlockId::Hash(header.parent())).await.unwrap().unwrap();
+			header_slot = Self::relay_slot_for_header(&header);
+		}		 
+
+		header.hash()
+	}
+
+	fn relay_slot_for_header(header: &RHeader) -> Slot {
+		header.digest().log(|d| d.as_babe_pre_digest().map(|p| p.slot())).expect("Every relay chain block has a BABE digest, otherwise it should not have been imported; qed")
 	}
 
 	fn extract_relay_parent(&mut self, header: &Block::Header) -> Option<RHash> {
