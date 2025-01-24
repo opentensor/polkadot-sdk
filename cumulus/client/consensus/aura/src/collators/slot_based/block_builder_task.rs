@@ -567,7 +567,7 @@ where
 		)
 	}
 
-	async fn determine_best_relay_block_to_build_on(&self, current_slot: Slot) -> RHash {
+	async fn determine_best_relay_block_to_build_on(&mut self, current_slot: Slot) -> RHash {
 		let best_relay_block = self.relay_interface.best_block_hash().await.unwrap();
 
 		let mut header = self
@@ -593,7 +593,8 @@ where
 	}
 
 	fn relay_slot_for_header(header: &RHeader) -> Slot {
-		header.digest().logs.iter().find_map(|d| d.as_babe_pre_digest().map(|p| p.slot())).expect("Every relay chain block has a BABE digest, otherwise it should not have been imported; qed").into()
+		header.digest().logs.iter().find_map(|d| d.as_babe_pre_digest().map(|p| p.slot()))
+			.expect("Every relay chain block has a BABE digest, otherwise it should not have been imported; qed").into()
 	}
 
 	fn extract_relay_parent(&mut self, header: &Block::Header) -> Option<RHash> {
