@@ -86,18 +86,18 @@ const SHARED_VALUE_CACHE_MAX_REPLACE_PERCENT: usize = 33;
 ///
 /// This is just an upper limit; since the maps are resized in powers of two
 /// their actual size will most likely not exactly match this.
-const LOCAL_NODE_CACHE_MAX_INLINE_SIZE: usize = 512 * 1024;
+const LOCAL_NODE_CACHE_MAX_INLINE_SIZE: usize = 2 * 1024 * 1024 * 1024;
 /// Same as [`LOCAL_NODE_CACHE_MAX_INLINE_SIZE`].
-const LOCAL_VALUE_CACHE_MAX_INLINE_SIZE: usize = 512 * 1024;
+const LOCAL_VALUE_CACHE_MAX_INLINE_SIZE: usize = 2 * 1024 * 1024 * 1024;
 
 /// The maximum size of the memory allocated on the heap by the local cache, in bytes.
 ///
 /// The size of the node cache should always be bigger than the value cache. The value
 /// cache is only holding weak references to the actual values found in the nodes and
 /// we account for the size of the node as part of the node cache.
-const LOCAL_NODE_CACHE_MAX_HEAP_SIZE: usize = 8 * 1024 * 1024;
+const LOCAL_NODE_CACHE_MAX_HEAP_SIZE: usize = 2 * 1024 * 1024 * 1024;
 /// Same as [`LOCAL_NODE_CACHE_MAX_HEAP_SIZE`].
-const LOCAL_VALUE_CACHE_MAX_HEAP_SIZE: usize = 2 * 1024 * 1024;
+const LOCAL_VALUE_CACHE_MAX_HEAP_SIZE: usize = 2 * 1024 * 1024 * 1024;
 
 /// The size of the shared cache.
 #[derive(Debug, Clone, Copy)]
@@ -139,7 +139,8 @@ where
 			return false
 		}
 
-		self.current_heap_size > LOCAL_NODE_CACHE_MAX_HEAP_SIZE
+		// self.current_heap_size > LOCAL_NODE_CACHE_MAX_HEAP_SIZE
+		false
 	}
 
 	#[inline]
@@ -180,7 +181,8 @@ where
 
 	#[inline]
 	fn on_grow(&mut self, new_memory_usage: usize) -> bool {
-		new_memory_usage <= LOCAL_NODE_CACHE_MAX_INLINE_SIZE
+		// new_memory_usage <= LOCAL_NODE_CACHE_MAX_INLINE_SIZE
+		true
 	}
 }
 
@@ -208,7 +210,8 @@ where
 			return false
 		}
 
-		self.current_heap_size > LOCAL_VALUE_CACHE_MAX_HEAP_SIZE
+		// self.current_heap_size > LOCAL_VALUE_CACHE_MAX_HEAP_SIZE
+		false
 	}
 
 	#[inline]
@@ -247,7 +250,8 @@ where
 
 	#[inline]
 	fn on_grow(&mut self, new_memory_usage: usize) -> bool {
-		new_memory_usage <= LOCAL_VALUE_CACHE_MAX_INLINE_SIZE
+		// new_memory_usage <= LOCAL_VALUE_CACHE_MAX_INLINE_SIZE
+		true
 	}
 }
 

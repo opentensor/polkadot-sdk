@@ -72,7 +72,8 @@ where
 		// Once we hit the limit of max items evicted this will return `false` and prevent
 		// any further evictions, but this is fine because the outer loop which inserts
 		// items into this cache will just detect this and stop inserting new items.
-		self.items_evicted <= self.max_items_evicted && self.heap_size > self.max_heap_size
+		// self.items_evicted <= self.max_items_evicted && self.heap_size > self.max_heap_size
+		self.heap_size > self.max_heap_size
 	}
 
 	#[inline]
@@ -127,7 +128,8 @@ where
 
 	#[inline]
 	fn on_grow(&mut self, new_memory_usage: usize) -> bool {
-		new_memory_usage <= self.max_inline_size
+		dbg!(new_memory_usage);
+		true
 	}
 }
 
@@ -279,10 +281,10 @@ impl<H: AsRef<[u8]> + Eq + std::hash::Hash> SharedNodeCache<H> {
 				if self.lru.get(&key).is_some() {
 					access_count += 1;
 
-					if access_count >= super::SHARED_NODE_CACHE_MAX_PROMOTED_KEYS {
-						// Stop when we've promoted a large enough number of items.
-						break
-					}
+					// if access_count >= super::SHARED_NODE_CACHE_MAX_PROMOTED_KEYS {
+					// 	// Stop when we've promoted a large enough number of items.
+					// 	break
+					// }
 
 					continue
 				}
@@ -291,10 +293,10 @@ impl<H: AsRef<[u8]> + Eq + std::hash::Hash> SharedNodeCache<H> {
 			self.lru.insert(key, cached_node.node);
 			add_count += 1;
 
-			if self.lru.limiter().items_evicted > self.lru.limiter().max_items_evicted {
-				// Stop when we've evicted a big enough chunk of the shared cache.
-				break
-			}
+			// if self.lru.limiter().items_evicted > self.lru.limiter().max_items_evicted {
+			// 	// Stop when we've evicted a big enough chunk of the shared cache.
+			// 	break
+			// }
 		}
 
 		tracing::debug!(
@@ -537,10 +539,10 @@ impl<H: Eq + std::hash::Hash + Clone + Copy + AsRef<[u8]>> SharedValueCache<H> {
 			self.lru.insert(key, value);
 			add_count += 1;
 
-			if self.lru.limiter().items_evicted > self.lru.limiter().max_items_evicted {
-				// Stop when we've evicted a big enough chunk of the shared cache.
-				break
-			}
+			// if self.lru.limiter().items_evicted > self.lru.limiter().max_items_evicted {
+			// 	// Stop when we've evicted a big enough chunk of the shared cache.
+			// 	break
+			// }
 		}
 
 		tracing::debug!(
