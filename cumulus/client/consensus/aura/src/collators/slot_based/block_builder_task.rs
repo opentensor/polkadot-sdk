@@ -311,14 +311,15 @@ pub async fn run_block_builder<
 			continue;
 		};
 
-		if !claimed_cores.insert(*core_index) {
-			tracing::debug!(
-				target: LOG_TARGET,
-				"Core {:?} was already claimed at this relay chain slot",
-				core_index
-			);
-			continue
-		}
+		//TODO: FIX
+		// if !claimed_cores.insert(*core_index) {
+		// 	tracing::debug!(
+		// 		target: LOG_TARGET,
+		// 		"Core {:?} was already claimed at this relay chain slot",
+		// 		core_index
+		// 	);
+		// 	continue
+		// }
 
 		let parent_header = parent.header;
 
@@ -365,9 +366,9 @@ pub async fn run_block_builder<
 			?core_index,
 			slot_info = ?para_slot,
 			unincluded_segment_len = parent.depth,
-			relay_parent = %relay_parent,
-			included = %included_block,
-			parent = %parent_hash,
+			relay_parent = ?relay_parent,
+			included = ?included_block,
+			parent = ?parent_hash,
 			"Building block."
 		);
 
@@ -488,7 +489,7 @@ where
 			para_client,
 			relay_interface,
 			// TODO: Calculate this
-			max_para_blocks_per_relay: 6,
+			max_para_blocks_per_relay: 12,
 			_marker: Default::default(),
 		})
 	}

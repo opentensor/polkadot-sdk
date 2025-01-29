@@ -160,6 +160,8 @@ impl<Block: BlockT> PerRelayParent<Block> {
 			scheduled_cores.len()
 		};
 
+		tracing::trace!(target: LOG_TARGET, %blocks_per_core, ?scheduled_cores, "Initializing `PerRelayParent`");
+
 		Self { parachain_blocks: Default::default(), scheduled_cores, blocks_per_core }
 	}
 
@@ -173,6 +175,7 @@ impl<Block: BlockT> PerRelayParent<Block> {
 			return AddOutcome::Nothing
 		}
 
+		//TODO: Handle forks?
 		let per_core = self
 			.parachain_blocks
 			.entry(core)
@@ -409,21 +412,38 @@ where
 						return;
 					};
 
+					tracing::trace!(
+						target: LOG_TARGET,
+						block = ?message.parachain_candidate.block.hash(),
+						"Received block from block production",
+					);
+
 					self.handle_collation_message(message).await;
 				},
 				(block, storage_proof) = block_import_handle.next().fuse() => {
 					let Some(relay_parent) = self.extract_relay_parent(block.header())
 					else {
-						tracing::debug!(target: LOG_TARGET, block_hash = ?block.hash(), "Could not extract relay parent from parachain block");
+						tracing::debug!(
+							target: LOG_TARGET,
+							block_hash = ?block.hash(),
+							"Could not extract relay parent from parachain block",
+						);
 						continue
 					};
+
+					tracing::trace!(target: LOG_TARGET, block = ?block.hash(), "Received block from block import");
 
 					self.handle_block_import(block, storage_proof, relay_parent).await
 				},
 				relay_block_import = self.relay_import_notifications.next() => {
 					let Some(relay_block_import) = relay_block_import else { return; };
 
-					self.root_to_hash.insert(*relay_block_import.state_root(), relay_block_import.hash());
+					let state_root = *relay_block_import.state_root();
+					let relay_block =  relay_block_import.hash();
+
+					tracing::trace!(target: LOG_TARGET, ?relay_block, ?state_root, "Relay block mapped");
+
+					self.root_to_hash.insert(state_root, relay_block);
 				}
 			}
 		}
