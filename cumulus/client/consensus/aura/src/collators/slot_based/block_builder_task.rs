@@ -552,7 +552,7 @@ where
 			}
 		}
 
-		if on_same_parent >= self.max_para_blocks_per_relay {
+		if dbg!(on_same_parent) >= self.max_para_blocks_per_relay {
 			self.determine_best_relay_block_to_build_on(current_relay_slot).await
 		} else {
 			best_para_block_relay_parent
@@ -580,7 +580,7 @@ where
 		let mut header_slot = Self::relay_slot_for_header(&header);
 
 		//TODO: Take into account `current_slot` maybe already being at its end
-		while header_slot > current_slot - 2.into() {
+		while dbg!(header_slot) > dbg!(current_slot) - 2.into() {
 			header = self
 				.relay_interface
 				.header(BlockId::Hash(*header.parent_hash()))
@@ -590,7 +590,7 @@ where
 			header_slot = Self::relay_slot_for_header(&header);
 		}
 
-		header.hash()
+		dbg!(header.hash())
 	}
 
 	fn relay_slot_for_header(header: &RHeader) -> Slot {
