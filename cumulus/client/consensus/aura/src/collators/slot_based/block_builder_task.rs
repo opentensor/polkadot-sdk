@@ -58,6 +58,7 @@ use crate::{
 			core_selector,
 			relay_chain_data_cache::{RelayChainData, RelayChainDataCache},
 		},
+		FindParent,
 	},
 	LOG_TARGET,
 };
@@ -257,18 +258,18 @@ pub async fn run_block_builder<
 
 		let relay_parent = relay_chain_parent.relay_parent_to_build_on().await;
 
-		let Some((included_block, parent)) =
+		let Some(FindParent { included_block, best_parent, pending_block }) =
 			crate::collators::find_parent(relay_parent, para_id, &*para_backend, &relay_client)
 				.await
 		else {
 			continue
 		};
 
-		let parent_hash = parent.hash;
+		let parent_hash = best_parent.hash;
 
 		// Retrieve the core selector.
 		let (core_selector, claim_queue_offset) =
-			match core_selector(&*para_client, parent.hash, *parent.header.number()) {
+			match core_selector(&*para_client, best_parent.hash, *best_parent.header.number()) {
 				Ok(core_selector) => core_selector,
 				Err(err) => {
 					tracing::debug!(
@@ -321,7 +322,7 @@ pub async fn run_block_builder<
 		// 	continue
 		// }
 
-		let parent_header = parent.header;
+		let parent_header = best_parent.header;
 
 		// We mainly call this to inform users at genesis if there is a mismatch with the
 		// on-chain data.
@@ -339,7 +340,7 @@ pub async fn run_block_builder<
 			relay_slot,
 			para_slot.timestamp,
 			parent_hash,
-			included_block,
+			included_block.hash,
 			&*para_client,
 			&keystore,
 		)
@@ -351,10 +352,10 @@ pub async fn run_block_builder<
 					target: crate::LOG_TARGET,
 					?core_index,
 					slot_info = ?para_slot,
-					unincluded_segment_len = parent.depth,
-					relay_parent = %relay_parent,
-					included = %included_block,
-					parent = %parent_hash,
+					unincluded_segment_len = best_parent.depth,
+					relay_parent = ?relay_parent,
+					included = ?included_block.hash,
+					parent = ?parent_hash,
 					"Not building block."
 				);
 				continue
@@ -365,15 +366,18 @@ pub async fn run_block_builder<
 			target: crate::LOG_TARGET,
 			?core_index,
 			slot_info = ?para_slot,
-			unincluded_segment_len = parent.depth,
+			unincluded_segment_len = best_parent.depth,
 			relay_parent = ?relay_parent,
-			included = ?included_block,
+			included = ?included_block.hash,
 			parent = ?parent_hash,
 			"Building block."
 		);
 
 		let validation_data = PersistedValidationData {
-			parent_head: parent_header.encode().into(),
+			parent_head: pending_block
+				.map_or_else(|| included_block.header, |p| p.header)
+				.encode()
+				.into(),
 			relay_parent_number: *relay_parent_header.number(),
 			relay_parent_storage_root: *relay_parent_header.state_root(),
 			max_pov_size: *max_pov_size,
@@ -505,34 +509,36 @@ where
 			self.root_to_header.insert(*header.state_root(), header);
 		}
 
+		let current_relay_slot = Self::current_relay_chain_slot();
 		//TODO: Use `SelectChain`?
 		let best_para_block = self.para_client.info().best_hash;
 		let Ok(Some(para_header)) = self.para_client.header(best_para_block) else {
 			// Should not happen..
-			return self.best_relay_block.hash()
+			return self.determine_best_relay_block_to_build_on(current_relay_slot).await
 		};
 
 		let Some(best_para_block_relay_parent) = self.extract_relay_parent(&para_header) else {
 			// Should not happen..
-			return self.best_relay_block.hash()
+			return self.determine_best_relay_block_to_build_on(current_relay_slot).await
 		};
 
 		let Ok(Some(relay_header)) =
 			self.relay_interface.header(BlockId::Hash(best_para_block_relay_parent)).await
 		else {
 			// Should not happen..
-			return self.best_relay_block.hash()
+			return self.determine_best_relay_block_to_build_on(current_relay_slot).await
 		};
 
 		let best_para_block_relay_slot = Self::relay_slot_for_header(&relay_header);
-		let current_relay_slot = Self::current_relay_chain_slot();
 
 		//TODO: 2 needs to be configurable/depending on schedule lookahead
 		if best_para_block_relay_slot + 2 < current_relay_slot {
 			return self.determine_best_relay_block_to_build_on(current_relay_slot).await;
 		}
 
-		let mut on_same_parent = 0;
+		// `best_para_block` is build on top of the relay parent, thus we need to start counting
+		// from `1`.
+		let mut on_same_parent = 1;
 		let mut next_hash = *para_header.parent_hash();
 
 		loop {
@@ -594,6 +600,10 @@ where
 	}
 
 	fn relay_slot_for_header(header: &RHeader) -> Slot {
+		if *header.number() == 0 {
+			return Slot::from(0)
+		}
+
 		header.digest().logs.iter().find_map(|d| d.as_babe_pre_digest().map(|p| p.slot()))
 			.expect("Every relay chain block has a BABE digest, otherwise it should not have been imported; qed").into()
 	}

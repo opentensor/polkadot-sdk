@@ -23,7 +23,8 @@
 use crate::collator::SlotClaim;
 use codec::Codec;
 use cumulus_client_consensus_common::{
-	self as consensus_common, load_abridged_host_configuration, ParentSearchParams,
+	self as consensus_common, load_abridged_host_configuration, ParentSearchParams, ParentState,
+	PotentialParent,
 };
 use cumulus_primitives_aura::{AuraUnincludedSegmentApi, Slot};
 use cumulus_primitives_core::{relay_chain::Hash as ParaHash, BlockT, ClaimQueueOffset};
@@ -202,6 +203,13 @@ where
 		.then(|| SlotClaim::unchecked::<P>(author_pub, para_slot, timestamp))
 }
 
+/// Result of [`find_parent`].
+struct FindParent<Block: BlockT> {
+	included_block: PotentialParent<Block>,
+	pending_block: Option<PotentialParent<Block>>,
+	best_parent: PotentialParent<Block>,
+}
+
 /// Use [`cumulus_client_consensus_common::find_potential_parents`] to find parachain blocks that
 /// we can build on. Once a list of potential parents is retrieved, return the last one of the
 /// longest chain.
@@ -210,7 +218,7 @@ async fn find_parent<Block>(
 	para_id: ParaId,
 	para_backend: &impl sc_client_api::Backend<Block>,
 	relay_client: &impl RelayChainInterface,
-) -> Option<(<Block as BlockT>::Hash, consensus_common::PotentialParent<Block>)>
+) -> Option<FindParent<Block>>
 where
 	Block: BlockT,
 {
@@ -245,11 +253,18 @@ where
 		Ok(x) => x,
 	};
 
-	let included_block = potential_parents.iter().find(|x| x.depth == 0)?.hash;
+	let included_block = potential_parents
+		.iter()
+		.find(|x| matches!(x.state, ParentState::Included))?
+		.clone();
+	let pending_block = potential_parents
+		.iter()
+		.find(|x| matches!(x.state, ParentState::Pending))
+		.cloned();
 	potential_parents
 		.into_iter()
 		.max_by_key(|a| a.depth)
-		.map(|parent| (included_block, parent))
+		.map(|best_parent| FindParent { included_block, pending_block, best_parent })
 }
 
 #[cfg(test)]

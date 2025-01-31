@@ -67,6 +67,8 @@ use std::{
 
 use crate::{collator as collator_util, LOG_TARGET};
 
+use super::FindParent;
+
 /// Export the given `pov` to the file system at `path`.
 ///
 /// The file will be named `block_hash_block_number.pov`.
@@ -294,16 +296,16 @@ where
 				},
 			};
 
-			let (included_block, initial_parent) = match crate::collators::find_parent(
-				relay_parent,
-				params.para_id,
-				&*params.para_backend,
-				&params.relay_client,
-			)
-			.await
-			{
-				Some(value) => value,
-				None => continue,
+			let Some(FindParent { included_block, best_parent: initial_parent, .. }) =
+				crate::collators::find_parent(
+					relay_parent,
+					params.para_id,
+					&*params.para_backend,
+					&params.relay_client,
+				)
+				.await
+			else {
+				continue
 			};
 
 			let para_client = &*params.para_client;
@@ -339,7 +341,7 @@ where
 					relay_slot,
 					timestamp,
 					block_hash,
-					included_block,
+					included_block.hash,
 					para_client,
 					&keystore,
 				))
