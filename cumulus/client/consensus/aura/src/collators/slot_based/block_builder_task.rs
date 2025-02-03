@@ -369,6 +369,7 @@ pub async fn run_block_builder<
 			unincluded_segment_len = best_parent.depth,
 			relay_parent = ?relay_parent,
 			included = ?included_block.hash,
+			pending_block = ?pending_block.as_ref().map(|p| p.hash),
 			parent = ?parent_hash,
 			"Building block."
 		);
@@ -576,10 +577,11 @@ where
 
 	fn current_relay_chain_slot() -> Slot {
 		Slot::from(
-			(SystemTime::now()
+			((SystemTime::now()
 				.duration_since(SystemTime::UNIX_EPOCH)
 				.unwrap_or_default()
-				.as_millis() / 6000) as u64,
+				.as_millis()) -
+				4000 / 6000) as u64,
 		)
 	}
 
@@ -618,7 +620,25 @@ where
 			}
 		}
 
-		best_relay_block
+		let mut header = self
+			.relay_interface
+			.header(BlockId::Hash(best_relay_block))
+			.await
+			.unwrap()
+			.unwrap();
+		let mut header_slot = Self::relay_slot_for_header(&header);
+
+		while header_slot > current_slot {
+			header = self
+				.relay_interface
+				.header(BlockId::Hash(*header.parent_hash()))
+				.await
+				.unwrap()
+				.unwrap();
+			header_slot = Self::relay_slot_for_header(&header);
+		}
+
+		header.hash()
 	}
 
 	fn relay_slot_for_header(header: &RHeader) -> Slot {

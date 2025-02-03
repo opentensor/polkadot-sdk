@@ -536,21 +536,28 @@ async fn distribute_collation<Context>(
 	//
 	// It's collation-producer responsibility to verify that there exists
 	// a hypothetical membership in a fragment chain for the candidate.
-	let interested =
-		state
-			.peer_data
-			.iter()
-			.filter(|(_, PeerData { view: v, .. })| match relay_parent_mode {
-				ProspectiveParachainsMode::Disabled => v.contains(&candidate_relay_parent),
-				ProspectiveParachainsMode::Enabled { .. } => v.iter().any(|block_hash| {
-					state.implicit_view.as_ref().map(|implicit_view| {
-						implicit_view
-							.known_allowed_relay_parents_under(block_hash, Some(id))
-							.unwrap_or_default()
-							.contains(&candidate_relay_parent)
-					}) == Some(true)
-				}),
-			});
+	let interested = state
+		.peer_data
+		.iter()
+		.filter(|(_, PeerData { view: v, .. })| match relay_parent_mode {
+			ProspectiveParachainsMode::Disabled => v.contains(&candidate_relay_parent),
+			ProspectiveParachainsMode::Enabled { .. } => v.iter().any(|block_hash| {
+				state.implicit_view.as_ref().map(|implicit_view| {
+					implicit_view
+						.known_allowed_relay_parents_under(block_hash, Some(id))
+						.unwrap_or_default()
+						.contains(&candidate_relay_parent)
+				}) == Some(true)
+			}),
+		})
+		.inspect(|(p, _)| {
+			gum::trace!(
+				target: LOG_TARGET,
+				?candidate_hash,
+				connected_validator = ?p,
+				"Found interested and connected validator."
+			);
+		});
 
 	// Make sure already connected peers get collations:
 	for (peer_id, peer_data) in interested {

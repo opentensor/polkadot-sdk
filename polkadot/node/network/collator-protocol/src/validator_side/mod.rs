@@ -1920,8 +1920,8 @@ async fn kick_off_seconding<Context>(
 					target: LOG_TARGET,
 					candidate_hash = ?blocked_collation.candidate_receipt.hash(),
 					relay_parent = ?blocked_collation.candidate_receipt.descriptor.relay_parent(),
-					"Collation having parent head data hash {} is blocked from seconding. Waiting on its parent to be validated.",
-					parent_head_data_hash
+					?parent_head_data_hash,
+					"Collation having parent head data is blocked from seconding. Waiting on its parent to be validated.",
 				);
 				state
 					.blocked_from_seconding

@@ -6,12 +6,12 @@ chain = "rococo-local"
 [[relaychain.nodes]]
 name = "alice"
 validator = true
-args = ["-laura=trace,parachain=debug"]
+args = ["-laura=trace,parachain=debug,parachain::collator-protocol=trace"]
 
 [[relaychain.nodes]]
 name = "bob"
 validator = true
-args = ["-laura=trace,parachain=debug"]
+args = ["-laura=trace,parachain=debug,parachain::collator-protocol=trace"]
 
 [[parachains]]
 id = 2000
@@ -24,4 +24,4 @@ name = "charlie"
 validator = true
 image = "parity/polkadot-parachain:latest"
 command = "polkadot-parachain"
-args = ["--force-authoring", "--experimental-use-slot-based", "-laura=trace,parachain=debug"]
+args = ["--force-authoring", "--experimental-use-slot-based", "-laura=trace,parachain=debug,parachain::collator-protocol=trace"]

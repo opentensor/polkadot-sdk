@@ -71,10 +71,10 @@ where
 		claim_queue_offset: ClaimQueueOffset,
 	) -> Option<&mut RelayChainData> {
 		let insert_data = if self.cached_data.peek(&relay_parent).is_some() {
-			tracing::trace!(target: crate::LOG_TARGET, %relay_parent, "Using cached data for relay parent.");
+			tracing::trace!(target: crate::LOG_TARGET, ?relay_parent, "Using cached data for relay parent.");
 			None
 		} else {
-			tracing::trace!(target: crate::LOG_TARGET, %relay_parent, "Relay chain best block changed, fetching new data from relay chain.");
+			tracing::trace!(target: crate::LOG_TARGET, ?relay_parent, "Relay chain best block changed, fetching new data from relay chain.");
 			Some(self.update_for_relay_parent(relay_parent, claim_queue_offset).await?)
 		};
 
