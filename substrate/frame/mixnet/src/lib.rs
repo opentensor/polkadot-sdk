@@ -251,7 +251,6 @@ pub mod pallet {
 		/// The mixnode set for the very first session.
 		pub mixnodes: BoundedVec<BoundedMixnodeFor<T>, T::MaxAuthorities>,
 	}
-	// TODO TODO: support validate unsigned again
 
 	#[pallet::genesis_build]
 	impl<T: Config> BuildGenesisConfig for GenesisConfig<T> {

@@ -455,34 +455,76 @@ pub mod pallet {
 			<T as Config>::WeightInfo::report_dispute_lost_unsigned(
 				key_owner_proof.validator_count()
 			)
-			// We need to include the weight for the `validate_unsigned` logic.
+			// We need to include the weight for the `validate_unsigned` or authorization logic.
 			// The validation logic weight is same as the authorization logic.
-			.saturating_add(<T as Config>::WeightInfo::authorize_report_dispute_lost())
+			.saturating_add(<T as Config>::WeightInfo::authorize_report_dispute_lost_unsigned())
 		)]
+		#[pallet::authorize(|source, dispute_proof, key_owner_proof| {
+			Self::validate_report_dispute_lost_call(source, dispute_proof, key_owner_proof)
+
+		})]
+		// The weight is taken into account in the call weight.
+		#[pallet::weight_of_authorize(Weight::zero())]
 		pub fn report_dispute_lost_unsigned(
 			origin: OriginFor<T>,
 			// box to decrease the size of the call
 			dispute_proof: Box<DisputeProof>,
 			key_owner_proof: T::KeyOwnerProof,
 		) -> DispatchResultWithPostInfo {
-			// TODO TODO: maybe have some ensure_none_ref and ensure_authorized_ref???
 			let is_none = ensure_none(origin.clone()).is_ok();
 			let is_authorized = ensure_authorized(origin).is_ok();
 
 			ensure!(is_none || is_authorized, DispatchError::BadOrigin);
 
-			let key_owner_proof_validator_count = key_owner_proof.validator_count();
-			let mut post_info = Self::do_report_dispute_lost(dispute_proof, key_owner_proof)?;
+			let validator_set_count = key_owner_proof.validator_count() as ValidatorSetCount;
+			// check the membership proof to extract the offender's id
+			let key = (polkadot_primitives::PARACHAIN_KEY_TYPE_ID, dispute_proof.validator_id.clone());
+			let offender = T::KeyOwnerProofSystem::check_proof(key, key_owner_proof)
+				.ok_or(Error::<T>::InvalidKeyOwnershipProof)?;
 
-			if is_authorized {
-				// The call comes from authorization, we no longer include the weight for the
-				// `validate_unsigned` logic.
-				post_info.actual_weight = Some(<T as Config>::WeightInfo::report_dispute_lost(
-					key_owner_proof_validator_count,
-				));
-			}
+			let session_index = dispute_proof.time_slot.session_index;
 
-			Ok(post_info)
+			// check that there is a pending slash for the given
+			// validator index and candidate hash
+			let candidate_hash = dispute_proof.time_slot.candidate_hash;
+			let try_remove = |v: &mut Option<PendingSlashes>| -> Result<(), DispatchError> {
+				let pending = v.as_mut().ok_or(Error::<T>::InvalidCandidateHash)?;
+				if pending.kind != dispute_proof.kind {
+					return Err(Error::<T>::InvalidCandidateHash.into())
+				}
+
+				match pending.keys.entry(dispute_proof.validator_index) {
+					Entry::Vacant(_) => return Err(Error::<T>::InvalidValidatorIndex.into()),
+					// check that `validator_index` matches `validator_id`
+					Entry::Occupied(e) if e.get() != &dispute_proof.validator_id =>
+						return Err(Error::<T>::ValidatorIndexIdMismatch.into()),
+					Entry::Occupied(e) => {
+						e.remove(); // the report is correct
+					},
+				}
+
+				// if the last validator is slashed for this dispute, clean up the storage
+				if pending.keys.is_empty() {
+					*v = None;
+				}
+
+				Ok(())
+			};
+
+			<UnappliedSlashes<T>>::try_mutate_exists(&session_index, &candidate_hash, try_remove)?;
+
+			let offence = SlashingOffence::new(
+				session_index,
+				candidate_hash,
+				validator_set_count,
+				vec![offender],
+				dispute_proof.kind,
+			);
+
+			<T::HandleReports as HandleReports<T>>::report_offence(offence)
+				.map_err(|_| Error::<T>::DuplicateSlashingReport)?;
+
+			Ok(Pays::No.into())
 		}
 	}
 
@@ -535,61 +577,6 @@ impl<T: Config> Pallet<T> {
 		T::HandleReports::submit_unsigned_slashing_report(dispute_proof, key_ownership_proof).ok()
 	}
 
-	/// The storage must be reverted on error.
-	fn do_report_dispute_lost(
-		dispute_proof: Box<DisputeProof>,
-		key_owner_proof: T::KeyOwnerProof,
-	) -> DispatchResultWithPostInfo {
-		let validator_set_count = key_owner_proof.validator_count() as ValidatorSetCount;
-		// check the membership proof to extract the offender's id
-		let key = (polkadot_primitives::PARACHAIN_KEY_TYPE_ID, dispute_proof.validator_id.clone());
-		let offender = T::KeyOwnerProofSystem::check_proof(key, key_owner_proof)
-			.ok_or(Error::<T>::InvalidKeyOwnershipProof)?;
-
-		let session_index = dispute_proof.time_slot.session_index;
-
-		// check that there is a pending slash for the given
-		// validator index and candidate hash
-		let candidate_hash = dispute_proof.time_slot.candidate_hash;
-		let try_remove = |v: &mut Option<PendingSlashes>| -> Result<(), DispatchError> {
-			let pending = v.as_mut().ok_or(Error::<T>::InvalidCandidateHash)?;
-			if pending.kind != dispute_proof.kind {
-				return Err(Error::<T>::InvalidCandidateHash.into())
-			}
-
-			match pending.keys.entry(dispute_proof.validator_index) {
-				Entry::Vacant(_) => return Err(Error::<T>::InvalidValidatorIndex.into()),
-				// check that `validator_index` matches `validator_id`
-				Entry::Occupied(e) if e.get() != &dispute_proof.validator_id =>
-					return Err(Error::<T>::ValidatorIndexIdMismatch.into()),
-				Entry::Occupied(e) => {
-					e.remove(); // the report is correct
-				},
-			}
-
-			// if the last validator is slashed for this dispute, clean up the storage
-			if pending.keys.is_empty() {
-				*v = None;
-			}
-
-			Ok(())
-		};
-
-		<UnappliedSlashes<T>>::try_mutate_exists(&session_index, &candidate_hash, try_remove)?;
-
-		let offence = SlashingOffence::new(
-			session_index,
-			candidate_hash,
-			validator_set_count,
-			vec![offender],
-			dispute_proof.kind,
-		);
-
-		<T::HandleReports as HandleReports<T>>::report_offence(offence)
-			.map_err(|_| Error::<T>::DuplicateSlashingReport)?;
-
-		Ok(Pays::No.into())
-	}
 
 	fn validate_report_dispute_lost_call(
 		source: TransactionSource,
