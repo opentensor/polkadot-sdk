@@ -254,7 +254,7 @@ mod benchmarks {
 		let (stmt, signature) = pvf_check::prepare_inclusion_bench::<T>();
 
 		#[block]
-		 {
+		{
 			use frame_support::pallet_prelude::Authorize;
 			Call::<T>::include_pvf_check_statement_general { stmt, signature }
 				.authorize(TransactionSource::Local)

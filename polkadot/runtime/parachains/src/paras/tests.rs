@@ -15,15 +15,17 @@
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
 use super::*;
-use frame_support::{assert_err, assert_ok, assert_storage_noop};
+use frame_support::{
+	assert_err, assert_ok, assert_storage_noop,
+	storage::{transactional::with_transaction_unchecked, TransactionOutcome},
+};
+use frame_system::RawOrigin;
 use polkadot_primitives::{BlockNumber, SchedulerParams, PARACHAIN_KEY_TYPE_ID};
 use polkadot_primitives_test_helpers::{dummy_head_data, dummy_validation_code, validator_pubkeys};
 use sc_keystore::LocalKeystore;
 use sp_keyring::Sr25519Keyring;
 use sp_keystore::{Keystore, KeystorePtr};
 use std::sync::Arc;
-use frame_system::RawOrigin;
-use frame_support::storage::{transactional::with_transaction_unchecked, TransactionOutcome};
 
 use crate::{
 	configuration::HostConfiguration,
@@ -48,7 +50,8 @@ fn sign_and_include_pvf_check_statement(stmt: PvfCheckStatement) {
 		Sr25519Keyring::Ferdie,
 	];
 	let signature = validators[stmt.validator_index.0 as usize].sign(&stmt.signing_payload());
-	Paras::include_pvf_check_statement(RawOrigin::Authorized.into(), stmt, signature.into()).unwrap();
+	Paras::include_pvf_check_statement(RawOrigin::Authorized.into(), stmt, signature.into())
+		.unwrap();
 }
 
 fn submit_super_majority_pvf_votes(
@@ -1448,11 +1451,14 @@ fn pvf_check_submit_vote() {
 		let signature: ValidatorSignature =
 			validators[stmt.validator_index.0 as usize].sign(&stmt.signing_payload()).into();
 
-		let call =
-			Call::<Test>::include_pvf_check_statement { stmt: stmt.clone(), signature: signature.clone() };
+		let call = Call::<Test>::include_pvf_check_statement {
+			stmt: stmt.clone(),
+			signature: signature.clone(),
+		};
 
 		with_transaction_unchecked(|| {
-			let authorized = call.authorize(TransactionSource::InBlock)
+			let authorized = call
+				.authorize(TransactionSource::InBlock)
 				.expect("Some authorization are set for the call")
 				.map(|_| ());
 
@@ -1463,9 +1469,9 @@ fn pvf_check_submit_vote() {
 			let res = Paras::include_pvf_check_statement(
 				RawOrigin::Authorized.into(),
 				stmt.clone(),
-				signature.clone()
+				signature.clone(),
 			)
-				.map(|_| ());
+			.map(|_| ());
 
 			TransactionOutcome::Commit(Ok(res))
 		})
@@ -1606,13 +1612,16 @@ fn include_pvf_check_statement_refunds_weight() {
 
 		// Verify that just vote submission is priced accordingly.
 		for (stmt, sig) in stmts {
-			let r = Paras::include_pvf_check_statement(RawOrigin::Authorized.into(), stmt, sig.into()).unwrap();
+			let r =
+				Paras::include_pvf_check_statement(RawOrigin::Authorized.into(), stmt, sig.into())
+					.unwrap();
 			assert_eq!(r.actual_weight, Some(TestWeightInfo::include_pvf_check_statement()));
 		}
 
 		// Verify that the last statement is priced maximally.
 		let (stmt, sig) = last_one;
-		let r = Paras::include_pvf_check_statement(RawOrigin::Authorized.into(), stmt, sig.into()).unwrap();
+		let r = Paras::include_pvf_check_statement(RawOrigin::Authorized.into(), stmt, sig.into())
+			.unwrap();
 		assert_eq!(r.actual_weight, None);
 	});
 }
