@@ -795,6 +795,7 @@ mod tests {
 		let mut t = frame_system::GenesisConfig::<Test>::default().build_storage().unwrap();
 		pallet_balances::GenesisConfig::<Test> {
 			balances: vec![(1, 10), (2, 20), (3, 30), (4, 40), (5, 50), (6, 60)],
+			..Default::default()
 		}
 		.assimilate_storage(&mut t)
 		.unwrap();
@@ -810,39 +811,14 @@ mod tests {
 		t.into()
 	}
 
-	fn run_to_block(n: BlockNumber) {
-		while System::block_number() < n {
-			let mut block = System::block_number();
-			// on_finalize hooks
-			AssignedSlots::on_finalize(block);
-			Slots::on_finalize(block);
-			Parachains::on_finalize(block);
-			ParasShared::on_finalize(block);
-			Configuration::on_finalize(block);
-			Balances::on_finalize(block);
-			System::on_finalize(block);
-			// Set next block
-			System::set_block_number(block + 1);
-			block = System::block_number();
-			// on_initialize hooks
-			System::on_initialize(block);
-			Balances::on_initialize(block);
-			Configuration::on_initialize(block);
-			ParasShared::on_initialize(block);
-			Parachains::on_initialize(block);
-			Slots::on_initialize(block);
-			AssignedSlots::on_initialize(block);
-		}
-	}
-
 	#[test]
 	fn basic_setup_works() {
 		new_test_ext().execute_with(|| {
-			run_to_block(1);
+			System::run_to_block::<AllPalletsWithSystem>(1);
 			assert_eq!(AssignedSlots::current_lease_period_index(), 0);
 			assert_eq!(Slots::deposit_held(1.into(), &1), 0);
 
-			run_to_block(3);
+			System::run_to_block::<AllPalletsWithSystem>(3);
 			assert_eq!(AssignedSlots::current_lease_period_index(), 1);
 		});
 	}
@@ -850,7 +826,7 @@ mod tests {
 	#[test]
 	fn assign_perm_slot_fails_for_unknown_para() {
 		new_test_ext().execute_with(|| {
-			run_to_block(1);
+			System::run_to_block::<AllPalletsWithSystem>(1);
 
 			assert_noop!(
 				AssignedSlots::assign_perm_parachain_slot(
@@ -865,7 +841,7 @@ mod tests {
 	#[test]
 	fn assign_perm_slot_fails_for_invalid_origin() {
 		new_test_ext().execute_with(|| {
-			run_to_block(1);
+			System::run_to_block::<AllPalletsWithSystem>(1);
 
 			assert_noop!(
 				AssignedSlots::assign_perm_parachain_slot(
@@ -880,7 +856,7 @@ mod tests {
 	#[test]
 	fn assign_perm_slot_fails_when_not_parathread() {
 		new_test_ext().execute_with(|| {
-			run_to_block(1);
+			System::run_to_block::<AllPalletsWithSystem>(1);
 
 			assert_ok!(TestRegistrar::<Test>::register(
 				1,
@@ -903,7 +879,7 @@ mod tests {
 	#[test]
 	fn assign_perm_slot_fails_when_existing_lease() {
 		new_test_ext().execute_with(|| {
-			run_to_block(1);
+			System::run_to_block::<AllPalletsWithSystem>(1);
 
 			assert_ok!(TestRegistrar::<Test>::register(
 				1,
@@ -942,7 +918,7 @@ mod tests {
 	#[test]
 	fn assign_perm_slot_fails_when_max_perm_slots_exceeded() {
 		new_test_ext().execute_with(|| {
-			run_to_block(1);
+			System::run_to_block::<AllPalletsWithSystem>(1);
 
 			assert_ok!(TestRegistrar::<Test>::register(
 				1,
@@ -989,7 +965,7 @@ mod tests {
 	fn assign_perm_slot_succeeds_for_parathread() {
 		new_test_ext().execute_with(|| {
 			let mut block = 1;
-			run_to_block(block);
+			System::run_to_block::<AllPalletsWithSystem>(block);
 			assert_ok!(TestRegistrar::<Test>::register(
 				1,
 				ParaId::from(1_u32),
@@ -1022,7 +998,7 @@ mod tests {
 				assert_eq!(Slots::already_leased(ParaId::from(1_u32), 0, 2), true);
 
 				block += 1;
-				run_to_block(block);
+				System::run_to_block::<AllPalletsWithSystem>(block);
 			}
 
 			// Para lease ended, downgraded back to parathread (on-demand parachain)
@@ -1034,7 +1010,7 @@ mod tests {
 	#[test]
 	fn assign_temp_slot_fails_for_unknown_para() {
 		new_test_ext().execute_with(|| {
-			run_to_block(1);
+			System::run_to_block::<AllPalletsWithSystem>(1);
 
 			assert_noop!(
 				AssignedSlots::assign_temp_parachain_slot(
@@ -1050,7 +1026,7 @@ mod tests {
 	#[test]
 	fn assign_temp_slot_fails_for_invalid_origin() {
 		new_test_ext().execute_with(|| {
-			run_to_block(1);
+			System::run_to_block::<AllPalletsWithSystem>(1);
 
 			assert_noop!(
 				AssignedSlots::assign_temp_parachain_slot(
@@ -1066,7 +1042,7 @@ mod tests {
 	#[test]
 	fn assign_temp_slot_fails_when_not_parathread() {
 		new_test_ext().execute_with(|| {
-			run_to_block(1);
+			System::run_to_block::<AllPalletsWithSystem>(1);
 
 			assert_ok!(TestRegistrar::<Test>::register(
 				1,
@@ -1090,7 +1066,7 @@ mod tests {
 	#[test]
 	fn assign_temp_slot_fails_when_existing_lease() {
 		new_test_ext().execute_with(|| {
-			run_to_block(1);
+			System::run_to_block::<AllPalletsWithSystem>(1);
 
 			assert_ok!(TestRegistrar::<Test>::register(
 				1,
@@ -1131,7 +1107,7 @@ mod tests {
 	#[test]
 	fn assign_temp_slot_fails_when_max_temp_slots_exceeded() {
 		new_test_ext().execute_with(|| {
-			run_to_block(1);
+			System::run_to_block::<AllPalletsWithSystem>(1);
 
 			// Register 6 paras & a temp slot for each
 			for n in 0..=5 {
@@ -1173,7 +1149,7 @@ mod tests {
 	fn assign_temp_slot_succeeds_for_single_parathread() {
 		new_test_ext().execute_with(|| {
 			let mut block = 1;
-			run_to_block(block);
+			System::run_to_block::<AllPalletsWithSystem>(block);
 			assert_ok!(TestRegistrar::<Test>::register(
 				1,
 				ParaId::from(1_u32),
@@ -1217,7 +1193,7 @@ mod tests {
 				assert_eq!(Slots::already_leased(ParaId::from(1_u32), 0, 1), true);
 
 				block += 1;
-				run_to_block(block);
+				System::run_to_block::<AllPalletsWithSystem>(block);
 			}
 
 			// Block 6
@@ -1232,7 +1208,7 @@ mod tests {
 
 			// Block 12
 			// Para should get a turn after TemporarySlotLeasePeriodLength * LeasePeriod blocks
-			run_to_block(12);
+			System::run_to_block::<AllPalletsWithSystem>(12);
 			println!("block #{}", block);
 			println!("lease period #{}", AssignedSlots::current_lease_period_index());
 			println!("lease {:?}", slots::Leases::<Test>::get(ParaId::from(1_u32)));
@@ -1247,7 +1223,7 @@ mod tests {
 	fn assign_temp_slot_succeeds_for_multiple_parathreads() {
 		new_test_ext().execute_with(|| {
 			// Block 1, Period 0
-			run_to_block(1);
+			System::run_to_block::<AllPalletsWithSystem>(1);
 
 			// Register 6 paras & a temp slot for each
 			// (3 slots in current lease period, 3 in the next one)
@@ -1273,7 +1249,7 @@ mod tests {
 			// Block 1-5, Period 0-1
 			for n in 1..=5 {
 				if n > 1 {
-					run_to_block(n);
+					System::run_to_block::<AllPalletsWithSystem>(n);
 				}
 				assert_eq!(TestRegistrar::<Test>::is_parachain(ParaId::from(0)), true);
 				assert_eq!(TestRegistrar::<Test>::is_parachain(ParaId::from(1_u32)), false);
@@ -1286,7 +1262,7 @@ mod tests {
 
 			// Block 6-11, Period 2-3
 			for n in 6..=11 {
-				run_to_block(n);
+				System::run_to_block::<AllPalletsWithSystem>(n);
 				assert_eq!(TestRegistrar::<Test>::is_parachain(ParaId::from(0)), false);
 				assert_eq!(TestRegistrar::<Test>::is_parachain(ParaId::from(1_u32)), true);
 				assert_eq!(TestRegistrar::<Test>::is_parachain(ParaId::from(2_u32)), false);
@@ -1298,7 +1274,7 @@ mod tests {
 
 			// Block 12-17, Period 4-5
 			for n in 12..=17 {
-				run_to_block(n);
+				System::run_to_block::<AllPalletsWithSystem>(n);
 				assert_eq!(TestRegistrar::<Test>::is_parachain(ParaId::from(0)), false);
 				assert_eq!(TestRegistrar::<Test>::is_parachain(ParaId::from(1_u32)), false);
 				assert_eq!(TestRegistrar::<Test>::is_parachain(ParaId::from(2_u32)), false);
@@ -1310,7 +1286,7 @@ mod tests {
 
 			// Block 18-23, Period 6-7
 			for n in 18..=23 {
-				run_to_block(n);
+				System::run_to_block::<AllPalletsWithSystem>(n);
 				assert_eq!(TestRegistrar::<Test>::is_parachain(ParaId::from(0)), true);
 				assert_eq!(TestRegistrar::<Test>::is_parachain(ParaId::from(1_u32)), false);
 				assert_eq!(TestRegistrar::<Test>::is_parachain(ParaId::from(2_u32)), true);
@@ -1322,7 +1298,7 @@ mod tests {
 
 			// Block 24-29, Period 8-9
 			for n in 24..=29 {
-				run_to_block(n);
+				System::run_to_block::<AllPalletsWithSystem>(n);
 				assert_eq!(TestRegistrar::<Test>::is_parachain(ParaId::from(0)), false);
 				assert_eq!(TestRegistrar::<Test>::is_parachain(ParaId::from(1_u32)), true);
 				assert_eq!(TestRegistrar::<Test>::is_parachain(ParaId::from(2_u32)), false);
@@ -1334,7 +1310,7 @@ mod tests {
 
 			// Block 30-35, Period 10-11
 			for n in 30..=35 {
-				run_to_block(n);
+				System::run_to_block::<AllPalletsWithSystem>(n);
 				assert_eq!(TestRegistrar::<Test>::is_parachain(ParaId::from(0)), false);
 				assert_eq!(TestRegistrar::<Test>::is_parachain(ParaId::from(1_u32)), false);
 				assert_eq!(TestRegistrar::<Test>::is_parachain(ParaId::from(2_u32)), false);
@@ -1349,7 +1325,7 @@ mod tests {
 	#[test]
 	fn unassign_slot_fails_for_unknown_para() {
 		new_test_ext().execute_with(|| {
-			run_to_block(1);
+			System::run_to_block::<AllPalletsWithSystem>(1);
 
 			assert_noop!(
 				AssignedSlots::unassign_parachain_slot(RuntimeOrigin::root(), ParaId::from(1_u32),),
@@ -1361,7 +1337,7 @@ mod tests {
 	#[test]
 	fn unassign_slot_fails_for_invalid_origin() {
 		new_test_ext().execute_with(|| {
-			run_to_block(1);
+			System::run_to_block::<AllPalletsWithSystem>(1);
 
 			assert_noop!(
 				AssignedSlots::assign_perm_parachain_slot(
@@ -1376,7 +1352,7 @@ mod tests {
 	#[test]
 	fn unassign_perm_slot_succeeds() {
 		new_test_ext().execute_with(|| {
-			run_to_block(1);
+			System::run_to_block::<AllPalletsWithSystem>(1);
 
 			assert_ok!(TestRegistrar::<Test>::register(
 				1,
@@ -1408,7 +1384,7 @@ mod tests {
 	#[test]
 	fn unassign_temp_slot_succeeds() {
 		new_test_ext().execute_with(|| {
-			run_to_block(1);
+			System::run_to_block::<AllPalletsWithSystem>(1);
 
 			assert_ok!(TestRegistrar::<Test>::register(
 				1,
@@ -1441,7 +1417,7 @@ mod tests {
 	#[test]
 	fn set_max_permanent_slots_fails_for_no_root_origin() {
 		new_test_ext().execute_with(|| {
-			run_to_block(1);
+			System::run_to_block::<AllPalletsWithSystem>(1);
 
 			assert_noop!(
 				AssignedSlots::set_max_permanent_slots(RuntimeOrigin::signed(1), 5),
@@ -1452,7 +1428,7 @@ mod tests {
 	#[test]
 	fn set_max_permanent_slots_succeeds() {
 		new_test_ext().execute_with(|| {
-			run_to_block(1);
+			System::run_to_block::<AllPalletsWithSystem>(1);
 
 			assert_eq!(MaxPermanentSlots::<Test>::get(), 2);
 			assert_ok!(AssignedSlots::set_max_permanent_slots(RuntimeOrigin::root(), 10),);
@@ -1463,7 +1439,7 @@ mod tests {
 	#[test]
 	fn set_max_temporary_slots_fails_for_no_root_origin() {
 		new_test_ext().execute_with(|| {
-			run_to_block(1);
+			System::run_to_block::<AllPalletsWithSystem>(1);
 
 			assert_noop!(
 				AssignedSlots::set_max_temporary_slots(RuntimeOrigin::signed(1), 5),
@@ -1474,7 +1450,7 @@ mod tests {
 	#[test]
 	fn set_max_temporary_slots_succeeds() {
 		new_test_ext().execute_with(|| {
-			run_to_block(1);
+			System::run_to_block::<AllPalletsWithSystem>(1);
 
 			assert_eq!(MaxTemporarySlots::<Test>::get(), 6);
 			assert_ok!(AssignedSlots::set_max_temporary_slots(RuntimeOrigin::root(), 12),);

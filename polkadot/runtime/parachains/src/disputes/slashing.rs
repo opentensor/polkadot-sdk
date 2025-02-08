@@ -362,7 +362,7 @@ pub trait WeightInfo {
 
 pub struct TestWeightInfo;
 impl WeightInfo for TestWeightInfo {
-	fn report_dispute_lost(_validator_count: ValidatorSetCount) -> Weight {
+	fn report_dispute_lost_unsigned(_validator_count: ValidatorSetCount) -> Weight {
 		Weight::zero()
 	}
 	fn authorize_report_dispute_lost() -> Weight {
@@ -452,7 +452,7 @@ pub mod pallet {
 	impl<T: Config> Pallet<T> {
 		#[pallet::call_index(0)]
 		#[pallet::weight(
-			<T as Config>::WeightInfo::report_dispute_lost(
+			<T as Config>::WeightInfo::report_dispute_lost_unsigned(
 				key_owner_proof.validator_count()
 			)
 			// We need to include the weight for the `validate_unsigned` logic.
