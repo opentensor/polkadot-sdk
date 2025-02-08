@@ -553,12 +553,7 @@ pub trait WeightInfo {
 	fn include_pvf_check_statement_finalize_onboarding_accept() -> Weight;
 	fn include_pvf_check_statement_finalize_onboarding_reject() -> Weight;
 	fn include_pvf_check_statement() -> Weight;
-	fn include_pvf_check_statement_general_finalize_upgrade_accept() -> Weight;
-	fn include_pvf_check_statement_general_finalize_upgrade_reject() -> Weight;
-	fn include_pvf_check_statement_general_finalize_onboarding_accept() -> Weight;
-	fn include_pvf_check_statement_general_finalize_onboarding_reject() -> Weight;
-	fn include_pvf_check_statement_general() -> Weight;
-	fn authorize_include_pvf_check_statement_general() -> Weight;
+	fn authorize_include_pvf_check_statement() -> Weight;
 }
 
 pub struct TestWeightInfo;
@@ -604,22 +599,7 @@ impl WeightInfo for TestWeightInfo {
 		// This special value is to distinguish from the finalizing variants above in tests.
 		Weight::MAX - Weight::from_parts(1, 1)
 	}
-	fn include_pvf_check_statement_general_finalize_upgrade_accept() -> Weight {
-		Weight::MAX
-	}
-	fn include_pvf_check_statement_general_finalize_upgrade_reject() -> Weight {
-		Weight::MAX
-	}
-	fn include_pvf_check_statement_general_finalize_onboarding_accept() -> Weight {
-		Weight::MAX
-	}
-	fn include_pvf_check_statement_general_finalize_onboarding_reject() -> Weight {
-		Weight::MAX
-	}
-	fn include_pvf_check_statement_general() -> Weight {
-		Weight::MAX
-	}
-	fn authorize_include_pvf_check_statement_general() -> Weight {
+	fn authorize_include_pvf_check_statement() -> Weight {
 		Weight::MAX
 	}
 }
@@ -1082,6 +1062,7 @@ pub mod pallet {
 					.max(<T as Config>::WeightInfo::include_pvf_check_statement_finalize_onboarding_reject())
 				)
 		)]
+			// TODO TODO: not deprecate accept both general and unsigned
 		#[deprecated(note = "Use `include_pvf_check_statement_general` instead.")]
 		pub fn include_pvf_check_statement(
 			origin: OriginFor<T>,

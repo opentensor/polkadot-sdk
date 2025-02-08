@@ -162,7 +162,7 @@ mod benchmarks {
 	}
 
 	#[benchmark]
-	fn authorize_report_dispute_lost(n: Linear<4, { max_validators_for::<T>() }>) {
+	fn authorize_report_dispute_lost_unsigned(n: Linear<4, { max_validators_for::<T>() }>) {
 		let (session_index, key_owner_proof, validator_id) = setup_validator_set::<T>(n);
 		let dispute_proof = setup_dispute::<T>(session_index, validator_id);
 		let call = Call::<T>::report_dispute_lost {

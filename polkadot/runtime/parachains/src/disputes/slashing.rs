@@ -356,8 +356,8 @@ impl<T: Config> HandleReports<T> for () {
 }
 
 pub trait WeightInfo {
-	fn report_dispute_lost(validator_count: ValidatorSetCount) -> Weight;
-	fn authorize_report_dispute_lost() -> Weight;
+	fn report_dispute_lost_unsigned(validator_count: ValidatorSetCount) -> Weight;
+	fn authorize_report_dispute_lost_unsigned() -> Weight;
 }
 
 pub struct TestWeightInfo;
@@ -365,7 +365,7 @@ impl WeightInfo for TestWeightInfo {
 	fn report_dispute_lost_unsigned(_validator_count: ValidatorSetCount) -> Weight {
 		Weight::zero()
 	}
-	fn authorize_report_dispute_lost() -> Weight {
+	fn authorize_report_dispute_lost_unsigned() -> Weight {
 		Weight::zero()
 	}
 }
@@ -633,7 +633,7 @@ impl<T: Config> Pallet<T> {
 	}
 }
 
-/// Methods for the `ValidateUnsigned` or authorize implementation:
+/// Methods for the `ValidateUnsigned` implementation:
 ///
 /// It restricts calls to `report_dispute_lost_unsigned` to local calls (i.e.
 /// extrinsics generated on this node) or that already in a block. This

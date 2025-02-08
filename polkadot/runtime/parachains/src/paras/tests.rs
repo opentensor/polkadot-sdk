@@ -48,7 +48,7 @@ fn sign_and_include_pvf_check_statement(stmt: PvfCheckStatement) {
 		Sr25519Keyring::Ferdie,
 	];
 	let signature = validators[stmt.validator_index.0 as usize].sign(&stmt.signing_payload());
-	Paras::include_pvf_check_statement_general(RawOrigin::Authorized.into(), stmt, signature.into()).unwrap();
+	Paras::include_pvf_check_statement(RawOrigin::Authorized.into(), stmt, signature.into()).unwrap();
 }
 
 fn submit_super_majority_pvf_votes(
@@ -1449,7 +1449,7 @@ fn pvf_check_submit_vote() {
 			validators[stmt.validator_index.0 as usize].sign(&stmt.signing_payload()).into();
 
 		let call =
-			Call::<Test>::include_pvf_check_statement_general { stmt: stmt.clone(), signature: signature.clone() };
+			Call::<Test>::include_pvf_check_statement { stmt: stmt.clone(), signature: signature.clone() };
 
 		with_transaction_unchecked(|| {
 			let authorized = call.authorize(TransactionSource::InBlock)
@@ -1460,7 +1460,7 @@ fn pvf_check_submit_vote() {
 				return TransactionOutcome::Rollback(Err(err));
 			}
 
-			let res = Paras::include_pvf_check_statement_general(
+			let res = Paras::include_pvf_check_statement(
 				RawOrigin::Authorized.into(),
 				stmt.clone(),
 				signature.clone()
@@ -1606,13 +1606,13 @@ fn include_pvf_check_statement_refunds_weight() {
 
 		// Verify that just vote submission is priced accordingly.
 		for (stmt, sig) in stmts {
-			let r = Paras::include_pvf_check_statement_general(RawOrigin::Authorized.into(), stmt, sig.into()).unwrap();
-			assert_eq!(r.actual_weight, Some(TestWeightInfo::include_pvf_check_statement_general()));
+			let r = Paras::include_pvf_check_statement(RawOrigin::Authorized.into(), stmt, sig.into()).unwrap();
+			assert_eq!(r.actual_weight, Some(TestWeightInfo::include_pvf_check_statement()));
 		}
 
 		// Verify that the last statement is priced maximally.
 		let (stmt, sig) = last_one;
-		let r = Paras::include_pvf_check_statement_general(RawOrigin::Authorized.into(), stmt, sig.into()).unwrap();
+		let r = Paras::include_pvf_check_statement(RawOrigin::Authorized.into(), stmt, sig.into()).unwrap();
 		assert_eq!(r.actual_weight, None);
 	});
 }
