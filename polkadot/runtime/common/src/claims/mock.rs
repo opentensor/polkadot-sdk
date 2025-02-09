@@ -25,7 +25,7 @@ use secp_utils::*;
 use crate::claims;
 use frame_support::{derive_impl, ord_parameter_types, parameter_types, traits::WithdrawReasons};
 use pallet_balances;
-use sp_runtime::{traits::Identity, BuildStorage};
+use sp_runtime::{testing::UintAuthorityId, traits::Identity, BuildStorage};
 
 pub type TransactionExtension = frame_system::AuthorizeCall<Test>;
 

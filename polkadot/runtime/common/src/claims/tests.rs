@@ -16,14 +16,21 @@
 
 //! Tests for the claims pallet.
 
-use super::*;
-use crate::{claims, claims::mock::*};
+use crate::claims::{
+	self,
+	mock::{Claims, Vesting, *},
+	secp_utils::*,
+	*,
+};
 use claims::Call as ClaimsCall;
-use hex_literal::hex;
-use secp_utils::*;
-use sp_runtime::transaction_validity::TransactionSource::External;
-
 use codec::Encode;
+use frame_support::traits::VestingSchedule;
+use hex_literal::hex;
+use polkadot_primitives::ValidityError;
+use sp_runtime::{
+	traits::{Applyable, Checkable},
+	transaction_validity::{TransactionSource, TransactionSource::External},
+};
 // The testing primitives are very useful for avoiding having to work with signatures
 // or public keys. `u64` is used as the `AccountId` and no `Signature`s are required.
 use frame_support::{
@@ -566,7 +573,7 @@ fn validate_unsigned_works() {
 
 	new_test_ext().execute_with(|| {
 		assert_eq!(
-			Pallet::<Test>::validate_unsigned(
+			Claims::validate_unsigned(
 				source,
 				&ClaimsCall::claim {
 					dest: 1,
@@ -582,14 +589,14 @@ fn validate_unsigned_works() {
 			})
 		);
 		assert_eq!(
-			Pallet::<Test>::validate_unsigned(
+			Claims::validate_unsigned(
 				source,
 				&ClaimsCall::claim { dest: 0, ethereum_signature: EcdsaSignature([0; 65]) }
 			),
 			InvalidTransaction::Custom(ValidityError::InvalidEthereumSignature.into()).into(),
 		);
 		assert_eq!(
-			Pallet::<Test>::validate_unsigned(
+			Claims::validate_unsigned(
 				source,
 				&ClaimsCall::claim {
 					dest: 1,
@@ -605,7 +612,7 @@ fn validate_unsigned_works() {
 			statement: StatementKind::Regular.to_text().to_vec(),
 		};
 		assert_eq!(
-			Pallet::<Test>::validate_unsigned(source, &call),
+			Claims::validate_unsigned(source, &call),
 			Ok(ValidTransaction {
 				priority: 100,
 				requires: vec![],
@@ -615,7 +622,7 @@ fn validate_unsigned_works() {
 			})
 		);
 		assert_eq!(
-			Pallet::<Test>::validate_unsigned(
+			Claims::validate_unsigned(
 				source,
 				&ClaimsCall::claim_attest {
 					dest: 1,
@@ -633,7 +640,7 @@ fn validate_unsigned_works() {
 			statement: StatementKind::Regular.to_text().to_vec(),
 		};
 		assert_eq!(
-			Pallet::<Test>::validate_unsigned(source, &call),
+			Claims::validate_unsigned(source, &call),
 			InvalidTransaction::Custom(ValidityError::SignerHasNoClaim.into()).into(),
 		);
 
@@ -644,7 +651,7 @@ fn validate_unsigned_works() {
 			statement: StatementKind::Regular.to_text().to_vec(),
 		};
 		assert_eq!(
-			Pallet::<Test>::validate_unsigned(source, &call),
+			Claims::validate_unsigned(source, &call),
 			InvalidTransaction::Custom(ValidityError::SignerHasNoClaim.into()).into(),
 		);
 
@@ -655,7 +662,7 @@ fn validate_unsigned_works() {
 			statement: StatementKind::Saft.to_text().to_vec(),
 		};
 		assert_eq!(
-			Pallet::<Test>::validate_unsigned(source, &call),
+			Claims::validate_unsigned(source, &call),
 			InvalidTransaction::Custom(ValidityError::InvalidStatement.into()).into(),
 		);
 	});
