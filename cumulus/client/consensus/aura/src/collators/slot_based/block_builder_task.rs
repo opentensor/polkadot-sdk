@@ -256,14 +256,17 @@ pub async fn run_block_builder<
 			return;
 		};
 
-		let relay_parent = relay_chain_parent.relay_parent_to_build_on().await;
+		let best_relay_block = relay_client.best_block_hash().await.unwrap();
 
-		let Some(FindParent { included_block, best_parent, pending_block }) =
-			crate::collators::find_parent(relay_parent, para_id, &*para_backend, &relay_client)
+		let Some(FindParent { included_block, pending_block, best_parent }) =
+			crate::collators::find_parent(best_relay_block, para_id, &*para_backend, &relay_client)
 				.await
 		else {
 			continue
 		};
+
+		let (relay_parent, parent_head) =
+			relay_chain_parent.relay_parent_to_build_on(&best_parent.header).await;
 
 		let parent_hash = best_parent.hash;
 
@@ -371,14 +374,12 @@ pub async fn run_block_builder<
 			included = ?included_block.hash,
 			pending_block = ?pending_block.as_ref().map(|p| p.hash),
 			parent = ?parent_hash,
+			?parent_head,
 			"Building block."
 		);
 
 		let validation_data = PersistedValidationData {
-			parent_head: pending_block
-				.map_or_else(|| included_block.header, |p| p.header)
-				.encode()
-				.into(),
+			parent_head: parent_head.encode().into(),
 			relay_parent_number: *relay_parent_header.number(),
 			relay_parent_storage_root: *relay_parent_header.state_root(),
 			max_pov_size: *max_pov_size,
@@ -500,7 +501,10 @@ where
 	}
 
 	/// Returns the relay parent to build on.
-	async fn relay_parent_to_build_on(&mut self) -> RHash {
+	async fn relay_parent_to_build_on(
+		&mut self,
+		best_para_block: &Block::Header,
+	) -> (RHash, Block::Header) {
 		while let Some(header) = self.relay_import_notifications.next().now_or_never().flatten() {
 			//TODO: Do we need a better best block selection?
 			if header.number() > self.best_relay_block.number() {
@@ -511,67 +515,72 @@ where
 		}
 
 		let current_relay_slot = Self::current_relay_chain_slot();
-		//TODO: Use `SelectChain`?
-		let best_para_block = self.para_client.info().best_hash;
-		let Ok(Some(para_header)) = self.para_client.header(best_para_block) else {
-			// Should not happen..
-			return self.determine_best_relay_block_to_build_on(current_relay_slot, None).await
-		};
 
-		let Some(best_para_block_relay_parent) = self.extract_relay_parent(&para_header) else {
+		let Some(best_para_block_relay_parent) = self.extract_relay_parent(&best_para_block) else {
 			// Should not happen..
-			return self.determine_best_relay_block_to_build_on(current_relay_slot, None).await
+			return (
+				self.determine_best_relay_block_to_build_on(current_relay_slot, None).await,
+				best_para_block.clone(),
+			)
 		};
 
 		let Ok(Some(relay_header)) =
 			self.relay_interface.header(BlockId::Hash(best_para_block_relay_parent)).await
 		else {
 			// Should not happen..
-			return self.determine_best_relay_block_to_build_on(current_relay_slot, None).await
+			return (
+				self.determine_best_relay_block_to_build_on(current_relay_slot, None).await,
+				best_para_block.clone(),
+			)
 		};
 
 		let best_para_block_relay_slot = Self::relay_slot_for_header(&relay_header);
 
 		//TODO: 2 needs to be configurable/depending on schedule lookahead
 		if best_para_block_relay_slot + 2 < current_relay_slot {
-			return self
-				.determine_best_relay_block_to_build_on(
+			return (
+				self.determine_best_relay_block_to_build_on(
 					current_relay_slot,
 					Some(best_para_block_relay_slot),
 				)
-				.await;
+				.await,
+				best_para_block.clone(),
+			);
 		}
 
 		// `best_para_block` is build on top of the relay parent, thus we need to start counting
 		// from `1`.
 		let mut on_same_parent = 1;
-		let mut next_hash = *para_header.parent_hash();
+		let mut next_head = best_para_block.clone();
 
 		loop {
-			let Ok(Some(next_header)) = self.para_client.header(next_hash) else {
+			let Ok(Some(next_header)) = self.para_client.header(*next_head.parent_hash()) else {
 				break;
 			};
+			next_head = next_header;
 
-			let Some(relay_parent) = self.extract_relay_parent(&next_header) else {
+			let Some(relay_parent) = self.extract_relay_parent(&next_head) else {
 				break;
 			};
 
 			if relay_parent == best_para_block_relay_parent {
-				next_hash = *next_header.parent_hash();
 				on_same_parent += 1;
 			} else {
 				break;
 			}
 		}
 
-		if dbg!(on_same_parent) >= self.max_para_blocks_per_relay {
-			self.determine_best_relay_block_to_build_on(
-				current_relay_slot,
-				Some(best_para_block_relay_slot),
+		if on_same_parent >= self.max_para_blocks_per_relay {
+			(
+				self.determine_best_relay_block_to_build_on(
+					current_relay_slot,
+					Some(best_para_block_relay_slot),
+				)
+				.await,
+				best_para_block.clone(),
 			)
-			.await
 		} else {
-			best_para_block_relay_parent
+			(best_para_block_relay_parent, next_head)
 		}
 	}
 
@@ -580,8 +589,8 @@ where
 			((SystemTime::now()
 				.duration_since(SystemTime::UNIX_EPOCH)
 				.unwrap_or_default()
-				.as_millis()) -
-				4000 / 6000) as u64,
+				.as_millis() - 4000) /
+				6000) as u64,
 		)
 	}
 

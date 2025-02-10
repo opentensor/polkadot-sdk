@@ -313,6 +313,15 @@ impl View {
 		para_id: Option<ParaId>,
 	) -> Option<&[Hash]> {
 		let block_info = self.block_info_storage.get(block_hash)?;
+
+		gum::trace!(
+			target: LOG_TARGET,
+			parent = ?block_hash,
+			?para_id,
+			?block_info,
+			"Fetching known allowed relay parents"
+		);
+
 		block_info
 			.maybe_allowed_relay_parents
 			.as_ref()

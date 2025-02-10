@@ -305,6 +305,7 @@ where
 		core_index: CoreIndex,
 		validation_code_hash: ValidationCodeHash,
 	) {
+		let parent_head_hash = parent_header.hash();
 		let parent_head = parent_header.encode();
 		let (collation, block_data) =
 			match self.collator_service.build_collation(parent_header, candidates) {
@@ -325,7 +326,7 @@ where
 			);
 		}
 
-		tracing::debug!(target: LOG_TARGET, ?core_index, "Submitting collation for core.");
+		tracing::debug!(target: LOG_TARGET, ?core_index, ?parent_head_hash, "Submitting collation for core.");
 		self.overseer_handle
 			.send_msg(
 				CollationGenerationMessage::SubmitCollation(SubmitCollationParams {
