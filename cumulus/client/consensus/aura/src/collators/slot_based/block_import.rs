@@ -115,7 +115,7 @@ where
 			let block = Block::new(params.header.clone(), params.body.clone().unwrap_or_default());
 
 			runtime_api
-				.execute_block(parent_hash, block.clone())
+				.execute_block(parent_hash, block)
 				.map_err(|e| Box::new(e) as Box<_>)?;
 
 			let storage_proof =
@@ -136,7 +136,10 @@ where
 				gen_storage_changes,
 			));
 
-			let _ = self.sender.unbounded_send((block, storage_proof));
+			let _ = self.sender.unbounded_send((
+				Block::new(params.post_header(), params.body.clone().unwrap_or_default()),
+				storage_proof,
+			));
 		}
 
 		self.inner.import_block(params).await.map_err(Into::into)
