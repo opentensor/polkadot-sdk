@@ -25,3 +25,10 @@ validator = true
 image = "parity/polkadot-parachain:latest"
 command = "polkadot-parachain"
 args = ["--force-authoring", "--experimental-use-slot-based", "-laura=trace,parachain=debug,parachain::collator-protocol=trace,parachain::subsystem-util=trace"]
+
+[[parachains.collators]]
+name = "dave"
+validator = true
+image = "parity/polkadot-parachain:latest"
+command = "polkadot-parachain"
+args = ["--force-authoring", "--experimental-use-slot-based", "-laura=trace,parachain=debug,parachain::collator-protocol=trace,parachain::subsystem-util=trace"]
