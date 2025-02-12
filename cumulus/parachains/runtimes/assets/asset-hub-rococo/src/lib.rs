@@ -739,8 +739,8 @@ impl cumulus_pallet_parachain_system::Config for Runtime {
 type ConsensusHook = cumulus_pallet_aura_ext::FixedVelocityConsensusHook<
 	Runtime,
 	RELAY_CHAIN_SLOT_DURATION_MILLIS,
-	24,
-	24,
+	36,
+	36,
 >;
 
 parameter_types! {
