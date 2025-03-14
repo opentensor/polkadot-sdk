@@ -121,6 +121,7 @@ pub async fn seal_block<B, BI, SC, C, E, TP, CIDP, P>(
 				digest,
 				Duration::from_secs(MAX_PROPOSAL_DURATION),
 				None,
+				None,
 			)
 			.map_err(|err| Error::StringError(err.to_string()))
 			.await?;

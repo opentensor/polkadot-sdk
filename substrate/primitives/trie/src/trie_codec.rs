@@ -244,7 +244,7 @@ where
 /// Then parse all child trie root and compress main trie content first
 /// then all child trie contents.
 /// Child trie are ordered by the order of their roots in the top trie.
-pub fn multi_tries_encode_compact<L>(
+/*pub fn multi_tries_encode_compact<L>(
 	tries: MemoryDB<L::Hash>,
 	roots: &[TrieHash<L>],
 	mut ignore_nodes: BTreeSet<TrieHash<L>>,
@@ -313,6 +313,7 @@ where
 
 	Ok(CompactProof { encoded_nodes: compact_proof })
 }
+*/
 
 pub fn multi_tries_decode_compact<'a, L, DB, I>(
 	db: &mut DB,
@@ -432,7 +433,7 @@ mod tests {
 		write_key_values: &[(&str, &[u8])],
 		nodes_to_ignore: HashSet<H256>,
 	) -> (Recorder, MemoryDB, H256) {
-		let recorder = Recorder::with_known_nodes(nodes_to_ignore);
+		let recorder = Recorder::with_ignored_nodes(nodes_to_ignore);
 
 		{
 			let mut trie_recorder = recorder.as_trie_recorder(root);
@@ -504,10 +505,9 @@ mod tests {
 		let proof =
 			StorageProof::merge([recorder.to_storage_proof(), recorder2.to_storage_proof()]);
 
-		let compact_proof = multi_tries_encode_compact::<Layout>(
-			proof.to_memory_db(),
-			&[root, root_1],
-			build_ignore_list(&[&transaction, &transaction_2]),
+		let compact_proof = encode_compact::<Layout, _>(
+			&proof.to_memory_db(),
+			&root,
 		)
 		.unwrap();
 

@@ -8,11 +8,11 @@
 
 // Cumulus is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
 // GNU General Public License for more details.
 
 // You should have received a copy of the GNU General Public License
-// along with Cumulus.  If not, see <http://www.gnu.org/licenses/>.
+// along with Cumulus. If not, see <http://www.gnu.org/licenses/>.
 
 use codec::{Codec, Encode};
 
@@ -26,7 +26,7 @@ use cumulus_relay_chain_interface::{RelayChainInterface, RelayChainResult};
 use polkadot_primitives::{Block as RelayBlock, Hash as RHash, Header as RHeader, Id as ParaId};
 
 use futures::prelude::*;
-use sc_client_api::{backend::AuxStore, BlockBackend, BlockOf, UsageProvider};
+use sc_client_api::{backend::AuxStore, BackendTransaction, BlockBackend, BlockOf, UsageProvider};
 use sc_consensus::BlockImport;
 use sc_consensus_babe::CompatibleDigestItem;
 use schnellru::LruMap;
@@ -34,7 +34,10 @@ use sp_api::ProvideRuntimeApi;
 use sp_application_crypto::AppPublic;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_aura::{AuraApi, Slot};
-use sp_core::crypto::{Pair, UncheckedInto};
+use sp_core::{
+	crypto::{Pair, UncheckedInto},
+	Hasher,
+};
 use sp_inherents::CreateInherentDataProviders;
 use sp_keystore::KeystorePtr;
 use sp_runtime::{
@@ -430,12 +433,20 @@ pub async fn run_block_builder<
 				(parachain_inherent_data, other_inherent_data),
 				authoring_duration,
 				allowed_pov_size,
+				relay_chain_parent.nodes_to_ignore(relay_parent, core_index),
 			)
 			.await
 		else {
 			tracing::error!(target: crate::LOG_TARGET, "Unable to build block at slot.");
 			continue;
 		};
+
+		relay_chain_parent.record_nodes_to_ignore(
+			relay_parent,
+			core_index,
+			&parachain_candidate.proof,
+			parachain_candidate.backed_transaction,
+		);
 
 		let new_block_hash = parachain_candidate.block.header().hash();
 
@@ -464,6 +475,7 @@ struct RelayParentToBuildOn<Block, Client, RI> {
 	para_client: Arc<Client>,
 	max_para_blocks_per_relay: usize,
 	relay_interface: RI,
+	ignored_nodes_per_core: HashMap<(RHash, CoreIndex), HashSet<Block::Hash>>,
 	_marker: PhantomData<Block>,
 }
 
@@ -494,6 +506,7 @@ where
 			best_relay_block: best_relay_block_header,
 			para_client,
 			relay_interface,
+			ignored_nodes_per_core: Default::default(),
 			// TODO: Calculate this
 			max_para_blocks_per_relay: 12,
 			_marker: Default::default(),
@@ -674,5 +687,30 @@ where
 		}
 
 		None
+	}
+
+	fn record_nodes_to_ignore(
+		&mut self,
+		relay_parent: RHash,
+		core: CoreIndex,
+		proof: &StorageProof,
+		backend_transaction: BackendTransaction<Block::Hasher>,
+	) {
+		let ignored_nodes = self.ignored_nodes_per_core.entry((relay_parent, core)).or_default();
+
+		proof.iter_nodes().for_each(|n| {
+			ignored_nodes.insert(<Block::Hashing as Hash>::hash(n));
+		});
+
+		backend_transaction.drain().for_each(|d| {
+			ignored_nodes.insert(<Block::Hashing as Hash>::hash(&(d.1).0));
+		});
+	}
+
+	fn nodes_to_ignore(&self, relay_parent: RHash, core: CoreIndex) -> HashSet<Block::Hash> {
+		self.ignored_nodes_per_core
+			.get(&(relay_parent, core))
+			.unwrap_or_default()
+			.clone()
 	}
 }

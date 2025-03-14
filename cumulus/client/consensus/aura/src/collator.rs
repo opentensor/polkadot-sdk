@@ -40,6 +40,7 @@ use polkadot_node_primitives::{Collation, MaybeCompressedPoV};
 use polkadot_primitives::{Header as PHeader, Id as ParaId};
 
 use futures::prelude::*;
+use sc_client_api::BackendTransaction;
 use sc_consensus::{BlockImport, BlockImportParams, ForkChoiceStrategy, StateAction};
 use sc_consensus_aura::standalone as aura_internal;
 use sp_api::ProvideRuntimeApi;
@@ -74,6 +75,16 @@ pub struct Params<BI, CIDP, RClient, Proposer, CS> {
 	/// The collator service used for bundling proposals into collations and announcing
 	/// to the network.
 	pub collator_service: CS,
+}
+
+/// The result of [`Collator::build_block_and_import`]
+pub struct BuiltBlock<Block: BlockT> {
+	/// The block.
+	pub block: Block,
+	/// The collected proof.
+	pub proof: StorageProof,
+	/// The transaction that was applied to the backend, containing all the new nodes.
+	pub backend_transaction: BackendTransaction<Block::Hashing>,
 }
 
 /// A utility struct for writing collation logic that makes use of Aura entirely
@@ -165,7 +176,8 @@ where
 		inherent_data: (ParachainInherentData, InherentData),
 		proposal_duration: Duration,
 		max_pov_size: usize,
-	) -> Result<Option<ParachainCandidate<Block>>, Box<dyn Error + Send + 'static>> {
+		ignored_nodes_by_proof_recording: HashSet<Block::Hash>,
+	) -> Result<Option<BuiltBlock<Block>>, Box<dyn Error + Send + 'static>> {
 		let mut digest = additional_pre_digest.into().unwrap_or_default();
 		digest.push(slot_claim.pre_digest.clone());
 
@@ -178,14 +190,14 @@ where
 				Digest { logs: digest },
 				proposal_duration,
 				Some(max_pov_size),
+				ignored_nodes_by_proof_recording,
 			)
 			.await
 			.map_err(|e| Box::new(e) as Box<dyn Error + Send>)?;
 
-		let proposal = match maybe_proposal {
-			None => return Ok(None),
-			Some(p) => p,
-		};
+		let Some(proposal) = maybe_proposal else { return Ok(None) };
+
+		let backend_transaction = proposal.storage_changes.transaction.clone();
 
 		let sealed_importable = seal::<_, P>(
 			proposal.block,
@@ -209,7 +221,7 @@ where
 			.map_err(|e| Box::new(e) as Box<dyn Error + Send>)
 			.await?;
 
-		Ok(Some(ParachainCandidate { block, proof: proposal.proof }))
+		Ok(Some(BuiltBlock { block, proof: proposal.proof, backend_transaction }))
 	}
 
 	/// Propose, seal, import a block and packaging it into a collation.
@@ -237,14 +249,16 @@ where
 				inherent_data,
 				proposal_duration,
 				max_pov_size,
+				Default::default(),
 			)
 			.await?;
 
 		let Some(candidate) = maybe_candidate else { return Ok(None) };
 
-		if let Some((collation, block_data)) =
-			self.collator_service.build_collation(parent_header.clone(), vec![candidate])
-		{
+		if let Some((collation, block_data)) = self.collator_service.build_collation(
+			parent_header.clone(),
+			vec![ParachainCandidate { block: candidate.block, proof: candidate.proof }],
+		) {
 			block_data.log_size_info();
 
 			if let MaybeCompressedPoV::Compressed(ref pov) = collation.proof_of_validity {

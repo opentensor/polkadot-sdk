@@ -285,9 +285,10 @@ where
 		{
 			let per_core = per_relay_parent.parachain_blocks.get(&core_index).unwrap();
 			let blocks = per_core.blocks.clone();
+			let storate_proof = blocks.last().unwrap().1.clone();
 			let parent_header = per_core.parent_header.clone();
 			self.submit_collation(
-				blocks,
+				blocks.into_iter().map(|d| d.0).collect(),
 				parent_header,
 				relay_parent,
 				core_index,

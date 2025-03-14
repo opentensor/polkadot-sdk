@@ -27,7 +27,7 @@ use sp_inherents::InherentData;
 use sp_runtime::{traits::Block as BlockT, Digest};
 use sp_state_machine::StorageProof;
 
-use std::{fmt::Debug, time::Duration};
+use std::{collections::HashSet, fmt::Debug, time::Duration};
 
 /// Errors that can occur when proposing a parachain block.
 #[derive(thiserror::Error, Debug)]
@@ -76,6 +76,7 @@ pub trait ProposerInterface<Block: BlockT> {
 		inherent_digests: Digest,
 		max_duration: Duration,
 		block_size_limit: Option<usize>,
+		ignored_nodes_by_proof_recording: HashSet<Block::Hash>,
 	) -> Result<Option<Proposal<Block, StorageProof>>, Error>;
 }
 
@@ -109,6 +110,7 @@ where
 		inherent_digests: Digest,
 		max_duration: Duration,
 		block_size_limit: Option<usize>,
+		ignored_nodes_by_proof_recording: HashSet<B::Hash>,
 	) -> Result<Option<Proposal<B, StorageProof>>, Error> {
 		let proposer = self
 			.inner
@@ -125,7 +127,13 @@ where
 			.map_err(|e| Error::proposing(anyhow::Error::new(e)))?;
 
 		proposer
-			.propose(inherent_data, inherent_digests, max_duration, block_size_limit)
+			.propose(
+				inherent_data,
+				inherent_digests,
+				max_duration,
+				block_size_limit,
+				Some(ignored_nodes_by_proof_recording),
+			)
 			.await
 			.map(Some)
 			.map_err(|e| Error::proposing(anyhow::Error::new(e)).into())

@@ -30,7 +30,7 @@ use log::{debug, error, info, trace, warn};
 use sc_block_builder::{BlockBuilderApi, BlockBuilderBuilder};
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_INFO};
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool};
-use sp_api::{ApiExt, CallApiAt, ProvideRuntimeApi};
+use sp_api::{ApiExt, CallApiAt, ProofRecorder, ProvideRuntimeApi};
 use sp_blockchain::{ApplyExtrinsicFailed::Validity, Error::ApplyExtrinsicFailed, HeaderBackend};
 use sp_consensus::{DisableProofRecording, EnableProofRecording, ProofRecording, Proposal};
 use sp_core::traits::SpawnNamed;
@@ -39,7 +39,7 @@ use sp_runtime::{
 	traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT},
 	Digest, ExtrinsicInclusionMode, Percent, SaturatedConversion,
 };
-use std::{marker::PhantomData, pin::Pin, sync::Arc, time};
+use std::{collections::HashSet, marker::PhantomData, pin::Pin, sync::Arc, time};
 
 use prometheus_endpoint::Registry as PrometheusRegistry;
 use sc_proposer_metrics::{EndProposingReason, MetricsLink as PrometheusMetrics};
@@ -282,6 +282,7 @@ where
 		inherent_digests: Digest,
 		max_duration: time::Duration,
 		block_size_limit: Option<usize>,
+		ignored_nodes_by_proof_recording: Option<HashSet<Block::Hash>>,
 	) -> Self::Proposal {
 		let (tx, rx) = oneshot::channel();
 		let spawn_handle = self.spawn_handle.clone();
@@ -293,7 +294,13 @@ where
 				// leave some time for evaluation and block finalization (33%)
 				let deadline = (self.now)() + max_duration - max_duration / 3;
 				let res = self
-					.propose_with(inherent_data, inherent_digests, deadline, block_size_limit)
+					.propose_with(
+						inherent_data,
+						inherent_digests,
+						deadline,
+						block_size_limit,
+						ignored_nodes_by_proof_recording,
+					)
 					.await;
 				if tx.send(res).is_err() {
 					trace!(
@@ -327,12 +334,16 @@ where
 		inherent_digests: Digest,
 		deadline: time::Instant,
 		block_size_limit: Option<usize>,
+		ignored_nodes_by_proof_recording: Option<HashSet<Block::Hash>>,
 	) -> Result<Proposal<Block, PR::Proof>, sp_blockchain::Error> {
 		let block_timer = time::Instant::now();
 		let mut block_builder = BlockBuilderBuilder::new(&*self.client)
 			.on_parent_block(self.parent_hash)
 			.with_parent_block_number(self.parent_number)
-			.with_proof_recording(PR::ENABLED)
+			.with_proof_recorder(
+				PR::ENABLED
+					.then(|| ProofRecorder::<Block>::with_known_nodes(ignored_nodes_by_proof_recording.unwrap_or_default())),
+			)
 			.with_inherent_digests(inherent_digests)
 			.build()?;
 

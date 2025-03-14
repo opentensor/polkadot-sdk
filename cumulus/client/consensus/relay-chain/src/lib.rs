@@ -184,6 +184,7 @@ where
 				// TODO: If we got benchmarking that includes that encapsulates the proof size,
 				// we should be able to use the maximum pov size.
 				Some((validation_data.max_pov_size / 2) as usize),
+				None,
 			)
 			.await
 			.map_err(|e| tracing::error!(target: LOG_TARGET, error = ?e, "Proposing failed."))

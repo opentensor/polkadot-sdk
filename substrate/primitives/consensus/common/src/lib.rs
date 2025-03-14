@@ -21,7 +21,7 @@
 //! change. Implementors of traits should not rely on the interfaces to remain
 //! the same.
 
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use futures::prelude::*;
 use sp_runtime::{
@@ -201,15 +201,20 @@ pub trait Proposer<B: BlockT> {
 	/// production, the proof can still grow. This means that the `block_size_limit` should not be
 	/// the hard limit of what is actually allowed.
 	///
+	/// `ignored_nodes_by_proof_recording` is a list of node hashes that should *NOT* be recorded.
+	/// This is for example useful when these nodes should not count towards the
+	/// `block_size_limit`.
+	///
 	/// # Return
 	///
-	/// Returns a future that resolves to a [`Proposal`] or to [`Error`].
+	/// Returns a future that resolves to a [`Proposal`] or to an [`Error`].
 	fn propose(
 		self,
 		inherent_data: InherentData,
 		inherent_digests: Digest,
 		max_duration: Duration,
 		block_size_limit: Option<usize>,
+		ignored_nodes_by_proof_recording: Option<HashSet<B::Hash>>,
 	) -> Self::Proposal;
 }
 

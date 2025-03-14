@@ -603,6 +603,7 @@ mod tests {
 			digests: Digest,
 			_: Duration,
 			_: Option<usize>,
+			_: HashSet<<TestBlock as BlockT>::Hash>,
 		) -> Self::Proposal {
 			let r = BlockBuilderBuilder::new(&*self.0)
 				.on_parent_block(self.0.chain_info().best_hash)

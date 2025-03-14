@@ -149,13 +149,12 @@ where
 	let mut parent_header =
 		codec::decode_from_bytes::<B::Header>(parachain_head.clone()).expect("Invalid parent head");
 
-	let blocks_and_proofs = block_data.into_inner();
+	let (blocks, proof) = block_data.into_inner();
 
 	assert_eq!(
 		*blocks_and_proofs
 			.first()
 			.expect("BlockData should have at least one block")
-			.0
 			.header()
 			.parent_hash(),
 		parent_header.hash(),

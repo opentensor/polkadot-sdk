@@ -130,6 +130,7 @@ impl Proposer<TestBlock> for DummyProposer {
 		pre_digests: Digest,
 		_: Duration,
 		_: Option<usize>,
+		_: HashSet<<TestBlock as BlockT>::Hash>,
 	) -> Self::Proposal {
 		self.propose_with(pre_digests)
 	}
