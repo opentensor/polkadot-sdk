@@ -52,6 +52,37 @@ struct Transaction<H> {
 	accessed_nodes: HashSet<H>,
 }
 
+enum AccessedNode {
+	Known(Vec<u8>),
+	Unknown(Vec<u8>),
+}
+
+impl AsRef<Vec<u8>> for AccessedNode {
+	fn as_ref(&self) -> &Vec<u8> {
+		match self {
+			Self::Known(d) | Self::Unknown(d) => &d,
+		}
+	}
+}
+
+impl From<(bool, Vec<u8>)> for AccessedNode {
+	fn from(value: (bool, Vec<u8>)) -> Self {
+		if value.0 {
+			Self::Known(value.1)
+		} else {
+			Self::Unknown(value.1)
+		}
+	}
+}
+
+impl From<AccessedNode> for Vec<u8> {
+	fn from(value: AccessedNode) -> Self {
+		match value {
+			AccessedNode::Known(d) | AccessedNode::Unknown(d) => d,
+		}
+	}
+}
+
 /// The internals of [`Recorder`].
 struct RecorderInner<H> {
 	/// The keys for that we have recorded the trie nodes and if we have recorded up to the value.
@@ -65,7 +96,10 @@ struct RecorderInner<H> {
 	/// The encoded nodes we accessed while recording.
 	///
 	/// Mapping: `Hash(Node) -> Node`.
-	accessed_nodes: HashMap<H, Vec<u8>>,
+	accessed_nodes: HashMap<H, AccessedNode>,
+
+	/// Nodes that are known and that should not be taken into for the size estimation.
+	known_nodes: HashSet<H>,
 }
 
 impl<H> Default for RecorderInner<H> {
@@ -74,6 +108,7 @@ impl<H> Default for RecorderInner<H> {
 			recorded_keys: Default::default(),
 			accessed_nodes: Default::default(),
 			transactions: Vec::new(),
+			known_nodes: Default::default(),
 		}
 	}
 }
@@ -107,10 +142,20 @@ impl<H: Hasher> Clone for Recorder<H> {
 }
 
 impl<H: Hasher> Recorder<H> {
+	/// Create a new instance with the given `known_nodes`.
+	///
+	/// These known nodes are still recorded when accessed, but their size is not recorded.
+	pub fn with_known_nodes(known_nodes: HashSet<H::Out>) -> Self {
+		Self {
+			inner: Arc::new(Mutex::new(RecorderInner { known_nodes, ..Default::default() })),
+			..Default::default()
+		}
+	}
+
 	/// Returns [`RecordedForKey`] per recorded key per trie.
 	///
 	/// There are multiple tries when working with e.g. child tries.
-	pub fn recorded_keys(&self) -> HashMap<<H as Hasher>::Out, HashMap<Arc<[u8]>, RecordedForKey>> {
+	pub fn recorded_keys(&self) -> HashMap<H::Out, HashMap<Arc<[u8]>, RecordedForKey>> {
 		self.inner.lock().recorded_keys.clone()
 	}
 
@@ -140,7 +185,7 @@ impl<H: Hasher> Recorder<H> {
 	/// Returns the [`StorageProof`].
 	pub fn drain_storage_proof(self) -> StorageProof {
 		let mut recorder = mem::take(&mut *self.inner.lock());
-		StorageProof::new(recorder.accessed_nodes.drain().map(|(_, v)| v))
+		StorageProof::new(recorder.accessed_nodes.drain().map(|(_, v)| v.into()))
 	}
 
 	/// Convert the recording to a [`StorageProof`].
@@ -151,7 +196,7 @@ impl<H: Hasher> Recorder<H> {
 	/// Returns the [`StorageProof`].
 	pub fn to_storage_proof(&self) -> StorageProof {
 		let recorder = self.inner.lock();
-		StorageProof::new(recorder.accessed_nodes.values().cloned())
+		StorageProof::new(recorder.accessed_nodes.values().map(AsRef::as_ref).cloned())
 	}
 
 	/// Returns the estimated encoded size of the proof.
@@ -188,7 +233,7 @@ impl<H: Hasher> Recorder<H> {
 		let transaction = inner.transactions.pop().ok_or(())?;
 
 		transaction.accessed_nodes.into_iter().for_each(|n| {
-			if let Some(old) = inner.accessed_nodes.remove(&n) {
+			if let Some(AccessedNode::Unknown(old)) = inner.accessed_nodes.remove(&n) {
 				new_encoded_size_estimation =
 					new_encoded_size_estimation.saturating_sub(old.encoded_size());
 			}
@@ -234,6 +279,11 @@ impl<H: Hasher> Recorder<H> {
 		}
 
 		Ok(())
+	}
+
+	/// Returns the hashes of all accessed nodes.
+	pub fn accessed_nodes(&self) -> Vec<H::Out> {
+		self.inner.lock().accessed_nodes.keys().copied().collect()
 	}
 }
 
@@ -318,22 +368,34 @@ impl<'a, H: Hasher> trie_db::TrieRecorder<H::Out> for TrieRecorder<'a, H> {
 			TrieAccess::NodeOwned { hash, node_owned } => {
 				tracing::trace!(
 					target: LOG_TARGET,
-					hash = ?hash,
+					?hash,
 					"Recording node",
 				);
 
 				let inner = self.inner.deref_mut();
 
+				let known_node = inner.known_nodes.contains(&hash);
+
+				if known_node {
+					tracing::trace!(
+						target: LOG_TARGET,
+						?hash,
+						"Accessed known node",
+					);
+				}
+
 				inner.accessed_nodes.entry(hash).or_insert_with(|| {
 					let node = node_owned.to_encoded::<NodeCodec<H>>();
 
-					encoded_size_update += node.encoded_size();
+					if !known_node {
+						encoded_size_update += node.encoded_size();
+					}
 
 					if let Some(tx) = inner.transactions.last_mut() {
 						tx.accessed_nodes.insert(hash);
 					}
 
-					node
+					(known_node, node).into()
 				});
 			},
 			TrieAccess::EncodedNode { hash, encoded_node } => {
@@ -345,16 +407,28 @@ impl<'a, H: Hasher> trie_db::TrieRecorder<H::Out> for TrieRecorder<'a, H> {
 
 				let inner = self.inner.deref_mut();
 
+				let known_node = inner.known_nodes.contains(&hash);
+
+				if known_node {
+					tracing::trace!(
+						target: LOG_TARGET,
+						?hash,
+						"Accessed known node",
+					);
+				}
+
 				inner.accessed_nodes.entry(hash).or_insert_with(|| {
 					let node = encoded_node.into_owned();
 
-					encoded_size_update += node.encoded_size();
+					if !known_node {
+						encoded_size_update += node.encoded_size();
+					}
 
 					if let Some(tx) = inner.transactions.last_mut() {
 						tx.accessed_nodes.insert(hash);
 					}
 
-					node
+					(known_node, node).into()
 				});
 			},
 			TrieAccess::Value { hash, value, full_key } => {
@@ -367,16 +441,28 @@ impl<'a, H: Hasher> trie_db::TrieRecorder<H::Out> for TrieRecorder<'a, H> {
 
 				let inner = self.inner.deref_mut();
 
+				let known_value = inner.known_nodes.contains(&hash);
+
+				if known_value {
+					tracing::trace!(
+						target: LOG_TARGET,
+						?hash,
+						"Accessed known value",
+					);
+				}
+
 				inner.accessed_nodes.entry(hash).or_insert_with(|| {
 					let value = value.into_owned();
 
-					encoded_size_update += value.encoded_size();
+					if !known_value {
+						encoded_size_update += value.encoded_size();
+					}
 
 					if let Some(tx) = inner.transactions.last_mut() {
 						tx.accessed_nodes.insert(hash);
 					}
 
-					value
+					(known_value, value).into()
 				});
 
 				self.update_recorded_keys(full_key, RecordedForKey::Value);
@@ -729,5 +815,42 @@ mod tests {
 			let trie_recorder = recorder.as_trie_recorder(root);
 			assert!(matches!(trie_recorder.trie_nodes_recorded_for_key(key), RecordedForKey::None));
 		}
+	}
+
+	#[test]
+	fn recorder_ignoring_nodes_works() {
+		let (db, root) = create_trie::<Layout>(TEST_DATA);
+
+		let recorder = Recorder::default();
+
+		{
+			let mut trie_recorder = recorder.as_trie_recorder(root);
+			let trie = TrieDBBuilder::<Layout>::new(&db, &root)
+				.with_recorder(&mut trie_recorder)
+				.build();
+
+			for (key, data) in TEST_DATA {
+				assert_eq!(data.to_vec(), trie.get(&key).unwrap().unwrap());
+			}
+		}
+
+		assert!(recorder.estimate_encoded_size() > 10);
+		let memory_db: MemoryDB = recorder.drain_storage_proof().into_memory_db();
+
+		let recorder =
+			Recorder::with_known_nodes(memory_db.keys().into_keys().collect::<HashSet<_>>());
+
+		{
+			let mut trie_recorder = recorder.as_trie_recorder(root);
+			let trie = TrieDBBuilder::<Layout>::new(&db, &root)
+				.with_recorder(&mut trie_recorder)
+				.build();
+
+			for (key, data) in TEST_DATA {
+				assert_eq!(data.to_vec(), trie.get(&key).unwrap().unwrap());
+			}
+		}
+
+		assert_eq!(0, recorder.estimate_encoded_size());
 	}
 }
