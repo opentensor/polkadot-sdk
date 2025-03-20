@@ -321,8 +321,10 @@ pub mod pallet {
 			Pallet::<T>::validate_claim(dest, ethereum_sig, None).map(|v| (v, Weight::zero()))
 		)]
 		#[pallet::weight(T::WeightInfo::claim())]
-		// Authorize weight is included in the call. Because in case of validate unsigned etc...
-		// TODO TODO
+		// Because the weight of both "validate unsigned" and "authorize" logic needs to be added
+		// to the weight of the extrinsic, and because "validate unsigned" weight must be included
+		// in the call weight, the "authorize weight is also included in the call weight.
+		// Thus we set it to zero here.
 		#[pallet::weight_of_authorize(Weight::zero())]
 		pub fn claim(
 			origin: OriginFor<T>,
@@ -413,8 +415,10 @@ pub mod pallet {
 			Pallet::<T>::validate_claim(dest, ethereum_sig, Some(stmt)).map(|v| (v, Weight::zero()))
 		)]
 		#[pallet::weight(T::WeightInfo::claim_attest())]
-		// Authorize weight is included in the call. Because in case of validate unsigned etc...
-		// TODO TODO
+		// Because the weight of both "validate unsigned" and "authorize" logic needs to be added
+		// to the weight of the extrinsic, and because "validate unsigned" weight must be included
+		// in the call weight, the "authorize weight is also included in the call weight.
+		// Thus we set it to zero here.
 		#[pallet::weight_of_authorize(Weight::zero())]
 		pub fn claim_attest(
 			origin: OriginFor<T>,
