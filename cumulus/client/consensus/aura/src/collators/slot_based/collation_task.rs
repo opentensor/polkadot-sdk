@@ -284,11 +284,13 @@ where
 			.submit_collation()
 		{
 			let per_core = per_relay_parent.parachain_blocks.get(&core_index).unwrap();
-			let blocks = per_core.blocks.clone();
-			let storate_proof = blocks.last().unwrap().1.clone();
+			let (blocks, proofs) : (Vec<_>, Vec<StorageProof>) =
+				per_core.blocks.clone().into_iter().map(|c| (c.block, c.proof)).unzip();
+			let storage_proof = StorageProof::merge(proofs);
 			let parent_header = per_core.parent_header.clone();
 			self.submit_collation(
-				blocks.into_iter().map(|d| d.0).collect(),
+				blocks,
+				storage_proof,
 				parent_header,
 				relay_parent,
 				core_index,
@@ -300,7 +302,8 @@ where
 
 	async fn submit_collation(
 		&mut self,
-		candidates: Vec<ParachainCandidate<Block>>,
+		blocks: Vec<Block>,
+		storage_proof: StorageProof,
 		parent_header: Block::Header,
 		relay_parent: RHash,
 		core_index: CoreIndex,
@@ -309,7 +312,7 @@ where
 		let parent_head_hash = parent_header.hash();
 		let parent_head = parent_header.encode();
 		let (collation, block_data) =
-			match self.collator_service.build_collation(parent_header, candidates) {
+			match self.collator_service.build_collation(parent_header, blocks, storage_proof) {
 				Some(collation) => collation,
 				None => {
 					tracing::warn!(target: LOG_TARGET, ?core_index, "Unable to build collation.");

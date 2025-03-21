@@ -38,6 +38,7 @@ use sp_core::storage::{ChildInfo, StateVersion};
 use sp_externalities::{set_and_run_with_externalities, Externalities};
 use sp_io::KillStorageResult;
 use sp_runtime::traits::{Block as BlockT, ExtrinsicLike, HashingFor, Header as HeaderT};
+use sp_state_machine::OverlayedChanges;
 use sp_trie::{MemoryDB, ProofSizeProvider};
 use trie_recorder::SizeOnlyRecorderProvider;
 
@@ -152,7 +153,7 @@ where
 	let (blocks, proof) = block_data.into_inner();
 
 	assert_eq!(
-		*blocks_and_proofs
+		*blocks
 			.first()
 			.expect("BlockData should have at least one block")
 			.header()
@@ -168,9 +169,35 @@ where
 	let mut hrmp_watermark = Default::default();
 	let mut head_data = None;
 	let mut new_validation_code = None;
-	let num_blocks = blocks_and_proofs.len();
+	let num_blocks = blocks.len();
 
-	for (block_index, (block, storage_proof)) in blocks_and_proofs.into_iter().enumerate() {
+	// Create the db
+	let mut db = match proof.to_memory_db(Some(parent_header.state_root())) {
+		Ok((db, _)) => db,
+		Err(_) => panic!("Compact proof decoding failure."),
+	};
+
+	core::mem::drop(proof);
+
+	// We use the same recorder across all blocks. Each node only contributed once to the total size
+	// of the storage proof.
+	let mut recorder = SizeOnlyRecorderProvider::new();
+	let cache_provider = trie_cache::CacheProvider::new();
+	// We use the storage root of the `parent_head` to ensure that it is the correct root.
+	// This is already being done above while creating the in-memory db, but let's be paranoid!!
+	let backend = sp_state_machine::TrieBackendBuilder::new_with_cache(
+		db,
+		*parent_header.state_root(),
+		cache_provider,
+	)
+	.with_recorder(recorder.clone())
+	.build();
+
+	// We let all blocks contribute to the same overlay. Data written by a previous block will be
+	// directly accessible without going to the db.
+	let mut overlay = OverlayedChanges::default();
+
+	for (block_index, block) in blocks.into_iter().enumerate() {
 		let inherent_data = extract_parachain_inherent_data(&block);
 
 		validate_validation_data(
@@ -180,95 +207,86 @@ where
 			&parachain_head,
 		);
 
-		// Create the db
-		let db = match storage_proof.to_memory_db(Some(parent_header.state_root())) {
-			Ok((db, _)) => db,
-			Err(_) => panic!("Compact proof decoding failure."),
-		};
+		run_with_externalities_and_recorder::<B, _, _>(
+			&backend,
+			&mut recorder,
+			&mut Default::default(),
+			|| {
+				let relay_chain_proof = crate::RelayChainStateProof::new(
+					PSC::SelfParaId::get(),
+					inherent_data.validation_data.relay_parent_storage_root,
+					inherent_data.relay_chain_state.clone(),
+				)
+				.expect("Invalid relay chain state proof");
 
-		core::mem::drop(storage_proof);
+				#[allow(deprecated)]
+				let res = CI::check_inherents(&block, &relay_chain_proof);
 
-		let mut recorder = SizeOnlyRecorderProvider::new();
-		let cache_provider = trie_cache::CacheProvider::new();
-		// We use the storage root of the `parent_head` to ensure that it is the correct root.
-		// This is already being done above while creating the in-memory db, but let's be paranoid!!
-		let backend = sp_state_machine::TrieBackendBuilder::new_with_cache(
-			db,
-			*parent_header.state_root(),
-			cache_provider,
-		)
-		.with_recorder(recorder.clone())
-		.build();
+				if !res.ok() {
+					if log::log_enabled!(log::Level::Error) {
+						res.into_errors().for_each(|e| {
+							log::error!("Checking inherent with identifier `{:?}` failed", e.0)
+						});
+					}
 
-		run_with_externalities_and_recorder::<B, _, _>(&backend, &mut recorder, || {
-			let relay_chain_proof = crate::RelayChainStateProof::new(
-				PSC::SelfParaId::get(),
-				inherent_data.validation_data.relay_parent_storage_root,
-				inherent_data.relay_chain_state.clone(),
-			)
-			.expect("Invalid relay chain state proof");
-
-			#[allow(deprecated)]
-			let res = CI::check_inherents(&block, &relay_chain_proof);
-
-			if !res.ok() {
-				if log::log_enabled!(log::Level::Error) {
-					res.into_errors().for_each(|e| {
-						log::error!("Checking inherent with identifier `{:?}` failed", e.0)
-					});
+					panic!("Checking inherents failed");
 				}
+			},
+		);
 
-				panic!("Checking inherents failed");
-			}
-		});
+		run_with_externalities_and_recorder::<B, _, _>(
+			&backend,
+			&mut recorder,
+			&mut overlay,
+			|| {
+				parent_header = block.header().clone();
 
-		run_with_externalities_and_recorder::<B, _, _>(&backend, &mut recorder, || {
-			parent_header = block.header().clone();
+				E::execute_block(block);
 
-			E::execute_block(block);
+				new_validation_code =
+					new_validation_code.take().or(crate::NewValidationCode::<PSC>::get());
 
-			new_validation_code =
-				new_validation_code.take().or(crate::NewValidationCode::<PSC>::get());
-
-			let mut found_separator = false;
-			crate::UpwardMessages::<PSC>::get()
-				.into_iter()
-				.filter_map(|m| {
-					if cfg!(feature = "experimental-ump-signals") {
-						if m == UMP_SEPARATOR {
-							found_separator = true;
-							None
-						} else if found_separator {
-							if upward_message_signals.iter().any(|s| *s != m) {
-								upward_message_signals.push(m);
+				let mut found_separator = false;
+				crate::UpwardMessages::<PSC>::get()
+					.into_iter()
+					.filter_map(|m| {
+						if cfg!(feature = "experimental-ump-signals") {
+							if m == UMP_SEPARATOR {
+								found_separator = true;
+								None
+							} else if found_separator {
+								if upward_message_signals.iter().any(|s| *s != m) {
+									upward_message_signals.push(m);
+								}
+								None
+							} else {
+								Some(m)
 							}
-							None
 						} else {
 							Some(m)
 						}
-					} else {
-						Some(m)
-					}
-				})
-				.for_each(|m| {
-					upward_messages.try_push(m)
+					})
+					.for_each(|m| {
+						upward_messages.try_push(m)
 					.expect(
 						"Number of upward messages should not be greater than `MAX_UPWARD_MESSAGE_NUM`",
 					)
-				});
-			processed_downward_messages += crate::ProcessedDownwardMessages::<PSC>::get();
-			horizontal_messages.try_extend(crate::HrmpOutboundMessages::<PSC>::get().into_iter()).expect(
+					});
+
+				processed_downward_messages += crate::ProcessedDownwardMessages::<PSC>::get();
+				horizontal_messages.try_extend(crate::HrmpOutboundMessages::<PSC>::get().into_iter()).expect(
 				"Number of horizontal messages should not be greater than `MAX_HORIZONTAL_MESSAGE_NUM`",
 			);
-			hrmp_watermark = crate::HrmpWatermark::<PSC>::get();
+				hrmp_watermark = crate::HrmpWatermark::<PSC>::get();
 
-			if block_index + 1 == num_blocks {
-				head_data = Some(
-					crate::CustomValidationHeadData::<PSC>::get()
-						.map_or_else(|| HeadData(parent_header.encode()), HeadData),
-				);
-			}
-		})
+				if block_index + 1 == num_blocks {
+					head_data = Some(
+						crate::CustomValidationHeadData::<PSC>::get()
+							.map_or_else(|| HeadData(parent_header.encode()), HeadData),
+					);
+				}
+			},
+		)
 	}
 
 	if !upward_message_signals.is_empty() {
@@ -349,11 +367,10 @@ fn validate_validation_data(
 fn run_with_externalities_and_recorder<B: BlockT, R, F: FnOnce() -> R>(
 	backend: &TrieBackend<B>,
 	recorder: &mut SizeOnlyRecorderProvider<HashingFor<B>>,
+	overlay: &mut OverlayedChanges<HashingFor<B>>,
 	execute: F,
 ) -> R {
-	let mut overlay = sp_state_machine::OverlayedChanges::default();
-	let mut ext = Ext::<B>::new(&mut overlay, backend);
-	recorder.reset();
+	let mut ext = Ext::<B>::new(overlay, backend);
 
 	recorder::using(recorder, || set_and_run_with_externalities(&mut ext, || execute()))
 }

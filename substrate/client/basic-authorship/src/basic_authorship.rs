@@ -340,10 +340,11 @@ where
 		let mut block_builder = BlockBuilderBuilder::new(&*self.client)
 			.on_parent_block(self.parent_hash)
 			.with_parent_block_number(self.parent_number)
-			.with_proof_recorder(
-				PR::ENABLED
-					.then(|| ProofRecorder::<Block>::with_known_nodes(ignored_nodes_by_proof_recording.unwrap_or_default())),
-			)
+			.with_proof_recorder(PR::ENABLED.then(|| {
+				ProofRecorder::<Block>::with_ignored_nodes(
+					ignored_nodes_by_proof_recording.unwrap_or_default(),
+				)
+			}))
 			.with_inherent_digests(inherent_digests)
 			.build()?;
 
@@ -692,10 +693,15 @@ mod tests {
 
 		// when
 		let deadline = time::Duration::from_secs(3);
-		let block =
-			block_on(proposer.propose(Default::default(), Default::default(), deadline, None))
-				.map(|r| r.block)
-				.unwrap();
+		let block = block_on(proposer.propose(
+			Default::default(),
+			Default::default(),
+			deadline,
+			None,
+			None,
+		))
+		.map(|r| r.block)
+		.unwrap();
 
 		// then
 		// block should have some extrinsics although we have some more in the pool.
@@ -734,7 +740,7 @@ mod tests {
 		);
 
 		let deadline = time::Duration::from_secs(1);
-		block_on(proposer.propose(Default::default(), Default::default(), deadline, None))
+		block_on(proposer.propose(Default::default(), Default::default(), deadline, None, None))
 			.map(|r| r.block)
 			.unwrap();
 	}
@@ -773,9 +779,14 @@ mod tests {
 		);
 
 		let deadline = time::Duration::from_secs(9);
-		let proposal =
-			block_on(proposer.propose(Default::default(), Default::default(), deadline, None))
-				.unwrap();
+		let proposal = block_on(proposer.propose(
+			Default::default(),
+			Default::default(),
+			deadline,
+			None,
+			None,
+		))
+		.unwrap();
 
 		assert_eq!(proposal.block.extrinsics().len(), 1);
 
@@ -838,10 +849,15 @@ mod tests {
 
 			// when
 			let deadline = time::Duration::from_secs(900);
-			let block =
-				block_on(proposer.propose(Default::default(), Default::default(), deadline, None))
-					.map(|r| r.block)
-					.unwrap();
+			let block = block_on(proposer.propose(
+				Default::default(),
+				Default::default(),
+				deadline,
+				None,
+				None,
+			))
+			.map(|r| r.block)
+			.unwrap();
 
 			// then
 			// block should have some extrinsics although we have some more in the pool.
@@ -955,6 +971,7 @@ mod tests {
 			Default::default(),
 			deadline,
 			Some(block_limit),
+			None,
 		))
 		.map(|r| r.block)
 		.unwrap();
@@ -964,10 +981,15 @@ mod tests {
 
 		let proposer = block_on(proposer_factory.init(&genesis_header)).unwrap();
 
-		let block =
-			block_on(proposer.propose(Default::default(), Default::default(), deadline, None))
-				.map(|r| r.block)
-				.unwrap();
+		let block = block_on(proposer.propose(
+			Default::default(),
+			Default::default(),
+			deadline,
+			None,
+			None,
+		))
+		.map(|r| r.block)
+		.unwrap();
 
 		// Without a block limit we should include all of them
 		assert_eq!(block.extrinsics().len(), extrinsics_num);
@@ -998,6 +1020,7 @@ mod tests {
 			Default::default(),
 			deadline,
 			Some(block_limit),
+			None,
 		))
 		.map(|r| r.block)
 		.unwrap();
@@ -1068,10 +1091,15 @@ mod tests {
 		// when
 		// give it enough time so that deadline is never triggered.
 		let deadline = time::Duration::from_secs(900);
-		let block =
-			block_on(proposer.propose(Default::default(), Default::default(), deadline, None))
-				.map(|r| r.block)
-				.unwrap();
+		let block = block_on(proposer.propose(
+			Default::default(),
+			Default::default(),
+			deadline,
+			None,
+			None,
+		))
+		.map(|r| r.block)
+		.unwrap();
 
 		// then block should have all non-exhaust resources extrinsics (+ the first one).
 		assert_eq!(block.extrinsics().len(), MAX_SKIPPED_TRANSACTIONS + 1);
@@ -1146,10 +1174,15 @@ mod tests {
 			}),
 		);
 
-		let block =
-			block_on(proposer.propose(Default::default(), Default::default(), deadline, None))
-				.map(|r| r.block)
-				.unwrap();
+		let block = block_on(proposer.propose(
+			Default::default(),
+			Default::default(),
+			deadline,
+			None,
+			None,
+		))
+		.map(|r| r.block)
+		.unwrap();
 
 		// then the block should have one or two transactions. This maybe random as they are
 		// processed in parallel. The same signer and consecutive nonces for huge and tiny

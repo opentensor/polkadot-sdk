@@ -43,7 +43,7 @@ use futures::prelude::*;
 use sc_client_api::BackendTransaction;
 use sc_consensus::{BlockImport, BlockImportParams, ForkChoiceStrategy, StateAction};
 use sc_consensus_aura::standalone as aura_internal;
-use sp_api::ProvideRuntimeApi;
+use sp_api::{ProvideRuntimeApi, StorageProof};
 use sp_application_crypto::AppPublic;
 use sp_consensus::BlockOrigin;
 use sp_consensus_aura::{AuraApi, Slot, SlotDuration};
@@ -56,7 +56,7 @@ use sp_runtime::{
 };
 use sp_state_machine::StorageChanges;
 use sp_timestamp::Timestamp;
-use std::{error::Error, time::Duration};
+use std::{collections::HashSet, error::Error, time::Duration};
 
 /// Parameters for instantiating a [`Collator`].
 pub struct Params<BI, CIDP, RClient, Proposer, CS> {
@@ -84,7 +84,7 @@ pub struct BuiltBlock<Block: BlockT> {
 	/// The collected proof.
 	pub proof: StorageProof,
 	/// The transaction that was applied to the backend, containing all the new nodes.
-	pub backend_transaction: BackendTransaction<Block::Hashing>,
+	pub backend_transaction: BackendTransaction<HashingFor<Block>>,
 }
 
 /// A utility struct for writing collation logic that makes use of Aura entirely
@@ -257,7 +257,8 @@ where
 
 		if let Some((collation, block_data)) = self.collator_service.build_collation(
 			parent_header.clone(),
-			vec![ParachainCandidate { block: candidate.block, proof: candidate.proof }],
+			vec![candidate.block],
+			candidate.proof,
 		) {
 			block_data.log_size_info();
 

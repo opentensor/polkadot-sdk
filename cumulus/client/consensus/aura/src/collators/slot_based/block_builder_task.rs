@@ -17,20 +17,24 @@
 use codec::{Codec, Encode};
 
 use cumulus_client_collator::service::ServiceInterface as CollatorServiceInterface;
-use cumulus_client_consensus_common::{self as consensus_common, ParachainBlockImportMarker};
+use cumulus_client_consensus_common::{
+	self as consensus_common, ParachainBlockImportMarker, ParachainCandidate,
+};
 use cumulus_client_consensus_proposer::ProposerInterface;
 use cumulus_primitives_aura::AuraUnincludedSegmentApi;
 use cumulus_primitives_core::{GetCoreSelectorApi, PersistedValidationData};
 use cumulus_relay_chain_interface::{RelayChainInterface, RelayChainResult};
 
-use polkadot_primitives::{Block as RelayBlock, Hash as RHash, Header as RHeader, Id as ParaId};
+use polkadot_primitives::{
+	Block as RelayBlock, CoreIndex, Hash as RHash, Header as RHeader, Id as ParaId,
+};
 
 use futures::prelude::*;
 use sc_client_api::{backend::AuxStore, BackendTransaction, BlockBackend, BlockOf, UsageProvider};
 use sc_consensus::BlockImport;
 use sc_consensus_babe::CompatibleDigestItem;
 use schnellru::LruMap;
-use sp_api::ProvideRuntimeApi;
+use sp_api::{ProvideRuntimeApi, StorageProof};
 use sp_application_crypto::AppPublic;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_aura::{AuraApi, Slot};
@@ -42,10 +46,11 @@ use sp_inherents::CreateInherentDataProviders;
 use sp_keystore::KeystorePtr;
 use sp_runtime::{
 	generic::BlockId,
-	traits::{Block as BlockT, Header as HeaderT, Member},
+	traits::{Block as BlockT, HashingFor, Header as HeaderT, Member},
 };
 use sp_timestamp::Timestamp;
 use std::{
+	collections::{HashMap, HashSet},
 	marker::PhantomData,
 	pin::Pin,
 	sync::Arc,
@@ -433,7 +438,7 @@ pub async fn run_block_builder<
 				(parachain_inherent_data, other_inherent_data),
 				authoring_duration,
 				allowed_pov_size,
-				relay_chain_parent.nodes_to_ignore(relay_parent, core_index),
+				relay_chain_parent.nodes_to_ignore(relay_parent, *core_index),
 			)
 			.await
 		else {
@@ -443,9 +448,9 @@ pub async fn run_block_builder<
 
 		relay_chain_parent.record_nodes_to_ignore(
 			relay_parent,
-			core_index,
+			*core_index,
 			&parachain_candidate.proof,
-			parachain_candidate.backed_transaction,
+			parachain_candidate.backend_transaction,
 		);
 
 		let new_block_hash = parachain_candidate.block.header().hash();
@@ -456,7 +461,10 @@ pub async fn run_block_builder<
 		if let Err(err) = collator_sender.unbounded_send(CollatorMessage {
 			relay_parent,
 			parent_header,
-			parachain_candidate,
+			parachain_candidate: ParachainCandidate {
+				block: parachain_candidate.block,
+				proof: parachain_candidate.proof,
+			},
 			validation_code_hash,
 			core_index: *core_index,
 			scheduled_cores: scheduled_cores.clone(),
@@ -467,7 +475,7 @@ pub async fn run_block_builder<
 	}
 }
 
-struct RelayParentToBuildOn<Block, Client, RI> {
+struct RelayParentToBuildOn<Block: BlockT, Client, RI> {
 	best_relay_block: RHeader,
 	relay_import_notifications: Pin<Box<dyn Stream<Item = RHeader> + Send>>,
 	root_to_header: LruMap<RHash, RHeader>,
@@ -694,23 +702,23 @@ where
 		relay_parent: RHash,
 		core: CoreIndex,
 		proof: &StorageProof,
-		backend_transaction: BackendTransaction<Block::Hasher>,
+		mut backend_transaction: BackendTransaction<HashingFor<Block>>,
 	) {
 		let ignored_nodes = self.ignored_nodes_per_core.entry((relay_parent, core)).or_default();
 
 		proof.iter_nodes().for_each(|n| {
-			ignored_nodes.insert(<Block::Hashing as Hash>::hash(n));
+			ignored_nodes.insert(HashingFor::<Block>::hash(n));
 		});
 
-		backend_transaction.drain().for_each(|d| {
-			ignored_nodes.insert(<Block::Hashing as Hash>::hash(&(d.1).0));
+		backend_transaction.drain().into_iter().for_each(|d| {
+			ignored_nodes.insert(HashingFor::<Block>::hash(&(d.1).0));
 		});
 	}
 
 	fn nodes_to_ignore(&self, relay_parent: RHash, core: CoreIndex) -> HashSet<Block::Hash> {
 		self.ignored_nodes_per_core
 			.get(&(relay_parent, core))
+			.cloned()
 			.unwrap_or_default()
-			.clone()
 	}
 }

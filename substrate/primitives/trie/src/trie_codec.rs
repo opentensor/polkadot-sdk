@@ -21,12 +21,10 @@
 //! it to substrate specific layout and child trie system.
 
 use crate::{
-	recorder::Recorder, CompactProof, HashDBT, MemoryDB, TrieConfiguration, TrieHash, EMPTY_PREFIX,
+	CompactProof, HashDBT, TrieConfiguration, TrieHash, EMPTY_PREFIX,
 };
-use alloc::{boxed::Box, collections::BTreeSet, vec::Vec};
-use core::cell::RefCell;
-use hash_db::{HashDB, HashDBRef};
-use trie_db::{CError, DBValue, Trie};
+use alloc::{boxed::Box, vec::Vec};
+use trie_db::{CError, Trie};
 
 /// Error for trie node decoding.
 #[derive(Debug)]
@@ -208,130 +206,6 @@ where
 	Ok(CompactProof { encoded_nodes: compact_proof })
 }
 
-struct FilterAndRecordDB<'a, DB, L: TrieConfiguration> {
-	db: &'a DB,
-	accessed_nodes: RefCell<&'a mut BTreeSet<TrieHash<L>>>,
-	nodes_to_ignore: BTreeSet<TrieHash<L>>,
-}
-
-impl<DB, L> HashDBRef<L::Hash, DBValue> for FilterAndRecordDB<'_, DB, L>
-where
-	DB: HashDBRef<L::Hash, DBValue>,
-	L: TrieConfiguration,
-{
-	fn get(&self, key: &TrieHash<L>, prefix: hash_db::Prefix) -> Option<DBValue> {
-		if self.nodes_to_ignore.contains(key) {
-			return None
-		}
-
-		self.accessed_nodes.borrow_mut().insert(*key);
-		self.db.get(key, prefix)
-	}
-
-	fn contains(&self, key: &TrieHash<L>, prefix: hash_db::Prefix) -> bool {
-		if self.nodes_to_ignore.contains(key) {
-			return false
-		}
-
-		self.db.contains(key, prefix)
-	}
-}
-
-/// Encode a compact proof.
-///
-/// Takes as input all full encoded node from the proof, and
-/// the root.
-/// Then parse all child trie root and compress main trie content first
-/// then all child trie contents.
-/// Child trie are ordered by the order of their roots in the top trie.
-/*pub fn multi_tries_encode_compact<L>(
-	tries: MemoryDB<L::Hash>,
-	roots: &[TrieHash<L>],
-	mut ignore_nodes: BTreeSet<TrieHash<L>>,
-) -> Result<CompactProof, Error<TrieHash<L>, CError<L>>>
-where
-	L: TrieConfiguration,
-{
-	let mut compact_proof = Vec::new();
-	let mut nodes_to_ignore = BTreeSet::<TrieHash<L>>::new();
-	let mut recorder = Recorder::<L::Hash>::default();
-
-	for root in roots {
-		let mut child_tries = Vec::new();
-
-		ignore_nodes.extend(recorder.accessed_nodes());
-
-		{
-			let mut trie_recorder = recorder.as_trie_recorder(*root);
-			let trie = crate::TrieDBBuilder::<L>::new(&tries, root)
-				.with_recorder(&mut trie_recorder)
-				.build();
-
-			let mut iter = trie.iter()?;
-
-			let childtrie_roots =
-				sp_core::storage::well_known_keys::DEFAULT_CHILD_STORAGE_KEY_PREFIX;
-			if iter.seek(childtrie_roots).is_ok() {
-				loop {
-					match iter.next() {
-						Some(Ok((key, value))) if key.starts_with(childtrie_roots) => {
-							let mut root = TrieHash::<L>::default();
-							if root.as_mut().len() != value.as_slice().len() {
-								// some child trie root in top trie are not an encoded hash.
-								return Err(Error::InvalidChildRoot(key.to_vec(), value.to_vec()))
-							}
-							root.as_mut().copy_from_slice(value.as_ref());
-							child_tries.push(root);
-						},
-						// allow incomplete database error: we only
-						// require access to data in the proof.
-						Some(Err(error)) => match *error {
-							trie_db::TrieError::IncompleteDatabase(..) => (),
-							e => return Err(Box::new(e).into()),
-						},
-						_ => break,
-					}
-				}
-			}
-
-			compact_proof.extend(trie_db::encode_compact_ignore_nodes::<L>(&trie, &ignore_nodes)?);
-		}
-
-		for child_root in child_tries {
-			if !HashDBT::<L::Hash, _>::contains(&tries, &child_root, EMPTY_PREFIX) {
-				// child proof are allowed to be missing (unused root can be included
-				// due to trie structure modification).
-				continue
-			}
-
-			let trie = crate::TrieDBBuilder::<L>::new(&tries, &child_root).build();
-			let child_proof = trie_db::encode_compact_ignore_nodes::<L>(&trie, &ignore_nodes)?;
-
-			compact_proof.extend(child_proof);
-		}
-	}
-
-	Ok(CompactProof { encoded_nodes: compact_proof })
-}
-*/
-
-pub fn multi_tries_decode_compact<'a, L, DB, I>(
-	db: &mut DB,
-	encoded: I,
-) -> Result<(), Error<TrieHash<L>, CError<L>>>
-where
-	L: TrieConfiguration,
-	DB: HashDBT<L::Hash, trie_db::DBValue> + hash_db::HashDBRef<L::Hash, trie_db::DBValue>,
-	I: IntoIterator<Item = &'a [u8]>,
-{
-	let mut nodes_iter = encoded.into_iter().peekable();
-	while nodes_iter.peek().is_some() {
-		trie_db::decode_compact_from_iter::<L, _, _>(db, &mut nodes_iter)?;
-	}
-
-	Ok(())
-}
-
 #[cfg(test)]
 mod tests {
 	use crate::{delta_trie_root, HashDB, StorageProof};
@@ -341,31 +215,28 @@ mod tests {
 	use hash_db::{AsHashDB, Hasher};
 	use sp_core::{Blake2Hasher, H256};
 	use std::collections::HashSet;
-	use trie_db::{Bytes, Trie, TrieDBBuilder, TrieDBMutBuilder, TrieHash, TrieMut};
+	use trie_db::{Bytes, DBValue, Trie, TrieDBBuilder, TrieDBMutBuilder, TrieHash, TrieMut};
 
 	type MemoryDB = crate::MemoryDB<sp_core::Blake2Hasher>;
 	type Layout = crate::LayoutV1<sp_core::Blake2Hasher>;
 	type Recorder = crate::recorder::Recorder<sp_core::Blake2Hasher>;
 
-	const TEST_DATA: &[(&[u8], &[u8])] =
-		&[(b"key1", &[1; 64]), (b"key2", &[2; 64]), (b"key3", &[3; 64]), (b"key4", &[4; 64])];
-
-	fn create_trie() -> (MemoryDB, TrieHash<Layout>) {
+	fn create_trie(num_keys: u32) -> (MemoryDB, TrieHash<Layout>) {
 		let mut db = MemoryDB::default();
 		let mut root = Default::default();
 
 		{
 			let mut trie = TrieDBMutBuilder::<Layout>::new(&mut db, &mut root).build();
-			for (k, v) in TEST_DATA {
-				trie.insert(k, v).expect("Inserts data");
+			for i in 0..num_keys {
+				trie.insert(
+					&i.encode(),
+					&vec![1u8; 64].into_iter().chain(i.encode()).collect::<Vec<_>>(),
+				)
+				.expect("Inserts data");
 			}
 		}
 
 		(db, root)
-	}
-
-	fn debug_hash(hash: H256) -> H256 {
-		dbg!(hash)
 	}
 
 	struct Overlay<'a> {
@@ -429,8 +300,8 @@ mod tests {
 	fn emulate_block_building(
 		state: &MemoryDB,
 		root: H256,
-		read_keys: &[&str],
-		write_key_values: &[(&str, &[u8])],
+		read_keys: &[u32],
+		write_keys: &[u32],
 		nodes_to_ignore: HashSet<H256>,
 	) -> (Recorder, MemoryDB, H256) {
 		let recorder = Recorder::with_ignored_nodes(nodes_to_ignore);
@@ -442,7 +313,7 @@ mod tests {
 				.build();
 
 			for key in read_keys {
-				trie.get(key.as_bytes()).unwrap().unwrap();
+				trie.get(&key.encode()).unwrap().unwrap();
 			}
 		}
 
@@ -453,7 +324,12 @@ mod tests {
 			delta_trie_root::<Layout, _, _, _, _, _>(
 				&mut overlay,
 				root,
-				write_key_values.iter().map(|(k, v)| (k.as_bytes(), Some(*v))),
+				write_keys.iter().map(|k| {
+					(
+						k.encode(),
+						Some(vec![2u8; 64].into_iter().chain(k.encode()).collect::<Vec<_>>()),
+					)
+				}),
 				Some(&mut trie_recorder),
 				None,
 			)
@@ -472,66 +348,91 @@ mod tests {
 			.collect()
 	}
 
-	fn build_ignore_list(transactions: &[&MemoryDB]) -> BTreeSet<H256> {
-		transactions
-			.iter()
-			.flat_map(|t| (*t).clone().drain().into_iter().map(|d| Blake2Hasher::hash(&(d.1).0)))
-			.collect()
-	}
-
 	#[test]
-	fn ensure_multi_tries_encode_compact_works() {
-		let (mut db, root) = create_trie();
+	fn ensure_multiple_tries_encode_compact_works() {
+		let (mut db, root) = create_trie(100);
 
-		let (recorder, transaction, root_1) = emulate_block_building(
+		let mut nodes_to_ignore = HashSet::new();
+		let (recorder, transaction, root1) = emulate_block_building(
 			&db,
 			root,
-			&["key2"],
-			&[("key5", &[5u8; 64])],
-			Default::default(),
+			&[2, 4, 5, 6, 7, 8],
+			&[9, 10, 11, 12, 13, 14],
+			nodes_to_ignore.clone(),
 		);
 
-		dbg!(root_1);
 		db.consolidate(transaction.clone());
+		nodes_to_ignore.extend(build_known_nodes_list(&recorder, &transaction));
 
-		let (recorder2, transaction_2, root_2) = emulate_block_building(
+		let (recorder2, transaction, root2) = emulate_block_building(
 			&db,
-			root_1,
-			&["key1"],
-			&[("key7", &[7u8; 64])],
-			build_known_nodes_list(&recorder, &transaction),
+			root1,
+			&[9, 10, 11, 12, 13, 14],
+			&[15, 16, 17, 18, 19, 20],
+			nodes_to_ignore.clone(),
 		);
 
-		let proof =
-			StorageProof::merge([recorder.to_storage_proof(), recorder2.to_storage_proof()]);
+		db.consolidate(transaction.clone());
+		nodes_to_ignore.extend(build_known_nodes_list(&recorder2, &transaction));
 
-		let compact_proof = encode_compact::<Layout, _>(
-			&proof.to_memory_db(),
-			&root,
-		)
-		.unwrap();
+		let (recorder3, _, root3) = emulate_block_building(
+			&db,
+			root2,
+			&[20, 30, 40, 41, 42],
+			&[80, 90, 91, 92, 93],
+			nodes_to_ignore,
+		);
+
+		let proof = StorageProof::merge([
+			recorder.to_storage_proof(),
+			recorder2.to_storage_proof(),
+			recorder3.to_storage_proof(),
+		]);
+
+		let compact_proof = encode_compact::<Layout, _>(&proof.to_memory_db(), &root).unwrap();
 
 		assert!(proof.encoded_size() > compact_proof.encoded_size());
-		assert!(compact_proof.encoded_nodes.len() > 3);
 
 		let mut res_db = crate::MemoryDB::<Blake2Hasher>::new(&[]);
-		multi_tries_decode_compact::<Layout, _, _>(
+		decode_compact::<Layout, _, _>(
 			&mut res_db,
 			compact_proof.iter_compact_encoded_nodes(),
+			Some(&root),
 		)
 		.unwrap();
 
-		assert!(HashDB::contains(&res_db, &root, EMPTY_PREFIX));
-
-		let root_res = emulate_block_building(
+		let (_, transaction, root1_proof) = emulate_block_building(
 			&res_db,
 			root,
-			&["key2"],
-			&[("key5", &[5u8; 64])],
+			&[2, 4, 5, 6, 7, 8],
+			&[9, 10, 11, 12, 13, 14],
 			Default::default(),
-		)
-		.2;
+		);
 
-		assert_eq!(root_1, root_res);
+		assert_eq!(root1, root1_proof);
+
+		res_db.consolidate(transaction);
+
+		let (_, transaction2, root2_proof) = emulate_block_building(
+			&res_db,
+			root1,
+			&[9, 10, 11, 12, 13, 14],
+			&[15, 16, 17, 18, 19, 20],
+			Default::default(),
+		);
+
+		assert_eq!(root2, root2_proof);
+
+		res_db.consolidate(transaction2);
+
+		let (_, _, root3_proof) = emulate_block_building(
+			&res_db,
+			root2,
+			&[20, 30, 40, 41, 42],
+			&[80, 90, 91, 92, 93],
+			Default::default(),
+		);
+
+		assert_eq!(root3, root3_proof);
 	}
 }

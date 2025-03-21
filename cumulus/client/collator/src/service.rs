@@ -21,7 +21,7 @@ use cumulus_client_network::WaitToAnnounce;
 use cumulus_primitives_core::{CollationInfo, CollectCollationInfo, ParachainBlockData};
 
 use sc_client_api::BlockBackend;
-use sp_api::{ApiExt, ProvideRuntimeApi};
+use sp_api::{ApiExt, ProvideRuntimeApi, StorageProof};
 use sp_consensus::BlockStatus;
 use sp_core::traits::SpawnNamed;
 use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT, Zero};
@@ -46,7 +46,7 @@ pub trait ServiceInterface<Block: BlockT> {
 	/// Returns `true` if the block could be found and is good to be build on.
 	fn check_block_status(&self, hash: Block::Hash, header: &Block::Header) -> bool;
 
-	/// Build a full [`Collation`] from a given [`ParachainCandidate`]. This requires
+	/// Build a full [`Collation`] from the given blocks and storage proof. This requires
 	/// that the underlying block has been fully imported into the underlying client,
 	/// as implementations will fetch underlying runtime API data.
 	///
@@ -54,7 +54,8 @@ pub trait ServiceInterface<Block: BlockT> {
 	fn build_collation(
 		&self,
 		parent_header: Block::Header,
-		candidates: Vec<ParachainCandidate<Block>>,
+		blocks: Vec<Block>,
+		storage_proof: StorageProof,
 	) -> Option<(Collation, ParachainBlockData<Block>)>;
 
 	/// Inform networking systems that the block should be announced after a signal has
@@ -208,7 +209,7 @@ where
 		Ok(Some((collation_info, api_version)))
 	}
 
-	/// Build a full [`Collation`] from the given [`ParachainCandidate`]s.
+	/// Build a full [`Collation`] from the given `blocks` and `storage_proof`.
 	///
 	/// This requires that the underlying blocks have been fully imported into the underlying
 	/// client, as it fetches underlying runtime API data.
@@ -216,10 +217,10 @@ where
 	/// This also returns the unencoded parachain block data, in case that is desired.
 	pub fn build_collation(
 		&self,
-		mut parent_header: Block::Header,
-		candidates: Vec<ParachainCandidate<Block>>,
+		parent_header: Block::Header,
+		blocks: Vec<Block>,
+		storage_proof: StorageProof,
 	) -> Option<(Collation, ParachainBlockData<Block>)> {
-		let mut block_data = Vec::new();
 		let mut last_api_version = None;
 		let mut upward_messages = Vec::new();
 		let mut horizontal_messages = Vec::new();
@@ -228,20 +229,8 @@ where
 		let mut head_data = None;
 		let mut hrmp_watermark = None;
 
-		for candidate in candidates {
-			let block = candidate.block;
+		for block in &blocks {
 			let block_hash = block.hash();
-
-			let compact_proof = match candidate
-				.proof
-				.into_compact_proof::<HashingFor<Block>>(*parent_header.state_root())
-			{
-				Ok(proof) => proof,
-				Err(error) => {
-					tracing::error!(target: LOG_TARGET, ?error, ?block_hash, "Failed to compact proof");
-					return None
-				},
-			};
 
 			// Create the parachain block data for the validators.
 			let (collation_info, api_version) = self
@@ -256,10 +245,6 @@ where
 				})
 				.ok()
 				.flatten()?;
-
-			parent_header = block.header().clone();
-
-			block_data.push((block, compact_proof));
 
 			if *last_api_version.get_or_insert_with(|| api_version) != api_version {
 				tracing::debug!(target: LOG_TARGET, ?block_hash, "Found different api version for `CollectCollationInfo`");
@@ -276,7 +261,17 @@ where
 			head_data = Some(collation_info.head_data);
 		}
 
-		let block_data = ParachainBlockData::<Block>::new(block_data);
+		let compact_proof = match storage_proof
+			.into_compact_proof::<HashingFor<Block>>(*parent_header.state_root())
+		{
+			Ok(proof) => proof,
+			Err(error) => {
+				tracing::error!(target: LOG_TARGET, ?error, parent_head = ?parent_header.hash(), "Failed to compact proof");
+				return None
+			},
+		};
+
+		let block_data = ParachainBlockData::<Block>::new(blocks, compact_proof);
 
 		let pov = polkadot_node_primitives::maybe_compress_pov(PoV {
 			block_data: BlockData(if last_api_version? >= 3 {
@@ -355,9 +350,10 @@ where
 	fn build_collation(
 		&self,
 		parent_header: Block::Header,
-		candidates: Vec<ParachainCandidate<Block>>,
+		blocks: Vec<Block>,
+		storage_proof: StorageProof,
 	) -> Option<(Collation, ParachainBlockData<Block>)> {
-		CollatorService::build_collation(self, parent_header, candidates)
+		CollatorService::build_collation(self, parent_header, blocks, storage_proof)
 	}
 
 	fn announce_with_barrier(
