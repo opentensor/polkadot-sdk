@@ -408,6 +408,7 @@ members = [
 	"substrate/frame/parameters",
 	"substrate/frame/preimage",
 	"substrate/frame/proofs/primitives",
+	"substrate/frame/proofs/storage",
 	"substrate/frame/proofs/voting",
 	"substrate/frame/proxy",
 	"substrate/frame/ranked-collective",
@@ -1006,6 +1007,7 @@ pallet-paged-list = { path = "substrate/frame/paged-list", default-features = fa
 pallet-parachain-template = { path = "templates/parachain/pallets/template", default-features = false }
 pallet-parameters = { path = "substrate/frame/parameters", default-features = false }
 pallet-preimage = { path = "substrate/frame/preimage", default-features = false }
+pallet-proofs-storage = { path = "substrate/frame/proofs/storage", default-features = false }
 pallet-proofs-voting = { path = "substrate/frame/proofs/voting", default-features = false }
 pallet-proxy = { path = "substrate/frame/proxy", default-features = false }
 pallet-ranked-collective = { path = "substrate/frame/ranked-collective", default-features = false }
