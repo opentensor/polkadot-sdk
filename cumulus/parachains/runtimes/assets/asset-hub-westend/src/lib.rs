@@ -25,6 +25,7 @@
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 mod bridge_to_ethereum_config;
+mod dday_hook;
 mod genesis_config_presets;
 mod weights;
 pub mod xcm_config;
@@ -782,7 +783,7 @@ parameter_types! {
 impl cumulus_pallet_parachain_system::Config for Runtime {
 	type WeightInfo = weights::cumulus_pallet_parachain_system::WeightInfo<Runtime>;
 	type RuntimeEvent = RuntimeEvent;
-	type OnSystemEvent = ();
+	type OnSystemEvent = (DDayHook,);
 	type SelfParaId = parachain_info::Pallet<Runtime>;
 	type DmpQueue = frame_support::traits::EnqueueWithOrigin<MessageQueue, RelayOrigin>;
 	type ReservedDmpWeight = ReservedDmpWeight;
@@ -1124,6 +1125,8 @@ impl pallet_migrations::Config for Runtime {
 	type WeightInfo = weights::pallet_migrations::WeightInfo<Runtime>;
 }
 
+impl dday_hook::Config for Runtime {}
+
 // Create the runtime by composing the FRAME pallets that were previously configured.
 construct_runtime!(
 	pub enum Runtime
@@ -1182,6 +1185,7 @@ construct_runtime!(
 		AssetRewards: pallet_asset_rewards = 61,
 
 		StateTrieMigration: pallet_state_trie_migration = 70,
+		DDayHook: dday_hook = 71,
 
 		// TODO: the pallet instance should be removed once all pools have migrated
 		// to the new account IDs.
