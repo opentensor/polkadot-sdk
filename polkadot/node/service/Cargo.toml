@@ -90,6 +90,7 @@ sp-runtime.workspace = true
 sp-runtime.default-features = true
 sp-session.workspace = true
 sp-session.default-features = true
+sp-statement-store = { workspace = true, default-features = true }
 sp-timestamp.workspace = true
 sp-timestamp.default-features = true
 sp-transaction-pool.workspace = true

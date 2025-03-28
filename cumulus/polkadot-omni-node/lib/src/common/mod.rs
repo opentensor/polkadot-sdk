@@ -69,6 +69,7 @@ pub trait NodeRuntimeApi<Block: BlockT>:
 	+ OffchainWorkerApi<Block>
 	+ CollectCollationInfo<Block>
 	+ GetCoreSelectorApi<Block>
+	+ sp_statement_store::runtime_api::ValidateStatement<Block>
 	+ Sized
 {
 }
@@ -82,6 +83,7 @@ impl<T, Block: BlockT> NodeRuntimeApi<Block> for T where
 		+ OffchainWorkerApi<Block>
 		+ GetCoreSelectorApi<Block>
 		+ CollectCollationInfo<Block>
+		+ sp_statement_store::runtime_api::ValidateStatement<Block>
 {
 }
 
