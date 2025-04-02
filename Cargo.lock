@@ -3298,6 +3298,7 @@ dependencies = [
  "cumulus-primitives-utility",
  "frame-benchmarking",
  "frame-executive",
+ "frame-metadata-hash-extension",
  "frame-proofs-primitives",
  "frame-support",
  "frame-system",
