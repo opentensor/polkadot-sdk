@@ -35,7 +35,7 @@ use frame_support::{
 	traits::{fungible::Mutate, schedule::DispatchTime, StorePreimage, VoteTally},
 };
 use pallet_dday_detection::IsStalled;
-use pallet_proofs_voting::{AccountVote, Conviction, ProvideHash, VerifyProof, Vote};
+use pallet_dday_voting::{AccountVote, Conviction, ProvideHash, VerifyProof, Vote};
 use pallet_referenda::{ReferendumCount, ReferendumInfoFor};
 use parachains_common::AccountId;
 use parachains_runtimes_test_utils::{GovernanceOrigin, RuntimeHelper};
@@ -273,7 +273,7 @@ fn dday_feature_works() {
 				},
 				(asset_hub_block_number, proof.clone())
 			),
-			<pallet_proofs_voting::Error<Runtime, DDayVotingInstance>>::NotOngoing
+			<pallet_dday_voting::Error<Runtime, DDayVotingInstance>>::NotOngoing
 		);
 
 		System::set_block_number(13);
@@ -306,7 +306,7 @@ fn dday_feature_works() {
 				},
 				(asset_hub_block_number, proof.clone())
 			),
-			<pallet_proofs_voting::Error<Runtime, DDayVotingInstance>>::InvalidProof
+			<pallet_dday_voting::Error<Runtime, DDayVotingInstance>>::InvalidProof
 		);
 
 		// Err - when more vote.balance than proven voting power
@@ -321,7 +321,7 @@ fn dday_feature_works() {
 				},
 				(asset_hub_block_number, proof.clone())
 			),
-			<pallet_proofs_voting::Error<Runtime, DDayVotingInstance>>::InsufficientFunds
+			<pallet_dday_voting::Error<Runtime, DDayVotingInstance>>::InsufficientFunds
 		);
 
 		// check before
