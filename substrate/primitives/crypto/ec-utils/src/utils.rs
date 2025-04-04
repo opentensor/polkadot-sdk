@@ -85,11 +85,15 @@ pub fn final_exponentiation<T: Pairing>(target: T::TargetField) -> T::TargetFiel
 }
 
 #[allow(unused)]
-pub fn msm_sw<T: SWCurveConfig>(bases: Vec<u8>, scalars: Vec<u8>) -> Result<Vec<u8>, ()> {
-	let bases = decode::<Vec<SWAffine<T>>>(bases)?;
-	let scalars = decode::<Vec<<T as CurveConfig>::ScalarField>>(scalars)?;
-	let res = <SWProjective<T> as VariableBaseMSM>::msm(&bases, &scalars).map_err(|_| ())?;
-	Ok(encode_proj_sw(&res))
+pub fn msm_sw<T: SWCurveConfig>(
+	bases: &[crate::bls12_381::G1Affine],
+	scalars: &[<crate::bls12_381::G1Config as CurveConfig>::ScalarField],
+) -> Result<Vec<u8>, ()> {
+	// let bases = decode::<Vec<SWAffine<T>>>(bases)?;
+	// let scalars = decode::<Vec<<T as CurveConfig>::ScalarField>>(scalars)?;
+	// let res = <SWProjective<T> as VariableBaseMSM>::msm(&bases, &scalars).map_err(|_| ())?;
+	// Ok(encode_proj_sw(&res))
+	todo!()
 }
 
 #[allow(unused)]
@@ -133,7 +137,8 @@ where
 
 /// ArkScale wrapper to implement PassBy.
 #[derive(Encode, Decode)]
-pub struct ArkWrap<T>((ArkScale<T>,));
+#[repr(transparent)]
+pub struct ArkWrap<T>(ArkScale<T>);
 
 impl<T> PassBy for ArkWrap<T>
 where
@@ -144,13 +149,21 @@ where
 
 impl<T> From<T> for ArkWrap<T> {
 	fn from(inner: T) -> Self {
-		ArkWrap((ark_scale::ArkScale(inner),))
+		ArkWrap(ark_scale::ArkScale(inner))
 	}
 }
 
 impl<T> ArkWrap<T> {
 	/// Inner type
 	pub fn inner(self) -> T {
-		self.0 .0 .0
+		self.0 .0
 	}
+}
+
+pub(crate) fn ark_slice_wrap<T>(slice: &[T]) -> &[ArkWrap<T>] {
+	unsafe { alloc::slice::from_raw_parts(slice.as_ptr() as *const ArkWrap<T>, slice.len()) }
+}
+
+pub(crate) fn ark_slice_unwrap<T>(slice: &[ArkWrap<T>]) -> &[T] {
+	unsafe { alloc::slice::from_raw_parts(slice.as_ptr() as *const T, slice.len()) }
 }

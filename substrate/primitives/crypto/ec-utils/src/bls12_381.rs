@@ -17,7 +17,7 @@
 
 //! *BLS12-381* types and host functions.
 
-use crate::utils::{self, ArkWrap, PointSafeCast};
+use crate::utils::{self, ark_slice_unwrap, ark_slice_wrap, ArkWrap, PointSafeCast};
 use alloc::vec::Vec;
 use ark_bls12_381_ext::CurveHooks;
 use ark_ec::{pairing::Pairing, CurveConfig};
@@ -70,7 +70,8 @@ impl CurveHooks for HostHooks {
 		g1: impl Iterator<Item = <Bls12_381 as Pairing>::G1Prepared>,
 		g2: impl Iterator<Item = <Bls12_381 as Pairing>::G2Prepared>,
 	) -> <Bls12_381 as Pairing>::TargetField {
-		let g1 = g1.map(|prep| prep.0.cast().into()).collect::<Vec<_>>();
+		let g1 = g1.map(|prep| prep.0.cast()).collect::<Vec<_>>();
+		let g1 = ArkWrap::from(g1);
 		let g2 = g2.map(|prep| prep.0.cast().into()).collect::<Vec<_>>();
 		host_calls::bls12_381_multi_miller_loop(g1, g2).inner()
 	}
@@ -85,8 +86,8 @@ impl CurveHooks for HostHooks {
 		bases: &[G1Affine],
 		scalars: &[<G1Config as CurveConfig>::ScalarField],
 	) -> G1Projective {
-		let bases = utils::encode(bases);
-		let scalars = utils::encode(scalars);
+		let bases = ark_slice_wrap(bases);
+		let scalars = ark_slice_wrap(scalars);
 		let res = host_calls::bls12_381_msm_g1(bases, scalars).unwrap_or_default();
 		utils::decode_proj_sw(res).unwrap_or_default()
 	}
@@ -122,12 +123,11 @@ impl CurveHooks for HostHooks {
 pub trait HostCalls {
 	/// Pairing multi Miller loop for *BLS12-381*.
 	fn bls12_381_multi_miller_loop(
-		a: Vec<ArkWrap<ark_bls12_381::g1::G1Affine>>,
+		a: ArkWrap<Vec<ark_bls12_381::g1::G1Affine>>,
 		b: Vec<ArkWrap<ark_bls12_381::g2::G2Affine>>,
 	) -> ArkWrap<<Bls12_381 as Pairing>::TargetField> {
-		let a = a.into_iter().map(|v| v.inner());
 		let b = b.into_iter().map(|v| v.inner());
-		let r = utils::multi_miller_loop::<ark_bls12_381::Bls12_381>(a, b);
+		let r = utils::multi_miller_loop::<ark_bls12_381::Bls12_381>(a.inner().into_iter(), b);
 		ArkWrap::from(r)
 	}
 
@@ -141,11 +141,15 @@ pub trait HostCalls {
 	/// Multi scalar multiplication on *G1* for *BLS12-381*
 	///
 	/// - Receives encoded:
-	///   - `bases`: `ArkScale<Vec<G1Affine>>`.
 	///   - `scalars`: `ArkScale<Vec<G1Config::ScalarField>>`.
 	/// - Returns encoded: `ArkScaleProjective<ark_bls12_381::G1Projective>`.
-	fn bls12_381_msm_g1(bases: Vec<u8>, scalars: Vec<u8>) -> Result<Vec<u8>, ()> {
-		utils::msm_sw::<ark_bls12_381::g1::Config>(bases, scalars)
+	fn bls12_381_msm_g1(
+		bases: &[ArkWrap<G1Affine>],
+		scalars: &[ArkWrap<<G1Config as CurveConfig>::ScalarField>],
+	) -> Result<Vec<u8>, ()> {
+		let bases = ark_slice_unwrap(bases);
+		let scalars = ark_slice_unwrap(scalars);
+		utils::msm_sw::<G1Config>(bases, scalars)
 	}
 
 	/// Multi scalar multiplication on *G2* for *BLS12-381*
@@ -155,7 +159,8 @@ pub trait HostCalls {
 	///   - `scalars`: `ArkScale<Vec<G2Config::ScalarField>>`.
 	/// - Returns encoded: `ArkScaleProjective<G2Projective>`.
 	fn bls12_381_msm_g2(bases: Vec<u8>, scalars: Vec<u8>) -> Result<Vec<u8>, ()> {
-		utils::msm_sw::<ark_bls12_381::g2::Config>(bases, scalars)
+		// utils::msm_sw::<ark_bls12_381::g2::Config>(bases, scalars)
+		todo!()
 	}
 
 	/// Projective multiplication on *G1* for *BLS12-381*.
