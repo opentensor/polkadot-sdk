@@ -1226,6 +1226,7 @@ dependencies = [
  "pallet-aura",
  "pallet-authorship",
  "pallet-balances",
+ "pallet-bridge-proof-root-sync",
  "pallet-collator-selection",
  "pallet-message-queue",
  "pallet-migrations",
