@@ -248,9 +248,9 @@ jobs:
           if [ $(wc -c < "/tmp/cmd/subweight.log") -gt 200000 ]; then
             echo "Subweight result is too large, truncating..."
             echo "Please check subweight.log for the full output"
-            result=$(echo "$result" | head -c 200000)
+            result="Please check subweight.log for the full output"
           fi
-
+          echo "Trying to save subweight result to GITHUB_OUTPUT"
           # Save the multiline result to the output
           {
             echo "result<<EOF"
