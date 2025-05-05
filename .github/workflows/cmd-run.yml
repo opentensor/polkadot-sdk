@@ -223,7 +223,6 @@ jobs:
         if: startsWith(github.event.inputs.cmd, 'bench')
         run: cargo install subweight
 
-      # TODO: fix for forks, refs/remotes/origin/master should be replaced with master branch from paritytech/polkadot-sdk
       - name: Run Subweight for bench
         id: subweight
         if: startsWith(github.event.inputs.cmd, 'bench')
@@ -241,6 +240,15 @@ jobs:
             --change added changed \
             --ignore-errors \
             refs/remotes/origin/master $PR_BRANCH)
+
+          echo $result
+
+          echo $result > /tmp/cmd/subweight.log
+          # Check if /tmp/cmd/subweight.log is more than 1048576 bytes
+          if [ $(wc -c < "/tmp/cmd/subweight.log") -gt 1048576 ]; then
+            echo "Subweight result is too large, truncating..."
+            result=$(echo "$result" | head -c 100000)
+          fi
 
           # Save the multiline result to the output
           {
