@@ -243,9 +243,14 @@ pub trait SubstrateCli: Sized {
 
 		let config = command.create_configuration(self, tokio_runtime.handle().clone())?;
 
-		command.init(&Self::support_url(), &Self::impl_version(), |logger_builder| {
+		match command.init(&Self::support_url(), &Self::impl_version(), |logger_builder| {
 			logger_hook(logger_builder, &config)
-		})?;
+		}) {
+			Ok(()) => {},
+			// Logger already set, ignore error.
+			Err(Error::GlobalLoggerError(sc_tracing::logging::Error::SetLoggerError(_))) => {},
+			Err(e) => return Err(e),
+		};
 
 		Runner::new(config, tokio_runtime, signals)
 	}
