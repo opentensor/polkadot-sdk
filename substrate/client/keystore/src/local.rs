@@ -82,6 +82,33 @@ impl LocalKeystore {
 			.unwrap_or_default()
 	}
 
+	/// Copy `from_key_type` keys to also exist as `_key_type`.
+	///
+	/// Helpful for situaitons like Aura to Babe migration, when keys using the
+	/// same crypto need to be used for a different purpose.
+	pub fn copy_keys(&self, from_key_type: KeyTypeId, to_key_type: KeyTypeId) -> Result<()> {
+		use std::collections::HashSet;
+
+		let inner = self.0.write();
+		let from_keys: HashSet<_> = inner.raw_public_keys(from_key_type)?.into_iter().collect();
+		let to_keys: HashSet<_> = inner.raw_public_keys(from_key_type)?.into_iter().collect();
+		let to_copy: Vec<_> = from_keys.difference(&to_keys).collect();
+
+		for public in to_copy {
+			if let Some(phrase) = inner.key_phrase_by_type(&public, from_key_type)? {
+				inner.insert(to_key_type, &phrase, &public).unwrap();
+			} else {
+				log::error!(
+					"Failed to copy key from {:?} to {:?} as the key phrase is not available",
+					from_key_type,
+					to_key_type
+				);
+			}
+		}
+
+		Ok(())
+	}
+
 	fn generate_new<T: CorePair>(
 		&self,
 		key_type: KeyTypeId,

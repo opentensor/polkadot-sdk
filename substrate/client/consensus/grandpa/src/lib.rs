@@ -150,6 +150,7 @@ pub use sp_consensus_grandpa::{
 	AuthorityId, AuthorityPair, CatchUp, Commit, CompactCommit, GrandpaApi, Message, Precommit,
 	Prevote, PrimaryPropose, ScheduledChange, SignedMessage,
 };
+use std::collections::HashSet;
 use std::marker::PhantomData;
 
 #[cfg(test)]
@@ -504,6 +505,7 @@ pub fn block_import<BE, Block: BlockT, Client, SC>(
 	genesis_authorities_provider: &dyn GenesisAuthoritySetProvider<Block>,
 	select_chain: SC,
 	telemetry: Option<TelemetryHandle>,
+	skip_block_justifications: Option<HashSet<Block::Hash>>,
 ) -> Result<(GrandpaBlockImport<BE, Block, Client, SC>, LinkHalf<Block, Client, SC>), ClientError>
 where
 	SC: SelectChain<Block>,
@@ -517,6 +519,7 @@ where
 		select_chain,
 		Default::default(),
 		telemetry,
+		skip_block_justifications,
 	)
 }
 
@@ -550,6 +553,7 @@ pub fn block_import_with_authority_set_hard_forks<BE, Block: BlockT, Client, SC>
 	select_chain: SC,
 	authority_set_hard_forks: Vec<AuthoritySetHardFork<Block>>,
 	telemetry: Option<TelemetryHandle>,
+	skip_block_justifications: Option<HashSet<Block::Hash>>,
 ) -> Result<(GrandpaBlockImport<BE, Block, Client, SC>, LinkHalf<Block, Client, SC>), ClientError>
 where
 	SC: SelectChain<Block>,
@@ -612,6 +616,7 @@ where
 			authority_set_hard_forks,
 			justification_sender.clone(),
 			telemetry.clone(),
+			skip_block_justifications,
 		),
 		LinkHalf {
 			client,

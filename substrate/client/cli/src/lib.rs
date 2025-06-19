@@ -243,9 +243,14 @@ pub trait SubstrateCli: Sized {
 
 		let config = command.create_configuration(self, tokio_runtime.handle().clone())?;
 
-		command.init(&Self::support_url(), &Self::impl_version(), |logger_builder| {
-			logger_hook(logger_builder, &config)
-		})?;
+		if let Err(_) =
+			command.init(&Self::support_url(), &Self::impl_version(), |logger_builder| {
+				logger_hook(logger_builder, &config)
+			}) {
+			log::debug!(
+				"Failed to create logger. This probably happened because it has already been initialized."
+			);
+		};
 
 		Runner::new(config, tokio_runtime, signals)
 	}

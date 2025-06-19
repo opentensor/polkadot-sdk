@@ -19185,6 +19185,7 @@ dependencies = [
  "parity-scale-codec",
  "sc-client-api",
  "sc-consensus",
+ "sc-consensus-epochs",
  "sc-telemetry",
  "sp-arithmetic 26.0.0",
  "sp-blockchain",
@@ -19372,6 +19373,7 @@ name = "sc-keystore"
 version = "34.0.0"
 dependencies = [
  "array-bytes",
+ "log",
  "parking_lot 0.12.3",
  "serde_json",
  "sp-application-crypto 39.0.0",
