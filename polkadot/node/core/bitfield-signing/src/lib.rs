@@ -121,7 +121,7 @@ async fn construct_availability_bitfield(
 	gum::debug!(
 		target: LOG_TARGET,
 		?relay_parent,
-		"ParaIds: {:?}", para_ids,
+		"Cyon ParaIds: {:?}", para_ids,
 	);
 
 	// get the set of availability cores from the runtime

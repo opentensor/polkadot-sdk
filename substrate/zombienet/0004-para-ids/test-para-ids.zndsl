@@ -1,0 +1,16 @@
+Description: ParaIds
+Network: ./test-para-ids.toml
+Creds: config
+
+alice: reports node_roles is 4
+bob: reports node_roles is 4
+
+alice: reports peers count is at least 1
+bob: reports peers count is at least 1
+
+alice: reports block height is at least 5 within 20 seconds
+bob: reports block height is at least 5 within 20 seconds
+
+alice: count of log lines containing "Cyon" is at least 1 within 120 seconds
+bob: count of log lines containing "Cyon" is at least 1 within 120 seconds
+
