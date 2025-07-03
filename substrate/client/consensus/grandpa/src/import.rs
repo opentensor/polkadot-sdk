@@ -16,8 +16,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use std::{collections::HashMap, marker::PhantomData, sync::Arc};
-
+use std::{collections::{HashMap, HashSet}, marker::PhantomData, sync::Arc};
 use codec::Decode;
 use log::debug;
 use parking_lot::Mutex;
@@ -67,6 +66,7 @@ pub struct GrandpaBlockImport<Backend, Block: BlockT, Client, SC> {
 		Mutex<HashMap<Block::Hash, PendingChange<Block::Hash, NumberFor<Block>>>>,
 	justification_sender: GrandpaJustificationSender<Block>,
 	telemetry: Option<TelemetryHandle>,
+	skip_block_justifications: Option<HashSet<Block::Hash>>,
 	_phantom: PhantomData<Backend>,
 }
 
@@ -83,6 +83,7 @@ impl<Backend, Block: BlockT, Client, SC: Clone> Clone
 			authority_set_hard_forks: Mutex::new(self.authority_set_hard_forks.lock().clone()),
 			justification_sender: self.justification_sender.clone(),
 			telemetry: self.telemetry.clone(),
+			skip_block_justifications: self.skip_block_justifications.clone(),
 			_phantom: PhantomData,
 		}
 	}
@@ -237,6 +238,9 @@ where
 	Client::Api: GrandpaApi<Block>,
 	for<'a> &'a Client: BlockImport<Block, Error = ConsensusError>,
 {
+	fn skip_block_justifications(&self, hash: &Block::Hash) -> bool {
+		self.skip_block_justifications.as_ref().map(|hashes| hashes.contains(hash)).unwrap_or(false)
+	}
 	// check for a new authority set change.
 	fn check_new_change(
 		&self,
@@ -551,11 +555,19 @@ where
 			// Importing an old block. Just save justifications and authority set changes
 			if self.check_new_change(&block.header, hash).is_some() {
 				if block.justifications.is_none() {
-					return Err(ConsensusError::ClientImport(
-						"Justification required when importing \
+					if self.skip_block_justifications(&hash) {
+						log::warn!(
+								"Justifications were skipped for block #{} {:?}.",
+								block.header.number(),
+								hash
+							);
+					} else {
+						return Err(ConsensusError::ClientImport(
+							"Justification required when importing \
 							an old block with authority set change."
-							.into(),
-					))
+								.into(),
+						));
+					}
 				}
 				let mut authority_set = self.authority_set.inner_locked();
 				authority_set.authority_set_changes.insert(number);
@@ -716,6 +728,7 @@ impl<Backend, Block: BlockT, Client, SC> GrandpaBlockImport<Backend, Block, Clie
 		authority_set_hard_forks: Vec<(SetId, PendingChange<Block::Hash, NumberFor<Block>>)>,
 		justification_sender: GrandpaJustificationSender<Block>,
 		telemetry: Option<TelemetryHandle>,
+		skip_block_justifications: Option<HashSet<Block::Hash>>,
 	) -> GrandpaBlockImport<Backend, Block, Client, SC> {
 		// check for and apply any forced authority set hard fork that applies
 		// to the *current* authority set.
@@ -755,6 +768,7 @@ impl<Backend, Block: BlockT, Client, SC> GrandpaBlockImport<Backend, Block, Clie
 			authority_set_hard_forks: Mutex::new(authority_set_hard_forks),
 			justification_sender,
 			telemetry,
+			skip_block_justifications,
 			_phantom: PhantomData,
 		}
 	}
