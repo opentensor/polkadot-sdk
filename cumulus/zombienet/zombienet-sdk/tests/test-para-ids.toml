@@ -1,0 +1,15 @@
+[settings]
+enable_tracing = false
+
+[relaychain]
+default_image = "{{RELAY_IMAGE}}"
+default_command = "polkadot"
+chain = "rococo-local"
+
+[[relaychain.nodes]]
+name = "alice"
+validator = true
+
+[[relaychain.nodes]]
+name = "bob"
+validator = true
