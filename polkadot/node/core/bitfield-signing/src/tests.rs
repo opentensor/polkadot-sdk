@@ -63,6 +63,12 @@ fn construct_availability_bitfield_works() {
 
 						tx.send(c_hash == hash_a).unwrap();
 					},
+					AllMessages::RuntimeApi(
+						RuntimeApiMessage::Request(rp, RuntimeApiRequest::ParaIds(tx)),
+					) => {
+						assert_eq!(relay_parent, rp);
+						tx.send(Ok(vec![1.into(), 2.into()])).unwrap();
+					}
 					o => panic!("Unknown message: {:?}", o),
 				},
 				r = future => match r {

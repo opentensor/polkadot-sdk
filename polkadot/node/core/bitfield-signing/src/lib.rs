@@ -32,7 +32,7 @@ use polkadot_node_subsystem::{
 	SubsystemResult,
 };
 use polkadot_node_subsystem_util::{
-	self as util, request_availability_cores, runtime::recv_runtime, Validator,
+	self as util, request_availability_cores, request_para_ids, runtime::recv_runtime, Validator,
 };
 use polkadot_primitives::{vstaging::CoreState, AvailabilityBitfield, Hash, ValidatorIndex};
 use sp_keystore::{Error as KeystoreError, KeystorePtr};
@@ -117,6 +117,13 @@ async fn construct_availability_bitfield(
 	validator_idx: ValidatorIndex,
 	sender: &mut impl overseer::BitfieldSigningSenderTrait,
 ) -> Result<AvailabilityBitfield, Error> {
+	let para_ids = { recv_runtime(request_para_ids(relay_parent, sender).await).await? };
+	gum::debug!(
+		target: LOG_TARGET,
+		?relay_parent,
+		"ParaIds: {:?}", para_ids,
+	);
+
 	// get the set of availability cores from the runtime
 	let availability_cores =
 		{ recv_runtime(request_availability_cores(relay_parent, sender).await).await? };
