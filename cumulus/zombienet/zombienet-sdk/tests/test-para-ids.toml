@@ -2,7 +2,6 @@
 enable_tracing = false
 
 [relaychain]
-default_image = "{{RELAY_IMAGE}}"
 default_command = "polkadot"
 chain = "rococo-local"
 
@@ -13,3 +12,24 @@ validator = true
 [[relaychain.nodes]]
 name = "bob"
 validator = true
+
+# Configuration for parachains
+[[parachains]]
+id = 2000
+cumulus_based = true
+chain = "local"
+
+[[parachains.collators]]
+name = "charlie"
+validator = true
+command = "parachain-template-node"
+
+[[parachains.collators]]
+name = "dave"
+validator = true
+command = "parachain-template-node"
+
+[[parachains.collators]]
+name = "erin"
+validator = true
+command = "parachain-template-node"
