@@ -117,7 +117,10 @@ async fn construct_availability_bitfield(
 	validator_idx: ValidatorIndex,
 	sender: &mut impl overseer::BitfieldSigningSenderTrait,
 ) -> Result<AvailabilityBitfield, Error> {
-	let para_ids = { recv_runtime(request_para_ids(relay_parent, sender).await).await? };
+	let session_index =
+		{ recv_runtime(util::request_session_index_for_child(relay_parent, sender).await).await? };
+	let para_ids =
+		{ recv_runtime(request_para_ids(relay_parent, session_index, sender).await).await? };
 	gum::debug!(
 		target: LOG_TARGET,
 		?relay_parent,

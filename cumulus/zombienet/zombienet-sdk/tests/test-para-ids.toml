@@ -20,19 +20,18 @@ validator = true
 [[parachains]]
 id = 2000
 cumulus_based = true
-chain = "rococo-local"
 
 [[parachains.collators]]
 name = "charlie"
 validator = true
-command = "target/release/polkadot-parachain"
+command = "../../../../target/release/polkadot-parachain"
 
-# [[parachains.collators]]
-# name = "dave"
-# validator = true
-# command = "../../../.././target/release/polkadot-parachain"
+[[parachains.collators]]
+name = "dave"
+validator = true
+command = "../../../../target/release/polkadot-parachain"
 
-# [[parachains.collators]]
-# name = "erin"
-# validator = true
-# command = "../../../../../target/release/polkadot-parachain"
+[[parachains.collators]]
+name = "erin"
+validator = true
+command = "../../../../target/release/polkadot-parachain"

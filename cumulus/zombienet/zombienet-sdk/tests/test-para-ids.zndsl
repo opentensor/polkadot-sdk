@@ -11,5 +11,5 @@ bob: reports peers count is at least 1
 alice: reports block height is at least 5 within 20 seconds
 bob: reports block height is at least 5 within 20 seconds
 
-alice: count of log lines containing "Cyon ParaIds 3" is at least 1 within 120 seconds
-bob: count of log lines containing "Cyon ParaIds 3" is at least 1 within 120 seconds
+alice: count of log lines containing "Cyon ParaIds 3" is at least 1 within 30 seconds
+bob: count of log lines containing "Cyon ParaIds 3" is at least 1 within 30 seconds
