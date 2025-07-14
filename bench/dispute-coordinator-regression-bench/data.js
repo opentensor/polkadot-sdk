@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1752525571313,
+  "lastUpdate": 1752528761122,
   "repoUrl": "https://github.com/paritytech/polkadot-sdk",
   "entries": {
     "dispute-coordinator-regression-bench": [
@@ -1616,6 +1616,55 @@ window.BENCHMARK_DATA = {
           {
             "name": "test-environment",
             "value": 0.005321601519999995,
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "ismailov.m.h@gmail.com",
+            "name": "muharem",
+            "username": "muharem"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "ec6e6843b847de92be649073317fa729898d0e1b",
+          "message": "Asset Hub Westend: nfts block provider is RC (#9141)\n\nAsset Hub Westend: nfts block provider is Relay Chain.\n\nnfts pallet uses the blocks to define `mint.start_block` and\n`mint.end_block` for collections. therefor the RC is a better choice\nhere since its more time accurate.\n\nthis does not requires a migration since there is no single collection\nwith the start and end block set.\n\nit would be nice to deploy this change asap to let clients test this\nbefore it hit production on Kusama and Polkadot.",
+          "timestamp": "2025-07-14T20:25:23Z",
+          "tree_id": "06fb447dd706c0508dbf8c601711dc3d56a98d56",
+          "url": "https://github.com/paritytech/polkadot-sdk/commit/ec6e6843b847de92be649073317fa729898d0e1b"
+        },
+        "date": 1752528743675,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Sent to peers",
+            "value": 227.09999999999997,
+            "unit": "KiB"
+          },
+          {
+            "name": "Received from peers",
+            "value": 23.800000000000004,
+            "unit": "KiB"
+          },
+          {
+            "name": "test-environment",
+            "value": 0.005144160799999993,
+            "unit": "seconds"
+          },
+          {
+            "name": "dispute-coordinator",
+            "value": 0.00264743916,
+            "unit": "seconds"
+          },
+          {
+            "name": "dispute-distribution",
+            "value": 0.008559953459999986,
             "unit": "seconds"
           }
         ]
