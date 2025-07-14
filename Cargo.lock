@@ -11983,7 +11983,11 @@ dependencies = [
  "frame-benchmarking",
  "frame-support",
  "frame-system",
+<<<<<<< HEAD
  "log",
+=======
+ "hex-literal",
+>>>>>>> efa765b6 (Pallet XCM - `transfer_assets` pre-ahm patch (#9137))
  "pallet-assets",
  "pallet-balances",
  "parity-scale-codec",

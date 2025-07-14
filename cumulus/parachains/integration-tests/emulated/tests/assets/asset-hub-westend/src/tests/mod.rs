@@ -22,6 +22,11 @@ mod send;
 mod set_xcm_versions;
 mod swap;
 mod teleport;
+<<<<<<< HEAD
+=======
+mod transact;
+mod transfer_assets_validation;
+>>>>>>> efa765b6 (Pallet XCM - `transfer_assets` pre-ahm patch (#9137))
 mod treasury;
 mod xcm_fee_estimation;
 
