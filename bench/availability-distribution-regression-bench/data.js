@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1752525496395,
+  "lastUpdate": 1752528686026,
   "repoUrl": "https://github.com/paritytech/polkadot-sdk",
   "entries": {
     "availability-distribution-regression-bench": [
@@ -78973,6 +78973,60 @@ window.BENCHMARK_DATA = {
           {
             "name": "availability-distribution",
             "value": 0.013279752260000006,
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "ismailov.m.h@gmail.com",
+            "name": "muharem",
+            "username": "muharem"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "ec6e6843b847de92be649073317fa729898d0e1b",
+          "message": "Asset Hub Westend: nfts block provider is RC (#9141)\n\nAsset Hub Westend: nfts block provider is Relay Chain.\n\nnfts pallet uses the blocks to define `mint.start_block` and\n`mint.end_block` for collections. therefor the RC is a better choice\nhere since its more time accurate.\n\nthis does not requires a migration since there is no single collection\nwith the start and end block set.\n\nit would be nice to deploy this change asap to let clients test this\nbefore it hit production on Kusama and Polkadot.",
+          "timestamp": "2025-07-14T20:25:23Z",
+          "tree_id": "06fb447dd706c0508dbf8c601711dc3d56a98d56",
+          "url": "https://github.com/paritytech/polkadot-sdk/commit/ec6e6843b847de92be649073317fa729898d0e1b"
+        },
+        "date": 1752528668550,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "Sent to peers",
+            "value": 18481.666666666653,
+            "unit": "KiB"
+          },
+          {
+            "name": "Received from peers",
+            "value": 433.3333333333332,
+            "unit": "KiB"
+          },
+          {
+            "name": "availability-distribution",
+            "value": 0.013353811780000002,
+            "unit": "seconds"
+          },
+          {
+            "name": "bitfield-distribution",
+            "value": 0.02273889692666666,
+            "unit": "seconds"
+          },
+          {
+            "name": "availability-store",
+            "value": 0.15965339783333335,
+            "unit": "seconds"
+          },
+          {
+            "name": "test-environment",
+            "value": 0.007570348673333319,
             "unit": "seconds"
           }
         ]
