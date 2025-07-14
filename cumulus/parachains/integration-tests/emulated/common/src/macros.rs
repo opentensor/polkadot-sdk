@@ -32,6 +32,11 @@ pub use xcm::{
 	v3::Location as V3Location,
 };
 
+<<<<<<< HEAD
+=======
+pub use xcm_executor::traits::{DropAssets, TransferType};
+
+>>>>>>> efa765b6 (Pallet XCM - `transfer_assets` pre-ahm patch (#9137))
 // Cumulus
 pub use asset_test_utils;
 pub use cumulus_pallet_xcmp_queue;
@@ -653,6 +658,7 @@ macro_rules! test_dry_run_transfer_across_pk_bridge {
 				// Give some initial funds.
 				<Balances as fungible::Mutate<_>>::set_balance(&who, initial_balance);
 
+<<<<<<< HEAD
 				let call = RuntimeCall::PolkadotXcm(pallet_xcm::Call::transfer_assets {
 					dest: Box::new(VersionedLocation::from($destination)),
 					beneficiary: Box::new(VersionedLocation::from(Junction::AccountId32 {
@@ -664,6 +670,23 @@ macro_rules! test_dry_run_transfer_across_pk_bridge {
 					])),
 					fee_asset_item: 0,
 					weight_limit: Unlimited,
+=======
+				let beneficiary: $crate::macros::Location = $crate::macros::Junction::AccountId32 {
+						id: who.clone().into(),
+						network: None,
+					}.into();
+
+				let call = RuntimeCall::PolkadotXcm($crate::macros::pallet_xcm::Call::transfer_assets_using_type_and_then {
+					dest: Box::new($crate::macros::VersionedLocation::from($destination)),
+					assets: Box::new($crate::macros::VersionedAssets::from(vec![
+						($crate::macros::Parent, transfer_amount).into(),
+					])),
+					assets_transfer_type: Box::new($crate::macros::TransferType::LocalReserve),
+					remote_fees_id: Box::new($crate::macros::VersionedAssetId::from($crate::macros::Parent)),
+					fees_transfer_type: Box::new($crate::macros::TransferType::LocalReserve),
+					custom_xcm_on_dest: Box::new($crate::macros::VersionedXcm::<()>::from($crate::macros::Xcm::<()>::builder_unsafe().deposit_asset(AllCounted(1), beneficiary).build())),
+					weight_limit: $crate::macros::Unlimited,
+>>>>>>> efa765b6 (Pallet XCM - `transfer_assets` pre-ahm patch (#9137))
 				});
 				let result = Runtime::dry_run_call(OriginCaller::system(RawOrigin::Signed(who)), call, XCM_VERSION).unwrap();
 				// We assert the dry run succeeds and sends only one message to the local bridge hub.
