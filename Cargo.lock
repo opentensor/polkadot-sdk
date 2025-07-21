@@ -4310,7 +4310,7 @@ dependencies = [
  "sp-inherents",
  "sp-runtime 41.1.0",
  "sp-state-machine 0.45.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -4803,7 +4803,7 @@ dependencies = [
  "sp-blockchain",
  "sp-state-machine 0.45.0",
  "sp-version 39.0.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -4872,7 +4872,7 @@ dependencies = [
  "sp-storage 22.0.0",
  "sp-version 39.0.0",
  "substrate-prometheus-endpoint",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-util",
  "tracing",
@@ -6488,7 +6488,7 @@ dependencies = [
  "substrate-test-runtime",
  "subxt 0.38.1",
  "subxt-signer 0.38.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "thousands",
  "westend-runtime",
 ]
@@ -12845,7 +12845,7 @@ dependencies = [
  "substrate-prometheus-endpoint",
  "subxt 0.38.1",
  "subxt-signer 0.38.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tokio",
 ]
 
@@ -14351,7 +14351,7 @@ dependencies = [
  "sp-keyring",
  "sp-keystore 0.42.0",
  "sp-tracing 17.1.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tracing-gum",
 ]
 
@@ -14381,7 +14381,7 @@ dependencies = [
  "sp-core 36.1.0",
  "sp-keyring",
  "sp-tracing 17.1.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tokio",
  "tracing-gum",
 ]
@@ -14418,7 +14418,7 @@ dependencies = [
  "sp-keyring",
  "sp-runtime 41.1.0",
  "substrate-build-script-utils",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -14447,7 +14447,7 @@ dependencies = [
  "sp-keystore 0.42.0",
  "sp-runtime 41.1.0",
  "sp-tracing 17.1.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tokio-util",
  "tracing-gum",
 ]
@@ -14487,7 +14487,7 @@ dependencies = [
  "sp-keyring",
  "sp-keystore 0.42.0",
  "sp-tracing 17.1.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tracing-gum",
 ]
 
@@ -14503,7 +14503,7 @@ dependencies = [
  "reed-solomon-novelpoly",
  "sp-core 36.1.0",
  "sp-trie 39.1.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -14560,7 +14560,7 @@ dependencies = [
  "sp-consensus",
  "sp-core 36.1.0",
  "sp-keyring",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tracing-gum",
 ]
 
@@ -14582,7 +14582,7 @@ dependencies = [
  "schnellru",
  "sp-core 36.1.0",
  "sp-keyring",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tracing-gum",
 ]
 
@@ -14624,7 +14624,7 @@ dependencies = [
  "sp-keystore 0.42.0",
  "sp-runtime 41.1.0",
  "sp-tracing 17.1.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tracing-gum",
 ]
 
@@ -14681,7 +14681,7 @@ dependencies = [
  "sp-core 36.1.0",
  "sp-keyring",
  "sp-tracing 17.1.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tracing-gum",
 ]
 
@@ -14709,7 +14709,7 @@ dependencies = [
  "sp-keyring",
  "sp-keystore 0.42.0",
  "sp-tracing 17.1.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tracing-gum",
 ]
 
@@ -14724,7 +14724,7 @@ dependencies = [
  "polkadot-primitives",
  "polkadot-primitives-test-helpers",
  "sp-keystore 0.42.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tracing-gum",
  "wasm-timer",
 ]
@@ -14793,7 +14793,7 @@ dependencies = [
  "polkadot-node-subsystem-util",
  "polkadot-primitives",
  "sp-core 36.1.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tracing-gum",
 ]
 
@@ -14820,7 +14820,7 @@ dependencies = [
  "sp-keyring",
  "sp-keystore 0.42.0",
  "sp-tracing 17.1.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tracing-gum",
 ]
 
@@ -14836,7 +14836,7 @@ dependencies = [
  "polkadot-primitives",
  "sp-blockchain",
  "sp-inherents",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tracing-gum",
 ]
 
@@ -14856,7 +14856,7 @@ dependencies = [
  "rstest",
  "sp-core 36.1.0",
  "sp-tracing 17.1.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tracing-gum",
 ]
 
@@ -14876,7 +14876,7 @@ dependencies = [
  "polkadot-primitives-test-helpers",
  "sp-application-crypto 40.1.0",
  "sp-keystore 0.42.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tracing-gum",
 ]
 
@@ -14917,7 +14917,7 @@ dependencies = [
  "tempfile",
  "test-parachain-adder",
  "test-parachain-halt",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tokio",
  "tracing-gum",
 ]
@@ -14965,7 +14965,7 @@ dependencies = [
  "sp-io 40.0.1",
  "sp-tracing 17.1.0",
  "tempfile",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tracing-gum",
 ]
 
@@ -15071,7 +15071,7 @@ dependencies = [
  "sc-network-types",
  "sp-runtime 41.1.0",
  "strum 0.26.3",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tracing-gum",
 ]
 
@@ -15094,7 +15094,7 @@ dependencies = [
  "sp-consensus-slots",
  "sp-keystore 0.42.0",
  "sp-maybe-compressed-blob 11.0.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "zstd 0.12.4",
 ]
 
@@ -15151,7 +15151,7 @@ dependencies = [
  "sp-consensus-babe",
  "sp-runtime 41.1.0",
  "substrate-prometheus-endpoint",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -15185,7 +15185,7 @@ dependencies = [
  "sp-core 36.1.0",
  "sp-keystore 0.42.0",
  "tempfile",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tracing-gum",
 ]
 
@@ -15380,7 +15380,7 @@ dependencies = [
  "sp-runtime 41.1.0",
  "sp-staking",
  "sp-std 14.0.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -16203,7 +16203,7 @@ dependencies = [
  "staging-xcm",
  "substrate-prometheus-endpoint",
  "tempfile",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tracing-gum",
  "westend-runtime",
  "westend-runtime-constants",
@@ -16242,7 +16242,7 @@ dependencies = [
  "sp-keystore 0.42.0",
  "sp-staking",
  "sp-tracing 17.1.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tracing-gum",
 ]
 
@@ -17776,7 +17776,7 @@ dependencies = [
  "sp-trie 39.1.0",
  "sp-version 39.0.0",
  "staging-xcm",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tokio",
 ]
 
@@ -17800,7 +17800,7 @@ dependencies = [
  "sp-tracing 17.1.0",
  "substrate-prometheus-endpoint",
  "sysinfo",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "time",
  "tokio",
 ]
@@ -18659,7 +18659,7 @@ dependencies = [
  "log",
  "sp-core 36.1.0",
  "sp-wasm-interface 21.0.1",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -18689,7 +18689,7 @@ dependencies = [
  "sp-tracing 17.1.0",
  "substrate-prometheus-endpoint",
  "substrate-test-runtime-client",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -18813,7 +18813,7 @@ dependencies = [
  "sp-tracing 17.1.0",
  "sp-version 39.0.0",
  "tempfile",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tokio",
 ]
 
@@ -18895,7 +18895,7 @@ dependencies = [
  "sp-state-machine 0.45.0",
  "sp-test-primitives",
  "substrate-prometheus-endpoint",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -18932,7 +18932,7 @@ dependencies = [
  "substrate-prometheus-endpoint",
  "substrate-test-runtime-client",
  "tempfile",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tokio",
 ]
 
@@ -18974,7 +18974,7 @@ dependencies = [
  "sp-tracing 17.1.0",
  "substrate-prometheus-endpoint",
  "substrate-test-runtime-client",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tokio",
 ]
 
@@ -19000,7 +19000,7 @@ dependencies = [
  "sp-keystore 0.42.0",
  "sp-runtime 41.1.0",
  "substrate-test-runtime-client",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tokio",
 ]
 
@@ -19038,7 +19038,7 @@ dependencies = [
  "sp-tracing 17.1.0",
  "substrate-prometheus-endpoint",
  "substrate-test-runtime-client",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tokio",
  "wasm-timer",
 ]
@@ -19060,7 +19060,7 @@ dependencies = [
  "sp-core 36.1.0",
  "sp-runtime 41.1.0",
  "substrate-test-runtime-client",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tokio",
 ]
 
@@ -19121,7 +19121,7 @@ dependencies = [
  "sp-tracing 17.1.0",
  "substrate-prometheus-endpoint",
  "substrate-test-runtime-client",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tokio",
 ]
 
@@ -19145,7 +19145,7 @@ dependencies = [
  "sp-keyring",
  "sp-runtime 41.1.0",
  "substrate-test-runtime-client",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tokio",
 ]
 
@@ -19183,7 +19183,7 @@ dependencies = [
  "substrate-prometheus-endpoint",
  "substrate-test-runtime-client",
  "substrate-test-runtime-transaction-pool",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tokio",
 ]
 
@@ -19208,7 +19208,7 @@ dependencies = [
  "sp-inherents",
  "sp-runtime 41.1.0",
  "substrate-prometheus-endpoint",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -19318,7 +19318,7 @@ dependencies = [
  "sc-allocator 31.0.0",
  "sp-maybe-compressed-blob 11.0.0",
  "sp-wasm-interface 21.0.1",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "wasm-instrument",
 ]
 
@@ -19411,7 +19411,7 @@ dependencies = [
  "sp-core 36.1.0",
  "sp-keystore 0.42.0",
  "tempfile",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -19438,7 +19438,7 @@ dependencies = [
  "sp-keystore 0.42.0",
  "sp-mixnet",
  "sp-runtime 41.1.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -19491,7 +19491,7 @@ dependencies = [
  "substrate-test-runtime",
  "substrate-test-runtime-client",
  "tempfile",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-stream",
  "tokio-util",
@@ -19550,7 +19550,7 @@ dependencies = [
  "sp-blockchain",
  "sp-core 36.1.0",
  "sp-runtime 41.1.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -19606,7 +19606,7 @@ dependencies = [
  "sp-tracing 17.1.0",
  "substrate-prometheus-endpoint",
  "substrate-test-runtime-client",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-stream",
 ]
@@ -19676,7 +19676,7 @@ dependencies = [
  "multihash 0.19.1",
  "quickcheck",
  "rand 0.8.5",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "zeroize",
 ]
 
@@ -19783,7 +19783,7 @@ dependencies = [
  "sp-rpc",
  "sp-runtime 41.1.0",
  "sp-version 39.0.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -19849,7 +19849,7 @@ dependencies = [
  "substrate-test-runtime",
  "substrate-test-runtime-client",
  "substrate-test-runtime-transaction-pool",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-stream",
 ]
@@ -19881,7 +19881,7 @@ dependencies = [
  "sp-version 39.0.0",
  "sp-wasm-interface 21.0.1",
  "subxt 0.38.1",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -19943,7 +19943,7 @@ dependencies = [
  "substrate-test-runtime",
  "substrate-test-runtime-client",
  "tempfile",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tokio",
  "tracing",
  "tracing-futures",
@@ -20022,7 +20022,7 @@ dependencies = [
  "fs4",
  "log",
  "sp-core 36.1.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tokio",
 ]
 
@@ -20041,7 +20041,7 @@ dependencies = [
  "serde_json",
  "sp-blockchain",
  "sp-runtime 41.1.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -20078,7 +20078,7 @@ dependencies = [
  "sc-utils",
  "serde",
  "serde_json",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "wasm-timer",
 ]
 
@@ -20105,7 +20105,7 @@ dependencies = [
  "sp-rpc",
  "sp-runtime 41.1.0",
  "sp-tracing 17.1.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tracing",
  "tracing-log",
  "tracing-subscriber",
@@ -20155,7 +20155,7 @@ dependencies = [
  "substrate-test-runtime-client",
  "substrate-test-runtime-transaction-pool",
  "substrate-txtesttool",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-stream",
  "tracing",
@@ -20177,7 +20177,7 @@ dependencies = [
  "sp-blockchain",
  "sp-core 36.1.0",
  "sp-runtime 41.1.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -22029,7 +22029,7 @@ dependencies = [
  "sp-test-primitives",
  "sp-trie 39.1.0",
  "sp-version 39.0.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -22213,7 +22213,7 @@ dependencies = [
  "sp-database",
  "sp-runtime 41.1.0",
  "sp-state-machine 0.45.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tracing",
 ]
 
@@ -22227,7 +22227,7 @@ dependencies = [
  "sp-inherents",
  "sp-runtime 41.1.0",
  "sp-state-machine 0.45.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -22517,7 +22517,7 @@ dependencies = [
  "sp-storage 22.0.0",
  "ss58-registry",
  "substrate-bip39 0.6.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tracing",
  "w3f-bls",
  "zeroize",
@@ -22693,7 +22693,7 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "sp-runtime 41.1.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -22822,7 +22822,7 @@ dependencies = [
 name = "sp-maybe-compressed-blob"
 version = "11.0.0"
 dependencies = [
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "zstd 0.12.4",
 ]
 
@@ -22880,7 +22880,7 @@ dependencies = [
  "sp-core 36.1.0",
  "sp-debug-derive 14.0.0",
  "sp-runtime 41.1.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -23243,7 +23243,7 @@ dependencies = [
  "sp-panic-handler 13.0.2",
  "sp-runtime 41.1.0",
  "sp-trie 39.1.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tracing",
  "trie-db 0.30.0",
 ]
@@ -23267,7 +23267,7 @@ dependencies = [
  "sp-externalities 0.30.0",
  "sp-runtime 41.1.0",
  "sp-runtime-interface 29.0.1",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "x25519-dalek",
 ]
 
@@ -23338,7 +23338,7 @@ dependencies = [
  "parity-scale-codec",
  "sp-inherents",
  "sp-runtime 41.1.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -23451,7 +23451,7 @@ dependencies = [
  "sp-core 36.1.0",
  "sp-externalities 0.30.0",
  "sp-runtime 41.1.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tracing",
  "trie-bench",
  "trie-db 0.30.0",
@@ -23490,7 +23490,7 @@ dependencies = [
  "sp-runtime 41.1.0",
  "sp-std 14.0.0",
  "sp-version-proc-macro 15.0.0",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -23919,7 +23919,7 @@ dependencies = [
  "sp-io 40.0.1",
  "sp-runtime 41.1.0",
  "sp-statement-store",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -24263,7 +24263,7 @@ dependencies = [
  "hyper-util",
  "log",
  "prometheus",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tokio",
 ]
 
@@ -24306,7 +24306,7 @@ dependencies = [
  "sp-runtime 41.1.0",
  "sp-trie 39.1.0",
  "strum 0.26.3",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -24461,7 +24461,7 @@ dependencies = [
  "sp-blockchain",
  "sp-runtime 41.1.0",
  "substrate-test-runtime-client",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
 ]
 
 [[package]]
@@ -28119,7 +28119,7 @@ dependencies = [
  "parity-scale-codec",
  "serde",
  "serde_json",
- "thiserror 1.0.65",
+ "thiserror 2.0.12",
  "tokio",
  "tokio-tungstenite 0.26.2",
  "tracing-gum",
