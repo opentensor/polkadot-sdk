@@ -57,7 +57,8 @@ impl<Hash, Ex> Ord for TransactionRef<Hash, Ex> {
 		self.transaction
 			.priority
 			.cmp(&other.transaction.priority)
-			.then_with(|| other.transaction.valid_till.cmp(&self.transaction.valid_till))
+			// Disable transaction longevity effect on its priority.
+			//			.then_with(|| other.transaction.valid_till.cmp(&self.transaction.valid_till))
 			.then_with(|| other.insertion_id.cmp(&self.insertion_id))
 	}
 }
