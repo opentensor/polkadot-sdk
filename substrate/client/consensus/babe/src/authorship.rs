@@ -18,8 +18,11 @@
 
 //! BABE authority selection and slot claiming.
 
+use crate::LOG_TARGET;
+
 use super::{Epoch, AUTHORING_SCORE_LENGTH, AUTHORING_SCORE_VRF_CONTEXT};
 use codec::Encode;
+use log::trace;
 use sc_consensus_epochs::Epoch as EpochT;
 use sp_application_crypto::AppCrypto;
 use sp_consensus_babe::{
@@ -143,13 +146,16 @@ fn claim_secondary_slot(
 	}
 
 	let expected_author = secondary_slot_author(slot, &epoch.authorities, epoch.randomness)?;
+	trace!(target: LOG_TARGET, "slot {} expected_author: {:?}", &slot, &expected_author);
 
 	for (authority_id, authority_index) in keys {
 		if authority_id == expected_author {
+			trace!(target: LOG_TARGET, "Matched with expected_author. author_secondary_vrf: {}", &author_secondary_vrf);
 			let pre_digest = if author_secondary_vrf {
 				let data = make_vrf_sign_data(&epoch.randomness, slot, epoch_index);
 				let result =
 					keystore.sr25519_vrf_sign(AuthorityId::ID, authority_id.as_ref(), &data);
+				trace!(target: LOG_TARGET, "sr25519_vrf_sign Result: {:?}", &result);
 				if let Ok(Some(vrf_signature)) = result {
 					Some(PreDigest::SecondaryVRF(SecondaryVRFPreDigest {
 						slot,
@@ -157,6 +163,7 @@ fn claim_secondary_slot(
 						vrf_signature,
 					}))
 				} else {
+					trace!(target: LOG_TARGET, "Failed to vrf sign!");
 					None
 				}
 			} else if keystore.has_keys(&[(authority_id.to_raw_vec(), AuthorityId::ID)]) {
@@ -168,12 +175,14 @@ fn claim_secondary_slot(
 				None
 			};
 
+			trace!(target: LOG_TARGET, "pre_digset: {:?}", &pre_digest);
 			if let Some(pre_digest) = pre_digest {
 				return Some((pre_digest, authority_id.clone()))
 			}
 		}
 	}
 
+	trace!(target: LOG_TARGET, "No match with expected_author: {:?}", &expected_author);
 	None
 }
 
@@ -203,6 +212,7 @@ pub fn claim_slot_using_keys(
 	keystore: &KeystorePtr,
 	keys: &[(AuthorityId, usize)],
 ) -> Option<(PreDigest, AuthorityId)> {
+	trace!(target: LOG_TARGET, "Attempting to claim slot using keys {} epoch {:?} with keys {:?}", &slot, &epoch, &keys);
 	claim_primary_slot(slot, epoch, epoch.config.c, keystore, keys).or_else(|| {
 		if epoch.config.allowed_slots.is_secondary_plain_slots_allowed() ||
 			epoch.config.allowed_slots.is_secondary_vrf_slots_allowed()
@@ -235,6 +245,7 @@ fn claim_primary_slot(
 	if epoch.end_slot() <= slot {
 		// Slot doesn't strictly belong to the epoch, create a clone with fixed values.
 		epoch_index = epoch.clone_for_slot(slot).epoch_index;
+		trace!(target: LOG_TARGET, "Slot doesn't strictly belong to epoch. Creating clone with fixed values.");
 	}
 
 	let data = make_vrf_sign_data(&epoch.randomness, slot, epoch_index);
@@ -254,6 +265,7 @@ fn claim_primary_slot(
 				.map(|bytes| u128::from_le_bytes(bytes) < threshold)
 				.unwrap_or_default();
 
+			trace!(target: LOG_TARGET, "Authority Index: {} can_claim: {}", authority_index, can_claim);
 			if can_claim {
 				let pre_digest = PreDigest::Primary(PrimaryPreDigest {
 					slot,
