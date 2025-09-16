@@ -858,20 +858,24 @@ where
 	}
 
 	fn should_backoff(&self, slot: Slot, chain_head: &B::Header) -> bool {
-		if let Some(ref strategy) = self.backoff_authoring_blocks {
-			if let Ok(chain_head_slot) =
-				find_pre_digest::<B>(chain_head).map(|digest| digest.slot())
-			{
-				return strategy.should_backoff(
-					*chain_head.number(),
-					chain_head_slot,
-					self.client.info().finalized_number,
-					slot,
-					self.logging_target(),
-				)
-			}
-		}
-		false
+		let strategy = match &self.backoff_authoring_blocks {
+			Some(strategy) => strategy,
+			None => return false,
+		};
+
+		let digest = match find_pre_digest::<B>(chain_head) {
+			Ok(Some(digest)) => digest,
+			_ => return false,
+		};
+
+		let chain_head_slot = digest.slot();
+		strategy.should_backoff(
+			*chain_head.number(),
+			chain_head_slot,
+			self.client.info().finalized_number,
+			slot,
+			self.logging_target(),
+		)
 	}
 
 	fn sync_oracle(&mut self) -> &mut Self::SyncOracle {
@@ -891,7 +895,10 @@ where
 	}
 
 	fn proposing_remaining_duration(&self, slot_info: &SlotInfo<B>) -> Duration {
-		let parent_slot = find_pre_digest::<B>(&slot_info.chain_head).ok().map(|d| d.slot());
+		let parent_slot = find_pre_digest::<B>(&slot_info.chain_head)
+			.ok()
+			.map(|d| d.map(|d| d.slot()))
+			.flatten();
 
 		sc_consensus_slots::proposing_remaining_duration(
 			parent_slot,
@@ -904,28 +911,21 @@ where
 	}
 }
 
-/// Extract the BABE pre digest from the given header. Pre-runtime digests are
-/// mandatory, the function will return `Err` if none is found.
-pub fn find_pre_digest<B: BlockT>(header: &B::Header) -> Result<PreDigest, Error<B>> {
-	// genesis block doesn't contain a pre digest so let's generate a
-	// dummy one to not break any invariants in the rest of the code
-	if header.number().is_zero() {
-		return Ok(PreDigest::SecondaryPlain(SecondaryPlainPreDigest {
-			slot: 0.into(),
-			authority_index: 0,
-		}))
-	}
-
+/// Extract the BABE pre digest from the given header. If the pre-runtime
+/// digest is not present (e.g. genesis or aura -> babe migration), the
+/// function will return `Ok(None)`.
+pub fn find_pre_digest<B: BlockT>(header: &B::Header) -> Result<Option<PreDigest>, Error<B>> {
 	let mut pre_digest: Option<_> = None;
 	for log in header.digest().logs() {
 		trace!(target: LOG_TARGET, "Checking log {:?}, looking for pre runtime digest", log);
 		match (log.as_babe_pre_digest(), pre_digest.is_some()) {
 			(Some(_), true) => return Err(babe_err(Error::MultiplePreRuntimeDigests)),
-			(None, _) => trace!(target: LOG_TARGET, "Ignoring digest not meant for us"),
+			(None, _) =>
+				trace!(target: LOG_TARGET, "find_pre_digest: Ignoring digest not meant for us"),
 			(s, false) => pre_digest = s,
 		}
 	}
-	pre_digest.ok_or_else(|| babe_err(Error::NoPreRuntimeDigest))
+	Ok(pre_digest)
 }
 
 /// Extract the BABE epoch change digest from the given header, if it exists.
@@ -940,7 +940,8 @@ pub fn find_next_epoch_digest<B: BlockT>(
 			(Some(ConsensusLog::NextEpochData(_)), true) =>
 				return Err(babe_err(Error::MultipleEpochChangeDigests)),
 			(Some(ConsensusLog::NextEpochData(epoch)), false) => epoch_digest = Some(epoch),
-			_ => trace!(target: LOG_TARGET, "Ignoring digest not meant for us"),
+			_ =>
+				trace!(target: LOG_TARGET, "find_next_epoch_digest: Ignoring digest not meant for us"),
 		}
 	}
 
@@ -959,7 +960,8 @@ fn find_next_config_digest<B: BlockT>(
 			(Some(ConsensusLog::NextConfigData(_)), true) =>
 				return Err(babe_err(Error::MultipleConfigChangeDigests)),
 			(Some(ConsensusLog::NextConfigData(config)), false) => config_digest = Some(config),
-			_ => trace!(target: LOG_TARGET, "Ignoring digest not meant for us"),
+			_ =>
+				trace!(target: LOG_TARGET, "find_next_config_digest: Ignoring digest not meant for us"),
 		}
 	}
 
@@ -1055,7 +1057,8 @@ where
 
 		let slot_now = Slot::from_timestamp(Timestamp::current(), self.slot_duration);
 
-		let pre_digest = find_pre_digest::<Block>(&block.header)?;
+		let pre_digest = find_pre_digest::<Block>(&block.header)?
+			.ok_or(babe_err(Error::<Block>::NoPreRuntimeDigest))?;
 		let (check_header, epoch_descriptor) = {
 			let (epoch_descriptor, viable_epoch) = query_epoch_changes(
 				&self.epoch_changes,
@@ -1275,7 +1278,10 @@ where
 		let slot_now = create_inherent_data_providers.slot();
 
 		let babe_pre_digest = find_pre_digest::<Block>(&block.header)
-			.map_err(|e| ConsensusError::Other(Box::new(e)))?;
+			.map_err(|e| ConsensusError::Other(Box::new(e)))?
+			// If babe pre-genesis is missing (e.g. genesis or aura -> babe migration) then
+			// use the default.
+			.unwrap_or_default();
 		let slot = babe_pre_digest.slot();
 
 		// Check inherents.
@@ -1506,8 +1512,10 @@ where
 			return self.import_state(block).await
 		}
 
-		let pre_digest = find_pre_digest::<Block>(&block.header).expect(
-			"valid babe headers must contain a predigest; header has been already verified; qed",
+		let pre_digest = find_pre_digest::<Block>(&block.header)
+			.map_err(|e| ConsensusError::Other(Box::new(e)))?
+			.expect(
+			"valid babe leaders must contain a predigest; header has been already verified; qed"
 		);
 		let slot = pre_digest.slot();
 
@@ -1522,10 +1530,12 @@ where
 				)
 			})?;
 
-		let parent_slot = find_pre_digest::<Block>(&parent_header).map(|d| d.slot()).expect(
-			"parent is non-genesis; valid BABE headers contain a pre-digest; header has already \
-			 been verified; qed",
-		);
+		let parent_slot = find_pre_digest::<Block>(&parent_header)
+			.map_err(|e| ConsensusError::Other(Box::new(e)))?
+			// If babe pre-genesis is missing (e.g. genesis or aura -> babe migration) then
+			// use the default.
+			.unwrap_or_default()
+			.slot();
 
 		// make sure that slot number is strictly increasing
 		if slot <= parent_slot {
@@ -1549,7 +1559,9 @@ where
 			//
 			// also provides the total weight of the chain, including the imported block.
 			let (epoch_descriptor, first_in_epoch, parent_weight) = {
-				let parent_weight = if *parent_header.number() == Zero::zero() {
+				// Check the parent_slot rather than block number to detect Babe genesis, regardless
+				// of whether it was first block or happened later.
+				let parent_weight = if parent_slot.is_zero() {
 					0
 				} else {
 					aux_schema::load_block_weight(&*self.client, parent_hash)
@@ -1780,7 +1792,10 @@ where
 			);
 
 		find_pre_digest::<Block>(&finalized_header)
-			.expect("finalized header must be valid; valid blocks have a pre-digest; qed")
+			.map_err(|e| ConsensusError::Other(Box::new(e)))?
+			// If babe pre-genesis is missing (e.g. genesis or aura -> babe migration) then we
+			// use the default.
+			.unwrap_or_default()
 			.slot()
 	};
 
