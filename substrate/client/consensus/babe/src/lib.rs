@@ -988,6 +988,25 @@ pub struct BabeVerifier<Block: BlockT, Client> {
 	telemetry: Option<TelemetryHandle>,
 }
 
+impl<Block: BlockT, Client> BabeVerifier<Block, Client> {
+	/// New Babe Verifier.
+	pub fn new(
+		client: Arc<Client>,
+		slot_duration: SlotDuration,
+		config: BabeConfiguration,
+		epoch_changes: SharedEpochChanges<Block, Epoch>,
+		telemetry: Option<TelemetryHandle>,
+	) -> Self {
+		Self {
+			client,
+			slot_duration,
+			config,
+			epoch_changes,
+			telemetry,
+		}
+	}
+}
+
 #[async_trait::async_trait]
 impl<Block, Client> Verifier<Block> for BabeVerifier<Block, Client>
 where
