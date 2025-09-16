@@ -77,6 +77,16 @@ impl LocalKeystore {
 		self.0.read().key_pair::<Pair>(public)
 	}
 
+	/// Returns a list of raw public keys filtered by `KeyTypeId`
+	pub fn raw_public_keys(&self, key_type: KeyTypeId) -> Result<Vec<Vec<u8>>> {
+		self.0.read().raw_public_keys(key_type)
+	}
+
+	/// Get the key phrase for a given public key and key type.
+	pub fn key_phrase_by_type(&self, public: &[u8], key_type: KeyTypeId) -> Result<Option<String>> {
+		self.0.read().key_phrase_by_type(public, key_type)
+	}
+
 	fn public_keys<T: CorePair>(&self, key_type: KeyTypeId) -> Vec<T::Public> {
 		self.0
 			.read()
