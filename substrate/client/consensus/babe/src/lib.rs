@@ -988,6 +988,29 @@ pub struct BabeVerifier<Block: BlockT, Client, SelectChain, CIDP> {
 	offchain_tx_pool_factory: OffchainTransactionPoolFactory<Block>,
 }
 
+impl<Block: BlockT, Client, SelectChain, CIDP> BabeVerifier<Block, Client, SelectChain, CIDP> {
+	/// New Babe Verifier.
+	pub fn new(
+		client: Arc<Client>,
+		select_chain: SelectChain,
+		create_inherent_data_providers: CIDP,
+		config: BabeConfiguration,
+		epoch_changes: SharedEpochChanges<Block, Epoch>,
+		telemetry: Option<TelemetryHandle>,
+		offchain_tx_pool_factory: OffchainTransactionPoolFactory<Block>,
+	) -> Self {
+		Self {
+			client,
+			select_chain,
+			create_inherent_data_providers,
+			config,
+			epoch_changes,
+			telemetry,
+			offchain_tx_pool_factory,
+		}
+	}
+}
+
 impl<Block, Client, SelectChain, CIDP> BabeVerifier<Block, Client, SelectChain, CIDP>
 where
 	Block: BlockT,
