@@ -749,7 +749,8 @@ where
 	}
 
 	fn aux_data(&self, parent: &B::Header, slot: Slot) -> Result<Self::AuxData, ConsensusError> {
-		self.epoch_changes
+		Ok(self
+			.epoch_changes
 			.shared_data()
 			.epoch_descriptor_for_child_of(
 				descendent_query(&*self.client),
@@ -758,7 +759,12 @@ where
 				slot,
 			)
 			.map_err(|e| ConsensusError::ChainLookup(e.to_string()))?
-			.ok_or(ConsensusError::InvalidAuthoritiesSet)
+			// AuxData is not present in the event the author node is producing the first
+			// Babe block. In this case, use an UnimportedGenesis epoch descriptor.
+			//
+			// This is a safe change to make because it only impacts the AuxData attached to a block
+			// by a block author. It is not used for any validation during block import.
+			.unwrap_or(ViableEpochDescriptor::UnimportedGenesis(slot)))
 	}
 
 	fn authorities_len(&self, epoch_descriptor: &Self::AuxData) -> Option<usize> {
@@ -2018,7 +2024,17 @@ where
 			slot,
 		)
 		.map_err(|e| Error::<Block>::ForkTree(Box::new(e)))?
-		.ok_or(Error::<Block>::FetchEpoch(parent_hash))?;
+		// Originally the following .unwrap_or(...) was this .ok_or:
+		// .ok_or(Error::<Block>::FetchEpoch(parent_hash))?;
+		//
+		// This is a safe change, because using a `ViableEpochDescriptor::UnimportedGenesis`
+		// results in checks that the block signer is one of the BabeConfiguration
+		// authorities of the current runtime.
+		//
+		// These BabeConfiguration authorities originate from the last Aura block mined
+		// (which is the one that executed the runtime upgrade to Babe, and we know was
+		// a valid Aura block).
+		.unwrap_or(ViableEpochDescriptor::UnimportedGenesis(slot));
 	let viable_epoch = epoch_changes
 		.viable_epoch(&epoch_descriptor, |slot| Epoch::genesis(&config, slot))
 		.ok_or(Error::<Block>::FetchEpoch(parent_hash))?;
