@@ -218,9 +218,10 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 			if let Some((set_id, list)) = hard_forks.get_hard_forked_authorities(&(hash, number)) {
 				current_set_id = set_id;
 				current_authorities = list.clone();
-			} else if let Some(new_set_id) = hard_forks.get_new_initial_set_id() {
-				current_set_id = new_set_id;
-			}{
+			} else if let Some(initial_set_id) = hard_forks.get_new_initial_set_id() {
+				current_set_id += initial_set_id;
+			}
+			{
 				proof
 					.justification
 					.verify(current_set_id, &current_authorities)
@@ -269,29 +270,29 @@ pub enum HardForks<Block: BlockT> {
 	ReinitializeSetId {
 		/// New initial set ID
 		new_set_id: SetId,
-	}
+	},
 }
 
 impl<Block: BlockT> HardForks<Block> {
 	/// Create a new instance for a given hard fork authorities
-	pub fn new_hard_forked_authorities(
-		hard_forks:Vec<AuthoritySetHardFork<Block>>,
-	) -> Self {
-
-		HardForks::AuthoritySetHardForks { 	hard_forks: hard_forks
-			.into_iter()
-			.map(|fork| (fork.block, (fork.set_id, fork.authorities)))
-			.collect() }
+	pub fn new_hard_forked_authorities(hard_forks: Vec<AuthoritySetHardFork<Block>>) -> Self {
+		HardForks::AuthoritySetHardForks {
+			hard_forks: hard_forks
+				.into_iter()
+				.map(|fork| (fork.block, (fork.set_id, fork.authorities)))
+				.collect(),
+		}
 	}
 
 	/// Create a new instance for a given hard fork authorities
-	pub fn new_initial_set_id(
-		set_id: SetId
-	) -> Self {
-		HardForks::ReinitializeSetId { 	new_set_id: set_id}
+	pub fn new_initial_set_id(set_id: SetId) -> Self {
+		HardForks::ReinitializeSetId { new_set_id: set_id }
 	}
 
-	fn get_hard_forked_authorities(&self, block: &(Block::Hash, NumberFor<Block>)) -> Option<(SetId, AuthorityList)> {
+	fn get_hard_forked_authorities(
+		&self,
+		block: &(Block::Hash, NumberFor<Block>),
+	) -> Option<(SetId, AuthorityList)> {
 		if let HardForks::AuthoritySetHardForks { hard_forks } = self {
 			hard_forks.get(block).cloned()
 		} else {
@@ -308,8 +309,6 @@ impl<Block: BlockT> HardForks<Block> {
 	}
 }
 
-
-
 impl<Block: BlockT, Backend: ClientBackend<Block>> NetworkProvider<Block, Backend>
 where
 	NumberFor<Block>: BlockNumberOps,
@@ -320,11 +319,7 @@ where
 		authority_set: SharedAuthoritySet<Block::Hash, NumberFor<Block>>,
 		hard_forks: HardForks<Block>,
 	) -> Self {
-		NetworkProvider {
-			backend,
-			authority_set,
-			hard_forks
-		}
+		NetworkProvider { backend, authority_set, hard_forks }
 	}
 }
 
