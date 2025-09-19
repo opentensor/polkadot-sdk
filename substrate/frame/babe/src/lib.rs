@@ -935,6 +935,26 @@ impl<T: Config> OnTimestampSet<T::Moment> for Pallet<T> {
 		let timestamp_slot = moment / slot_duration;
 		let timestamp_slot = Slot::from(timestamp_slot.saturated_into::<u64>());
 
+		// For a single block in where the Aura -> Babe runtime upgrade occurs, no Babe predigest
+		// is present to trigger initialization of `GenesisSlot` and `CurrentSlot`, so the assertion
+		// below would fail.
+		//
+		// We skip the assertion for only the zeroth (genesis) Babe block where `GenesisSlot` is
+		// zero.
+		//
+		// The next block(s) will be mined by Babe authoring nodes, which include the required
+		// Babe predigest to initialize `GenesisSlot` and from then on keep `CurrentSlot` in sync
+		// with the timestamp pallet.
+		if GenesisSlot::<T>::get() == 0u64 {
+			assert_eq!(
+				EpochStart::<T>::get(),
+				(Zero::zero(), Zero::zero()),
+				"Expected EpochStart to be uninitialized in genesis block."
+			);
+			log::info!("Skipping Babe pallet `CurrentSlot` assertion in Babe genesis.");
+			return;
+		}
+
 		assert_eq!(
 			CurrentSlot::<T>::get(),
 			timestamp_slot,
