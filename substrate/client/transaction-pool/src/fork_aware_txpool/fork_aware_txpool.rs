@@ -2045,7 +2045,7 @@ where
 
 		let duration = start.elapsed();
 		let mempool_len = self.mempool_len().await;
-		info!(
+		debug!(
 			target: LOG_TARGET,
 			txs = ?mempool_len,
 			a = self.active_views_count(),
