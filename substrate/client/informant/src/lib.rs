@@ -151,7 +151,7 @@ where
 			info!(
 				target: "substrate",
 				"{best_indicator} Imported #{} ({} → {})",
-				style(n.header.number()).white().bold(),
+				n.header.number(),
 				PrintFullHashOnDebugLogging(n.header.parent_hash()),
 				PrintFullHashOnDebugLogging(&n.hash),
 			);
