@@ -23,6 +23,7 @@
 use std::{cmp::Ordering, collections::HashSet, fmt, hash, sync::Arc, time::Instant};
 
 use crate::LOG_TARGET;
+use codec::Encode;
 use sc_transaction_pool_api::{error, InPoolTransaction, PoolStatus};
 use serde::Serialize;
 use sp_core::hexdisplay::HexDisplay;
@@ -258,13 +259,13 @@ pub struct BasePool<Hash: hash::Hash + Eq, Ex> {
 	recently_pruned_index: usize,
 }
 
-impl<Hash: hash::Hash + Member + Serialize, Ex: std::fmt::Debug> Default for BasePool<Hash, Ex> {
+impl<Hash: hash::Hash + Member + Serialize + Encode, Ex: std::fmt::Debug> Default for BasePool<Hash, Ex> {
 	fn default() -> Self {
 		Self::new(false)
 	}
 }
 
-impl<Hash: hash::Hash + Member + Serialize, Ex: std::fmt::Debug> BasePool<Hash, Ex> {
+impl<Hash: hash::Hash + Member + Serialize + Encode, Ex: std::fmt::Debug> BasePool<Hash, Ex> {
 	/// Create new pool given reject_future_transactions flag.
 	pub fn new(reject_future_transactions: bool) -> Self {
 		Self {
