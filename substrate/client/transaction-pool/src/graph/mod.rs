@@ -34,6 +34,7 @@ mod rotator;
 pub(crate) mod tracked_map;
 mod validated_pool;
 
+pub mod random_tx;
 pub mod base_pool;
 pub mod watcher;
 
