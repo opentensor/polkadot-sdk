@@ -23,7 +23,7 @@ use std::{
 	sync::Arc,
 };
 
-use crate::LOG_TARGET;
+use crate::{LOG_TARGET, graph::random_tx };
 use sc_transaction_pool_api::error;
 use serde::Serialize;
 use sp_runtime::{traits::Member, transaction_validity::TransactionTag as Tag};
@@ -53,41 +53,30 @@ impl<Hash, Ex> Clone for TransactionRef<Hash, Ex> {
 	}
 }
 
-impl<Hash, Ex> Ord for TransactionRef<Hash, Ex>
-where
-    Hash: Encode,
-{
+impl<Hash, Ex> Ord for TransactionRef<Hash, Ex> {
     fn cmp(&self, other: &Self) -> cmp::Ordering {
-        // Randomized per-block order using salted hash of the transaction hash.
-        crate::graph::random_tx::salted_key_from_tx_hash(&other.transaction.hash)
-            .cmp(&crate::graph::random_tx::salted_key_from_tx_hash(&self.transaction.hash))
-            .then_with(|| {
-                let a = other.transaction.hash.encode();
-                let b = self.transaction.hash.encode();
-                a.cmp(&b)
-            })
+        self.transaction
+            .priority
+            .cmp(&other.transaction.priority)
+            // Transaction longevity effect stays disabled as before:
+            // .then_with(|| other.transaction.valid_till.cmp(&self.transaction.valid_till))
+            .then_with(|| other.insertion_id.cmp(&self.insertion_id))
     }
 }
 
-impl<Hash, Ex> PartialOrd for TransactionRef<Hash, Ex>
-where
-    Hash: Encode,
-{
+impl<Hash, Ex> PartialOrd for TransactionRef<Hash, Ex> {
     fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<Hash, Ex> PartialEq for TransactionRef<Hash, Ex>
-where
-    Hash: Encode,
-{
+impl<Hash, Ex> PartialEq for TransactionRef<Hash, Ex> {
     fn eq(&self, other: &Self) -> bool {
         self.cmp(other) == cmp::Ordering::Equal
     }
 }
 
-impl<Hash, Ex> Eq for TransactionRef<Hash, Ex> where Hash: Encode {}
+impl<Hash, Ex> Eq for TransactionRef<Hash, Ex> {}
 
 
 #[derive(Debug)]
@@ -547,50 +536,76 @@ impl<Hash: hash::Hash + Member, Ex> BestIterator<Hash, Ex> {
 }
 
 impl<Hash: hash::Hash + Member + Encode, Ex> Iterator for BestIterator<Hash, Ex> {
-	type Item = Arc<Transaction<Hash, Ex>>;
+    type Item = Arc<Transaction<Hash, Ex>>;
 
-	fn next(&mut self) -> Option<Self::Item> {
-		loop {
-			let best = self.best.iter().next_back()?.clone();
-			let best = self.best.take(&best)?;
-			let tx_hash = &best.transaction.hash;
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            // 1) Select the candidate with the highest salted key for this block.
+            let chosen_ref = {
+                let mut iter = self.best.iter();
+                let first = iter.next()?.clone();
+                let mut best_ref = first.clone();
+                let mut best_key = random_tx::salted_key_from_tx_hash(&first.transaction.hash);
 
-			// Check if the transaction was marked invalid.
-			if self.invalid.contains(tx_hash) {
-				trace!(
-					target: LOG_TARGET,
-					?tx_hash,
-					"Skipping invalid child transaction while iterating."
-				);
-				continue
-			}
+                for candidate in iter {
+                    let key = random_tx::salted_key_from_tx_hash(&candidate.transaction.hash);
 
-			let ready = match self.all.get(tx_hash).cloned() {
-				Some(ready) => ready,
-				// The transaction is not in all, maybe it was removed in the meantime?
-				None => continue,
-			};
+                    let is_better = key > best_key || (key == best_key && {
+                        let cand_raw = candidate.transaction.hash.encode();
+                        let best_raw = best_ref.transaction.hash.encode();
+                        cand_raw > best_raw
+                    });
 
-			// Insert transactions that just got unlocked.
-			for hash in &ready.unlocks {
-				// first check local awaiting transactions
-				let res = if let Some((mut satisfied, tx_ref)) = self.awaiting.remove(hash) {
-					satisfied += 1;
-					Some((satisfied, tx_ref))
-				// then get from the pool
-				} else {
-					self.all
-						.get(hash)
-						.map(|next| (next.requires_offset + 1, next.transaction.clone()))
-				};
-				if let Some((satisfied, tx_ref)) = res {
-					self.best_or_awaiting(satisfied, tx_ref)
-				}
-			}
+                    if is_better {
+                        best_ref = candidate.clone();
+                        best_key = key;
+                    }
+                }
+                best_ref
+            };
 
-			return Some(best.transaction)
-		}
-	}
+            // 2) Remove the selected element using the stable comparator of the set.
+            let best = self.best.take(&chosen_ref)?;
+            let tx_hash = &best.transaction.hash;
+
+            // 3) Skip if this tx was reported invalid; leave it removed from `best`.
+            if self.invalid.contains(tx_hash) {
+                trace!(
+                    target: LOG_TARGET,
+                    ?tx_hash,
+                    "Skipping invalid child transaction while iterating."
+                );
+                continue;
+            }
+
+            // 4) Fetch the ready metadata for the chosen tx.
+            let ready = match self.all.get(tx_hash).cloned() {
+                Some(ready) => ready,
+                None => continue,
+            };
+
+            // 5) Insert transactions that just got unlocked by `best`.
+            for hash in &ready.unlocks {
+                // First check local awaiting transactions
+                let res = if let Some((mut satisfied, tx_ref)) = self.awaiting.remove(hash) {
+                    satisfied += 1;
+                    Some((satisfied, tx_ref))
+                } else {
+                    // Then look it up in the pool
+                    self.all
+                        .get(hash)
+                        .map(|next| (next.requires_offset + 1, next.transaction.clone()))
+                };
+
+                if let Some((satisfied, tx_ref)) = res {
+                    self.best_or_awaiting(satisfied, tx_ref)
+                }
+            }
+
+            // 6) Return the selected transaction.
+            return Some(best.transaction);
+        }
+    }
 }
 
 // See: https://github.com/rust-lang/rust/issues/40062
