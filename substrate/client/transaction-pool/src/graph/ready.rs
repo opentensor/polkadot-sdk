@@ -54,30 +54,28 @@ impl<Hash, Ex> Clone for TransactionRef<Hash, Ex> {
 }
 
 impl<Hash, Ex> Ord for TransactionRef<Hash, Ex> {
-    fn cmp(&self, other: &Self) -> cmp::Ordering {
-        self.transaction
-            .priority
-            .cmp(&other.transaction.priority)
-            // Transaction longevity effect stays disabled as before:
-            // .then_with(|| other.transaction.valid_till.cmp(&self.transaction.valid_till))
-            .then_with(|| other.insertion_id.cmp(&self.insertion_id))
-    }
+	fn cmp(&self, other: &Self) -> cmp::Ordering {
+		self.transaction
+			.priority
+			.cmp(&other.transaction.priority)
+			// Disable transaction longevity effect on its priority.
+			//			.then_with(|| other.transaction.valid_till.cmp(&self.transaction.valid_till))
+			.then_with(|| other.insertion_id.cmp(&self.insertion_id))
+	}
 }
 
 impl<Hash, Ex> PartialOrd for TransactionRef<Hash, Ex> {
-    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
-        Some(self.cmp(other))
-    }
+	fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
+		Some(self.cmp(other))
+	}
 }
 
 impl<Hash, Ex> PartialEq for TransactionRef<Hash, Ex> {
-    fn eq(&self, other: &Self) -> bool {
-        self.cmp(other) == cmp::Ordering::Equal
-    }
+	fn eq(&self, other: &Self) -> bool {
+		self.cmp(other) == cmp::Ordering::Equal
+	}
 }
-
 impl<Hash, Ex> Eq for TransactionRef<Hash, Ex> {}
-
 
 #[derive(Debug)]
 pub struct ReadyTx<Hash, Ex> {
