@@ -23,7 +23,7 @@ use std::{
 	sync::Arc,
 };
 
-use crate::LOG_TARGET;
+use crate::{LOG_TARGET, graph::random_tx };
 use sc_transaction_pool_api::error;
 use serde::Serialize;
 use sp_runtime::{traits::Member, transaction_validity::TransactionTag as Tag};
@@ -34,6 +34,7 @@ use super::{
 	future::WaitingTransaction,
 	tracked_map::{self, TrackedMap},
 };
+use sp_core::Encode;
 
 /// An in-pool transaction reference.
 ///
@@ -138,7 +139,7 @@ impl<Hash: hash::Hash + Eq, Ex> Default for ReadyTransactions<Hash, Ex> {
 	}
 }
 
-impl<Hash: hash::Hash + Member + Serialize, Ex> ReadyTransactions<Hash, Ex> {
+impl<Hash: hash::Hash + Member + Serialize + Encode, Ex> ReadyTransactions<Hash, Ex> {
 	/// Borrows a map of tags that are provided by transactions in this queue.
 	pub fn provided_tags(&self) -> &HashMap<Tag, Hash> {
 		&self.provided_tags
@@ -490,7 +491,7 @@ pub struct BestIterator<Hash, Ex> {
 	invalid: HashSet<Hash>,
 }
 
-impl<Hash: hash::Hash + Member, Ex> BestIterator<Hash, Ex> {
+impl<Hash: hash::Hash + Member + Encode, Ex> BestIterator<Hash, Ex> {
 	/// Depending on number of satisfied requirements insert given ref
 	/// either to awaiting set or to best set.
 	fn best_or_awaiting(&mut self, satisfied: usize, tx_ref: TransactionRef<Hash, Ex>) {
@@ -504,8 +505,8 @@ impl<Hash: hash::Hash + Member, Ex> BestIterator<Hash, Ex> {
 	}
 }
 
-impl<Hash: hash::Hash + Member, Ex> sc_transaction_pool_api::ReadyTransactions
-	for BestIterator<Hash, Ex>
+impl<Hash: hash::Hash + Member + Encode, Ex> sc_transaction_pool_api::ReadyTransactions
+    for BestIterator<Hash, Ex>
 {
 	fn report_invalid(&mut self, tx: &Self::Item) {
 		BestIterator::report_invalid(self, tx)
@@ -532,51 +533,83 @@ impl<Hash: hash::Hash + Member, Ex> BestIterator<Hash, Ex> {
 	}
 }
 
-impl<Hash: hash::Hash + Member, Ex> Iterator for BestIterator<Hash, Ex> {
-	type Item = Arc<Transaction<Hash, Ex>>;
+impl<Hash: hash::Hash + Member + Encode, Ex> Iterator for BestIterator<Hash, Ex> {
+    type Item = Arc<Transaction<Hash, Ex>>;
 
-	fn next(&mut self) -> Option<Self::Item> {
-		loop {
-			let best = self.best.iter().next_back()?.clone();
-			let best = self.best.take(&best)?;
-			let tx_hash = &best.transaction.hash;
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            // Pick one element to learn the highest priority tier currently in `best`.
+            let top = self.best.iter().next_back()?.clone();
+            let top_priority = top.transaction.priority;
 
-			// Check if the transaction was marked invalid.
-			if self.invalid.contains(tx_hash) {
-				trace!(
-					target: LOG_TARGET,
-					?tx_hash,
-					"Skipping invalid child transaction while iterating."
-				);
-				continue
-			}
+            // Among all candidates with `top_priority`, choose the one with the
+            // highest salted score, i.e. randomize *within* the tier.
+            let chosen_ref = {
+                let mut best_ref = top.clone();
+                let mut best_key = random_tx::salted_key_from_tx_hash(&top.transaction.hash);
 
-			let ready = match self.all.get(tx_hash).cloned() {
-				Some(ready) => ready,
-				// The transaction is not in all, maybe it was removed in the meantime?
-				None => continue,
-			};
+                for candidate in self.best.iter() {
+                    // Only consider candidates in the same priority tier.
+                    if candidate.transaction.priority == top_priority {
+                        let key = random_tx::salted_key_from_tx_hash(&candidate.transaction.hash);
 
-			// Insert transactions that just got unlocked.
-			for hash in &ready.unlocks {
-				// first check local awaiting transactions
-				let res = if let Some((mut satisfied, tx_ref)) = self.awaiting.remove(hash) {
-					satisfied += 1;
-					Some((satisfied, tx_ref))
-				// then get from the pool
-				} else {
-					self.all
-						.get(hash)
-						.map(|next| (next.requires_offset + 1, next.transaction.clone()))
-				};
-				if let Some((satisfied, tx_ref)) = res {
-					self.best_or_awaiting(satisfied, tx_ref)
-				}
-			}
+                        let better = key > best_key || (key == best_key && {
+                            let cand_raw = candidate.transaction.hash.encode();
+                            let best_raw = best_ref.transaction.hash.encode();
+                            cand_raw > best_raw
+                        });
 
-			return Some(best.transaction)
-		}
-	}
+                        if better {
+                            best_ref = candidate.clone();
+                            best_key = key;
+                        }
+                    }
+                }
+                best_ref
+            };
+
+            // Remove the selected element using the stable set comparator.
+            let best = self.best.take(&chosen_ref)?;
+            let tx_hash = &best.transaction.hash;
+
+            // Skip if this tx was reported invalid; it stays removed from `best`.
+            if self.invalid.contains(tx_hash) {
+                trace!(
+                    target: LOG_TARGET,
+                    ?tx_hash,
+                    "Skipping invalid child transaction while iterating."
+                );
+                continue;
+            }
+
+            // Get the ready metadata for the chosen tx; if it vanished, retry.
+            let ready = match self.all.get(tx_hash).cloned() {
+                Some(ready) => ready,
+                None => continue,
+            };
+
+            // Insert transactions that just got unlocked by `best`.
+            for hash in &ready.unlocks {
+                // First check local awaiting transactions
+                let res = if let Some((mut satisfied, tx_ref)) = self.awaiting.remove(hash) {
+                    satisfied += 1;
+                    Some((satisfied, tx_ref))
+                } else {
+                    // Then look it up in the pool
+                    self.all
+                        .get(hash)
+                        .map(|next| (next.requires_offset + 1, next.transaction.clone()))
+                };
+
+                if let Some((satisfied, tx_ref)) = res {
+                    self.best_or_awaiting(satisfied, tx_ref)
+                }
+            }
+
+            // Return the selected transaction.
+            return Some(best.transaction);
+        }
+    }
 }
 
 // See: https://github.com/rust-lang/rust/issues/40062
@@ -604,7 +637,7 @@ mod tests {
 		}
 	}
 
-	fn import<H: hash::Hash + Eq + Member + Serialize, Ex>(
+	fn import<H: hash::Hash + Eq + Member + Serialize + Encode, Ex>(
 		ready: &mut ReadyTransactions<H, Ex>,
 		tx: Transaction<H, Ex>,
 	) -> error::Result<Vec<Arc<Transaction<H, Ex>>>> {

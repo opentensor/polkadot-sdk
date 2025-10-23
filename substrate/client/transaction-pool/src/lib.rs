@@ -43,6 +43,7 @@ pub use graph::{
 use single_state_txpool::prune_known_txs_for_block;
 pub use single_state_txpool::{BasicPool, RevalidationType};
 pub use transaction_pool_wrapper::TransactionPoolWrapper;
+pub use crate::graph::random_tx::set_tx_ordering_salt;
 
 type BoxedReadyIterator<Hash, Data> = Box<
 	dyn sc_transaction_pool_api::ReadyTransactions<
