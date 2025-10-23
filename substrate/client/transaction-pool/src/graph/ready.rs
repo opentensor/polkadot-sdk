@@ -540,35 +540,41 @@ impl<Hash: hash::Hash + Member + Encode, Ex> Iterator for BestIterator<Hash, Ex>
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            // 1) Select the candidate with the highest salted key for this block.
+            // Pick one element to learn the highest priority tier currently in `best`.
+            let top = self.best.iter().next_back()?.clone();
+            let top_priority = top.transaction.priority;
+
+            // Among all candidates with `top_priority`, choose the one with the
+            // highest salted score, i.e. randomize *within* the tier.
             let chosen_ref = {
-                let mut iter = self.best.iter();
-                let first = iter.next()?.clone();
-                let mut best_ref = first.clone();
-                let mut best_key = random_tx::salted_key_from_tx_hash(&first.transaction.hash);
+                let mut best_ref = top.clone();
+                let mut best_key = random_tx::salted_key_from_tx_hash(&top.transaction.hash);
 
-                for candidate in iter {
-                    let key = random_tx::salted_key_from_tx_hash(&candidate.transaction.hash);
+                for candidate in self.best.iter() {
+                    // Only consider candidates in the same priority tier.
+                    if candidate.transaction.priority == top_priority {
+                        let key = random_tx::salted_key_from_tx_hash(&candidate.transaction.hash);
 
-                    let is_better = key > best_key || (key == best_key && {
-                        let cand_raw = candidate.transaction.hash.encode();
-                        let best_raw = best_ref.transaction.hash.encode();
-                        cand_raw > best_raw
-                    });
+                        let better = key > best_key || (key == best_key && {
+                            let cand_raw = candidate.transaction.hash.encode();
+                            let best_raw = best_ref.transaction.hash.encode();
+                            cand_raw > best_raw
+                        });
 
-                    if is_better {
-                        best_ref = candidate.clone();
-                        best_key = key;
+                        if better {
+                            best_ref = candidate.clone();
+                            best_key = key;
+                        }
                     }
                 }
                 best_ref
             };
 
-            // 2) Remove the selected element using the stable comparator of the set.
+            // Remove the selected element using the stable set comparator.
             let best = self.best.take(&chosen_ref)?;
             let tx_hash = &best.transaction.hash;
 
-            // 3) Skip if this tx was reported invalid; leave it removed from `best`.
+            // Skip if this tx was reported invalid; it stays removed from `best`.
             if self.invalid.contains(tx_hash) {
                 trace!(
                     target: LOG_TARGET,
@@ -578,13 +584,13 @@ impl<Hash: hash::Hash + Member + Encode, Ex> Iterator for BestIterator<Hash, Ex>
                 continue;
             }
 
-            // 4) Fetch the ready metadata for the chosen tx.
+            // Get the ready metadata for the chosen tx; if it vanished, retry.
             let ready = match self.all.get(tx_hash).cloned() {
                 Some(ready) => ready,
                 None => continue,
             };
 
-            // 5) Insert transactions that just got unlocked by `best`.
+            // Insert transactions that just got unlocked by `best`.
             for hash in &ready.unlocks {
                 // First check local awaiting transactions
                 let res = if let Some((mut satisfied, tx_ref)) = self.awaiting.remove(hash) {
@@ -602,7 +608,7 @@ impl<Hash: hash::Hash + Member + Encode, Ex> Iterator for BestIterator<Hash, Ex>
                 }
             }
 
-            // 6) Return the selected transaction.
+            // Return the selected transaction.
             return Some(best.transaction);
         }
     }
