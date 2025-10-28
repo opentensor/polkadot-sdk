@@ -117,8 +117,17 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 		let set_changes = set_changes.iter_from(begin_number).ok_or(Error::MissingData)?;
 
 		for (_, last_block) in set_changes {
-			let hash = blockchain.block_hash_from_id(&BlockId::Number(*last_block))?
-				.expect("header number comes from previously applied set changes; corresponding hash must exist in db; qed.");
+			let hash = match blockchain.block_hash_from_id(&BlockId::Number(*last_block))? {
+				Some(hash) => hash,
+				None => {
+					// TODO: Understand why this is happening and fix root cause.
+					log::error!(
+						"Liam note: Node failed to fetch block hash for block number {}",
+						last_block
+					);
+					return Err(Error::InvalidRequest("header number comes from previously applied set changes; corresponding hash must exist in db; qed.".to_string()))
+				},
+			};
 
 			let header = blockchain
 				.header(hash)?
