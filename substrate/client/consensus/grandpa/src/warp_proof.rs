@@ -26,7 +26,9 @@ use crate::{
 use sc_client_api::Backend as ClientBackend;
 use sc_network_sync::strategy::warp::{EncodedProof, VerificationResult, WarpSyncProvider};
 use sp_blockchain::{Backend as BlockchainBackend, HeaderBackend};
-use sp_consensus_grandpa::{AuthorityList, SetId, GRANDPA_ENGINE_ID};
+use sp_consensus_grandpa::{
+	AuthorityList, SetId, CLIENT_LOG_TARGET as LOG_TARGET, GRANDPA_ENGINE_ID,
+};
 use sp_runtime::{
 	generic::BlockId,
 	traits::{Block as BlockT, Header as HeaderT, NumberFor, One},
@@ -118,12 +120,21 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 		let set_changes = set_changes.iter_from(begin_number).ok_or(Error::MissingData)?;
 
 		for (_, last_block) in set_changes {
-			let hash = blockchain.block_hash_from_id(&BlockId::Number(*last_block))?
-				.expect("header number comes from previously applied set changes; corresponding hash must exist in db; qed.");
+			let hash = match blockchain.block_hash_from_id(&BlockId::Number(*last_block))? {
+				Some(hash) => hash,
+				None => {
+					log::debug!(target: LOG_TARGET, "Ignorning warp proof with invalid block number.");
+					return Err(Error::InvalidRequest("header number comes from previously applied set changes; corresponding hash must exist in db.".to_string()))
+				},
+			};
 
-			let header = blockchain
-				.header(hash)?
-				.expect("header hash obtained from header number exists in db; corresponding header must exist in db too; qed.");
+			let header = match blockchain.header(hash)? {
+				Some(header) => header,
+				None => {
+					log::debug!(target: LOG_TARGET, "Ignorning warp proof with invalid block hash.");
+					return Err(Error::InvalidRequest("header hash obtained from header number exists in db; corresponding header must exist in db too.".to_string()))
+				},
+			};
 
 			// the last block in a set is the one that triggers a change to the next set,
 			// therefore the block must have a digest that signals the authority set change
