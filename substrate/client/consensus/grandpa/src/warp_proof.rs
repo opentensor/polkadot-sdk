@@ -26,7 +26,9 @@ use crate::{
 use sc_client_api::Backend as ClientBackend;
 use sc_network_sync::strategy::warp::{EncodedProof, VerificationResult, WarpSyncProvider};
 use sp_blockchain::{Backend as BlockchainBackend, HeaderBackend};
-use sp_consensus_grandpa::{AuthorityList, SetId, GRANDPA_ENGINE_ID};
+use sp_consensus_grandpa::{
+	AuthorityList, SetId, CLIENT_LOG_TARGET as LOG_TARGET, GRANDPA_ENGINE_ID,
+};
 use sp_runtime::{
 	generic::BlockId,
 	traits::{Block as BlockT, Header as HeaderT, NumberFor, One},
@@ -118,12 +120,21 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 		let set_changes = set_changes.iter_from(begin_number).ok_or(Error::MissingData)?;
 
 		for (_, last_block) in set_changes {
-			let hash = blockchain.block_hash_from_id(&BlockId::Number(*last_block))?
-				.expect("header number comes from previously applied set changes; corresponding hash must exist in db; qed.");
+			let hash = match blockchain.block_hash_from_id(&BlockId::Number(*last_block))? {
+				Some(hash) => hash,
+				None => {
+					log::debug!(target: LOG_TARGET, "Ignorning warp proof with invalid block number.");
+					return Err(Error::InvalidRequest("header number comes from previously applied set changes; corresponding hash must exist in db.".to_string()))
+				},
+			};
 
-			let header = blockchain
-				.header(hash)?
-				.expect("header hash obtained from header number exists in db; corresponding header must exist in db too; qed.");
+			let header = match blockchain.header(hash)? {
+				Some(header) => header,
+				None => {
+					log::debug!(target: LOG_TARGET, "Ignorning warp proof with invalid block hash.");
+					return Err(Error::InvalidRequest("header hash obtained from header number exists in db; corresponding header must exist in db too.".to_string()))
+				},
+			};
 
 			// the last block in a set is the one that triggers a change to the next set,
 			// therefore the block must have a digest that signals the authority set change
@@ -204,7 +215,7 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 		&self,
 		set_id: SetId,
 		authorities: AuthorityList,
-		hard_forks: &HashMap<(Block::Hash, NumberFor<Block>), (SetId, AuthorityList)>,
+		hard_forks: &HardForks<Block>,
 	) -> Result<(SetId, AuthorityList), Error>
 	where
 		NumberFor<Block>: BlockNumberOps,
@@ -216,10 +227,13 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 			let hash = proof.header.hash();
 			let number = *proof.header.number();
 
-			if let Some((set_id, list)) = hard_forks.get(&(hash, number)) {
-				current_set_id = *set_id;
+			if let Some((set_id, list)) = hard_forks.get_hard_forked_authorities(&(hash, number)) {
+				current_set_id = set_id;
 				current_authorities = list.clone();
-			} else {
+			} else if let Some(initial_set_id) = hard_forks.get_new_initial_set_id() {
+				current_set_id += initial_set_id;
+			}
+			{
 				proof
 					.justification
 					.verify(current_set_id, &current_authorities)
@@ -254,7 +268,57 @@ where
 {
 	backend: Arc<Backend>,
 	authority_set: SharedAuthoritySet<Block::Hash, NumberFor<Block>>,
-	hard_forks: HashMap<(Block::Hash, NumberFor<Block>), (SetId, AuthorityList)>,
+	hard_forks: HardForks<Block>,
+}
+
+/// Contains the data needed to verify a warp sync proof for hard forks
+pub enum HardForks<Block: BlockT> {
+	/// Sets new authorities and set ID by block hash and number
+	AuthoritySetHardForks {
+		/// Maps block to authority list and set ID
+		hard_forks: HashMap<(Block::Hash, NumberFor<Block>), (SetId, AuthorityList)>,
+	},
+	/// Provides new initial set ID for granpda block import
+	ReinitializeSetId {
+		/// New initial set ID
+		new_set_id: SetId,
+	},
+}
+
+impl<Block: BlockT> HardForks<Block> {
+	/// Create a new instance for a given hard fork authorities
+	pub fn new_hard_forked_authorities(hard_forks: Vec<AuthoritySetHardFork<Block>>) -> Self {
+		HardForks::AuthoritySetHardForks {
+			hard_forks: hard_forks
+				.into_iter()
+				.map(|fork| (fork.block, (fork.set_id, fork.authorities)))
+				.collect(),
+		}
+	}
+
+	/// Create a new instance for a given hard fork authorities
+	pub fn new_initial_set_id(set_id: SetId) -> Self {
+		HardForks::ReinitializeSetId { new_set_id: set_id }
+	}
+
+	fn get_hard_forked_authorities(
+		&self,
+		block: &(Block::Hash, NumberFor<Block>),
+	) -> Option<(SetId, AuthorityList)> {
+		if let HardForks::AuthoritySetHardForks { hard_forks } = self {
+			hard_forks.get(block).cloned()
+		} else {
+			None
+		}
+	}
+
+	fn get_new_initial_set_id(&self) -> Option<SetId> {
+		if let HardForks::ReinitializeSetId { new_set_id } = self {
+			Some(*new_set_id)
+		} else {
+			None
+		}
+	}
 }
 
 impl<Block: BlockT, Backend: ClientBackend<Block>> NetworkProvider<Block, Backend>
@@ -265,16 +329,9 @@ where
 	pub fn new(
 		backend: Arc<Backend>,
 		authority_set: SharedAuthoritySet<Block::Hash, NumberFor<Block>>,
-		hard_forks: Vec<AuthoritySetHardFork<Block>>,
+		hard_forks: HardForks<Block>,
 	) -> Self {
-		NetworkProvider {
-			backend,
-			authority_set,
-			hard_forks: hard_forks
-				.into_iter()
-				.map(|fork| (fork.block, (fork.set_id, fork.authorities)))
-				.collect(),
-		}
+		NetworkProvider { backend, authority_set, hard_forks }
 	}
 }
 

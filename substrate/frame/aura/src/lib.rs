@@ -280,19 +280,6 @@ impl<T: Config> Pallet<T> {
 			);
 		}
 
-		let authorities_len =
-			<Authorities<T>>::decode_len().ok_or("Failed to decode authorities length")?;
-
-		// Check that the authorities are non-empty.
-		frame_support::ensure!(!authorities_len.is_zero(), "Authorities must be non-empty.");
-
-		// Check that the current authority is not disabled.
-		let authority_index = *current_slot % authorities_len as u64;
-		frame_support::ensure!(
-			!T::DisabledValidators::is_disabled(authority_index as u32),
-			"Current validator is disabled and should not be attempting to author blocks.",
-		);
-
 		Ok(())
 	}
 }
