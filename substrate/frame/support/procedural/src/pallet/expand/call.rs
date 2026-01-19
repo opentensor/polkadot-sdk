@@ -532,6 +532,7 @@ pub fn expand_call(def: &mut Def) -> proc_macro2::TokenStream {
 				origin: Self::RuntimeOrigin
 			) -> #frame_support::dispatch::DispatchResultWithPostInfo {
 				#frame_support::dispatch_context::run_in_context(|| {
+					#frame_support::__private::log::info!("(pallet) dispatch_bypass_filter: {:?}", self);
 					match self {
 						#(
 							#cfg_attrs
