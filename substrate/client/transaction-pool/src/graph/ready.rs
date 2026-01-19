@@ -421,6 +421,22 @@ impl<Hash: hash::Hash + Member + Serialize, Ex> ReadyTransactions<Hash, Ex> {
 		&mut self,
 		tx: &Transaction<Hash, Ex>,
 	) -> error::Result<(Vec<Arc<Transaction<Hash, Ex>>>, Vec<Hash>)> {
+
+		// Feature toggle:
+		// - if SUBSTRATE_TXPOOL_ENABLE_REPLACE_PREVIOUS == "1" => run the replacement logic
+		// - if it's "0" (or unset/anything else) => do not run (no replacement)
+		const ENV_ENABLE_REPLACE_PREVIOUS: &str = "SUBSTRATE_TXPOOL_ENABLE_REPLACE_PREVIOUS";
+
+		let replace_enabled = match std::env::var(ENV_ENABLE_REPLACE_PREVIOUS) {
+			Ok(v) => v.trim() == "1",
+			Err(_) => false,
+		};
+
+		if !replace_enabled {
+			return Ok((vec![], vec![]));
+		}
+
+
 		let (to_remove, unlocks) = {
 			// check if we are replacing a transaction
 			let replace_hashes = tx
