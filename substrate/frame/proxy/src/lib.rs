@@ -39,6 +39,7 @@ use frame::{
 	prelude::*,
 	traits::{Currency, InstanceFilter, ReservableCurrency},
 };
+use frame_system::pallet_prelude::BlockNumberFor as SystemBlockNumberFor;
 pub use pallet::*;
 pub use weights::WeightInfo;
 
@@ -243,7 +244,7 @@ pub mod pallet {
 				 // AccountData for inner call origin accountdata.
 				.saturating_add(T::DbWeight::get().reads_writes(1, 1))
 				.saturating_add(di.call_weight),
-			di.class)
+			di.class, di.pays_fee)
 		})]
 		pub fn proxy(
 			origin: OriginFor<T>,
@@ -545,7 +546,7 @@ pub mod pallet {
 				 // AccountData for inner call origin accountdata.
 				.saturating_add(T::DbWeight::get().reads_writes(1, 1))
 				.saturating_add(di.call_weight),
-			di.class)
+			di.class, di.pays_fee)
 		})]
 		pub fn proxy_announced(
 			origin: OriginFor<T>,
@@ -744,6 +745,14 @@ pub mod pallet {
 		NoSelfProxy,
 	}
 
+	#[pallet::hooks]
+	impl<T: Config> Hooks<SystemBlockNumberFor<T>> for Pallet<T> {
+		fn on_finalize(_n: SystemBlockNumberFor<T>) {
+			// Clear this map on end of each block
+			let _ = LastCallResult::<T>::clear(u32::MAX, None);
+		}
+	}
+
 	/// The set of account proxies. Maps the account which has delegated to the accounts
 	/// which are being delegated to, together with the amount held on deposit.
 	#[pallet::storage]
@@ -773,6 +782,11 @@ pub mod pallet {
 		),
 		ValueQuery,
 	>;
+
+	/// The result of the last call made by the proxy (key).
+	#[pallet::storage]
+	pub type LastCallResult<T: Config> =
+		StorageMap<_, Twox64Concat, T::AccountId, DispatchResult, OptionQuery>;
 
 	#[pallet::view_functions]
 	impl<T: Config> Pallet<T> {
@@ -998,7 +1012,7 @@ impl<T: Config> Pallet<T> {
 	) {
 		use frame::traits::{InstanceFilter as _, OriginTrait as _};
 		// This is a freshly authenticated new account, the origin restrictions doesn't apply.
-		let mut origin: T::RuntimeOrigin = frame_system::RawOrigin::Signed(real).into();
+		let mut origin: T::RuntimeOrigin = frame_system::RawOrigin::Signed(real.clone()).into();
 		origin.add_filter(move |c: &<T as frame_system::Config>::RuntimeCall| {
 			let c = <T as Config>::RuntimeCall::from_ref(c);
 			// We make sure the proxy call does access this pallet to change modify proxies.
@@ -1018,6 +1032,9 @@ impl<T: Config> Pallet<T> {
 			}
 		});
 		let e = call.dispatch(origin);
+
+		LastCallResult::<T>::insert(real, e.map(|_| ()).map_err(|e| e.error));
+
 		Self::deposit_event(Event::ProxyExecuted { result: e.map(|_| ()).map_err(|e| e.error) });
 	}
 
