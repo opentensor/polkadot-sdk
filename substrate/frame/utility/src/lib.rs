@@ -192,9 +192,9 @@ pub mod pallet {
 		/// event is deposited.
 		#[pallet::call_index(0)]
 		#[pallet::weight({
-			let (dispatch_weight, dispatch_class) = Pallet::<T>::weight_and_dispatch_class(&calls);
+			let (dispatch_weight, dispatch_class, pays) = Pallet::<T>::weight_and_dispatch_class(calls);
 			let dispatch_weight = dispatch_weight.saturating_add(T::WeightInfo::batch(calls.len() as u32));
-			(dispatch_weight, dispatch_class)
+			(dispatch_weight, dispatch_class, pays)
 		})]
 		pub fn batch(
 			origin: OriginFor<T>,
@@ -301,9 +301,9 @@ pub mod pallet {
 		/// - O(C) where C is the number of calls to be batched.
 		#[pallet::call_index(2)]
 		#[pallet::weight({
-			let (dispatch_weight, dispatch_class) = Pallet::<T>::weight_and_dispatch_class(&calls);
+			let (dispatch_weight, dispatch_class, pays) = Pallet::<T>::weight_and_dispatch_class(calls);
 			let dispatch_weight = dispatch_weight.saturating_add(T::WeightInfo::batch_all(calls.len() as u32));
-			(dispatch_weight, dispatch_class)
+			(dispatch_weight, dispatch_class, pays)
 		})]
 		pub fn batch_all(
 			origin: OriginFor<T>,
@@ -397,9 +397,9 @@ pub mod pallet {
 		/// - O(C) where C is the number of calls to be batched.
 		#[pallet::call_index(4)]
 		#[pallet::weight({
-			let (dispatch_weight, dispatch_class) = Pallet::<T>::weight_and_dispatch_class(&calls);
+			let (dispatch_weight, dispatch_class, pays) = Pallet::<T>::weight_and_dispatch_class(calls);
 			let dispatch_weight = dispatch_weight.saturating_add(T::WeightInfo::force_batch(calls.len() as u32));
-			(dispatch_weight, dispatch_class)
+			(dispatch_weight, dispatch_class, pays)
 		})]
 		pub fn force_batch(
 			origin: OriginFor<T>,
@@ -440,7 +440,7 @@ pub mod pallet {
 			} else {
 				Self::deposit_event(Event::BatchCompleted);
 			}
-			let base_weight = T::WeightInfo::batch(calls_len as u32);
+			let base_weight = T::WeightInfo::force_batch(calls_len as u32);
 			Ok(Some(base_weight.saturating_add(weight)).into())
 		}
 
@@ -589,8 +589,13 @@ pub mod pallet {
 		/// Get the accumulated `weight` and the dispatch class for the given `calls`.
 		fn weight_and_dispatch_class(
 			calls: &[<T as Config>::RuntimeCall],
-		) -> (Weight, DispatchClass) {
+		) -> (Weight, DispatchClass, Pays) {
 			let dispatch_infos = calls.iter().map(|call| call.get_dispatch_info());
+			let pays = if dispatch_infos.clone().any(|di| di.pays_fee == Pays::No) {
+				Pays::No
+			} else {
+				Pays::Yes
+			};
 			let (dispatch_weight, dispatch_class) = dispatch_infos.fold(
 				(Weight::zero(), DispatchClass::Operational),
 				|(total_weight, dispatch_class): (Weight, DispatchClass), di| {
@@ -602,7 +607,7 @@ pub mod pallet {
 				},
 			);
 
-			(dispatch_weight, dispatch_class)
+			(dispatch_weight, dispatch_class, pays)
 		}
 	}
 }
