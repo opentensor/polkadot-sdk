@@ -21,7 +21,7 @@ use crate::COUNTER;
 use proc_macro2::{Ident, TokenStream};
 use quote::format_ident;
 
-struct CreateTtReturnMacroDef {
+pub struct CreateTtReturnMacroDef {
 	name: Ident,
 	args: Vec<(Ident, TokenStream)>,
 }
@@ -73,9 +73,8 @@ impl syn::parse::Parse for CreateTtReturnMacroDef {
 ///     }
 /// }
 /// ```
-pub fn create_tt_return_macro(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-	let CreateTtReturnMacroDef { name, args } =
-		syn::parse_macro_input!(input as CreateTtReturnMacroDef);
+pub fn create_tt_return_macro(def: CreateTtReturnMacroDef) -> TokenStream {
+	let CreateTtReturnMacroDef { name, args } = def;
 
 	let (keys, values): (Vec<_>, Vec<_>) = args.into_iter().unzip();
 	let count = COUNTER.with(|counter| counter.borrow_mut().inc());
@@ -101,5 +100,5 @@ pub fn create_tt_return_macro(input: proc_macro::TokenStream) -> proc_macro::Tok
 		pub use #unique_name as #name;
 	};
 
-	decl_macro.into()
+	decl_macro
 }

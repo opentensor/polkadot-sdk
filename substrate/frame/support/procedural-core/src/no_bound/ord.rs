@@ -18,12 +18,7 @@
 use syn::spanned::Spanned;
 
 /// Derive Ord but do not bound any generic.
-pub fn derive_ord_no_bound(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-	let input: syn::DeriveInput = match syn::parse(input) {
-		Ok(input) => input,
-		Err(e) => return e.to_compile_error().into(),
-	};
-
+pub fn derive_ord_no_bound(input: syn::DeriveInput) -> proc_macro2::TokenStream {
 	let name = &input.ident;
 	let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
@@ -72,5 +67,4 @@ pub fn derive_ord_no_bound(input: proc_macro::TokenStream) -> proc_macro::TokenS
 			}
 		};
 	)
-	.into()
 }

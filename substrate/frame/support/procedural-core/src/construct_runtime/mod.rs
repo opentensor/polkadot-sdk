@@ -209,7 +209,7 @@
 //! expose.
 
 pub(crate) mod expand;
-pub(crate) mod parse;
+pub mod parse;
 
 use crate::pallet::parse::helper::two128_str;
 use cfg_expr::Predicate;
@@ -218,7 +218,6 @@ use frame_support_procedural_tools::{
 };
 use itertools::Itertools;
 use parse::{ExplicitRuntimeDeclaration, ImplicitRuntimeDeclaration, Pallet, RuntimeDeclaration};
-use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use std::{collections::HashSet, str::FromStr};
@@ -229,21 +228,18 @@ const SYSTEM_PALLET_NAME: &str = "System";
 
 /// Implementation of `construct_runtime` macro. Either expand to some code which will call
 /// `construct_runtime` again, or expand to the final runtime definition.
-pub fn construct_runtime(input: TokenStream) -> TokenStream {
-	let input_copy = input.clone();
-	let definition = syn::parse_macro_input!(input as RuntimeDeclaration);
-
+pub fn construct_runtime(input: TokenStream2, definition: RuntimeDeclaration) -> TokenStream2 {
 	let (check_pallet_number_res, res) = match definition {
 		RuntimeDeclaration::Implicit(implicit_def) => (
-			check_pallet_number(input_copy.clone().into(), implicit_def.pallets.len()),
-			construct_runtime_implicit_to_explicit(input_copy.into(), implicit_def),
+			check_pallet_number(input.clone(), implicit_def.pallets.len()),
+			construct_runtime_implicit_to_explicit(input, implicit_def),
 		),
 		RuntimeDeclaration::Explicit(explicit_decl) => (
-			check_pallet_number(input_copy.clone().into(), explicit_decl.pallets.len()),
-			construct_runtime_explicit_to_explicit_expanded(input_copy.into(), explicit_decl),
+			check_pallet_number(input.clone(), explicit_decl.pallets.len()),
+			construct_runtime_explicit_to_explicit_expanded(input.into(), explicit_decl),
 		),
 		RuntimeDeclaration::ExplicitExpanded(explicit_decl) => (
-			check_pallet_number(input_copy.into(), explicit_decl.pallets.len()),
+			check_pallet_number(input, explicit_decl.pallets.len()),
 			construct_runtime_final_expansion(explicit_decl),
 		),
 	};
@@ -271,7 +267,7 @@ pub fn construct_runtime(input: TokenStream) -> TokenStream {
 		.write_to_out_dir(res)
 		.expect("Does not fail because of IO in OUT_DIR; qed");
 
-	res.into()
+	res
 }
 
 /// All pallets that have implicit pallet parts (ie `System: frame_system`) are

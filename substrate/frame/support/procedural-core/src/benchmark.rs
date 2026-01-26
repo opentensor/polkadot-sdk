@@ -19,7 +19,6 @@
 
 use derive_syn_parse::Parse;
 use frame_support_procedural_tools::generate_access_from_frame_or_crate;
-use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span, TokenStream as TokenStream2};
 use quote::{quote, quote_spanned, ToTokens};
 use syn::{
@@ -472,15 +471,15 @@ impl BenchmarkDef {
 
 /// Parses and expands a `#[benchmarks]` or `#[instance_benchmarks]` invocation
 pub fn benchmarks(
-	attrs: TokenStream,
-	tokens: TokenStream,
+	module: ItemMod,
+	attrs_as_nothing: Result<Nothing>,
+	attrs_as_where_clause: Result<WhereClause>,
 	instance: bool,
-) -> syn::Result<TokenStream> {
+) -> syn::Result<TokenStream2> {
 	let krate = generate_access_from_frame_or_crate("frame-benchmarking")?;
 	// gather module info
-	let module: ItemMod = syn::parse(tokens)?;
 	let mod_span = module.span();
-	let where_clause = match syn::parse::<Nothing>(attrs.clone()) {
+	let where_clause = match attrs_as_nothing {
 		Ok(_) =>
 			if instance {
 				quote!(T: Config<I>, I: 'static)
@@ -488,7 +487,7 @@ pub fn benchmarks(
 				quote!(T: Config)
 			},
 		Err(_) => {
-			let mut where_clause_predicates = syn::parse::<WhereClause>(attrs)?.predicates;
+			let mut where_clause_predicates = attrs_as_where_clause?.predicates;
 
 			// Ensure the where clause contains the Config trait bound
 			if instance {

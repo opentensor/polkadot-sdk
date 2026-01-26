@@ -16,7 +16,7 @@
 // limitations under the License.
 
 use crate::COUNTER;
-use proc_macro::TokenStream;
+use proc_macro2::TokenStream;
 
 pub fn generate_dummy_part_checker(input: TokenStream) -> TokenStream {
 	if !input.is_empty() {
@@ -75,5 +75,4 @@ pub fn generate_dummy_part_checker(input: TokenStream) -> TokenStream {
 			pub use #no_op_macro_ident as is_origin_part_defined;
 		}
 	)
-	.into()
 }
