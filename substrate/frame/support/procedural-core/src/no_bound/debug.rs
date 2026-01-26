@@ -18,9 +18,7 @@
 use syn::spanned::Spanned;
 
 /// Derive Debug but do not bound any generics.
-pub fn derive_debug_no_bound(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-	let input = syn::parse_macro_input!(input as syn::DeriveInput);
-
+pub fn derive_debug_no_bound(input: syn::DeriveInput) -> proc_macro2::TokenStream {
 	let input_ident = &input.ident;
 	let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 

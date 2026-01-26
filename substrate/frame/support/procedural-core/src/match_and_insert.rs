@@ -27,9 +27,8 @@ mod keyword {
 	syn::custom_keyword!(tokens);
 }
 
-pub fn match_and_insert(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-	let MatchAndInsertDef { pattern, tokens, target } =
-		syn::parse_macro_input!(input as MatchAndInsertDef);
+pub fn match_and_insert(def: MatchAndInsertDef) -> TokenStream {
+	let MatchAndInsertDef { pattern, tokens, target } = def;
 
 	match expand_in_stream(&pattern, &mut Some(tokens), target) {
 		Ok(stream) => stream.into(),
@@ -37,7 +36,7 @@ pub fn match_and_insert(input: proc_macro::TokenStream) -> proc_macro::TokenStre
 	}
 }
 
-struct MatchAndInsertDef {
+pub struct MatchAndInsertDef {
 	// Token stream to search and insert tokens into.
 	target: TokenStream,
 	// Pattern to match against, this is ensured to have no TokenTree::Group nor TokenTree::Literal

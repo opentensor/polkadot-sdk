@@ -16,12 +16,12 @@
 // limitations under the License.
 
 use frame_support_procedural_tools::generate_access_from_frame_or_crate;
-use proc_macro::TokenStream;
+use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{ItemFn, Result};
 
-pub fn transactional(_attr: TokenStream, input: TokenStream) -> Result<TokenStream> {
-	let ItemFn { attrs, vis, sig, block } = syn::parse(input)?;
+pub fn transactional(_attr: TokenStream, item: ItemFn) -> Result<TokenStream> {
+	let ItemFn { attrs, vis, sig, block } = item;
 
 	let crate_ = generate_access_from_frame_or_crate("frame-support")?;
 	let output = quote! {
@@ -39,11 +39,11 @@ pub fn transactional(_attr: TokenStream, input: TokenStream) -> Result<TokenStre
 		}
 	};
 
-	Ok(output.into())
+	Ok(output)
 }
 
-pub fn require_transactional(_attr: TokenStream, input: TokenStream) -> Result<TokenStream> {
-	let ItemFn { attrs, vis, sig, block } = syn::parse(input)?;
+pub fn require_transactional(_attr: TokenStream, item: ItemFn) -> Result<TokenStream> {
+	let ItemFn { attrs, vis, sig, block } = item;
 
 	let crate_ = generate_access_from_frame_or_crate("frame-support")?;
 	let output = quote! {
@@ -56,5 +56,5 @@ pub fn require_transactional(_attr: TokenStream, input: TokenStream) -> Result<T
 		}
 	};
 
-	Ok(output.into())
+	Ok(output)
 }

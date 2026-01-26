@@ -22,7 +22,7 @@ use syn::{Ident, Result};
 
 const MAX_IDENTS: usize = 18;
 
-pub fn impl_key_prefix_for_tuples(input: proc_macro::TokenStream) -> Result<TokenStream> {
+pub fn impl_key_prefix_for_tuples(input: TokenStream) -> Result<TokenStream> {
 	if !input.is_empty() {
 		return Err(syn::Error::new(Span::call_site(), "No arguments expected"))
 	}

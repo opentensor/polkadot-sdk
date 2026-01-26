@@ -20,9 +20,7 @@ use quote::{quote, quote_spanned};
 use syn::{spanned::Spanned, Data, DeriveInput, Fields};
 
 /// Derive Default but do not bound any generic.
-pub fn derive_default_no_bound(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
-	let input = syn::parse_macro_input!(input as DeriveInput);
-
+pub fn derive_default_no_bound(input: DeriveInput) -> proc_macro2::TokenStream {
 	let name = &input.ident;
 
 	let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();

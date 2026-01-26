@@ -28,7 +28,7 @@ fn create_error(message: &str) -> Error {
 }
 
 /// Implementation of the `crate_to_crate_version!` macro.
-pub fn crate_to_crate_version(input: proc_macro::TokenStream) -> Result<TokenStream> {
+pub fn crate_to_crate_version(input: TokenStream) -> Result<TokenStream> {
 	if !input.is_empty() {
 		return Err(create_error("No arguments expected!"))
 	}

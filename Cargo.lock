@@ -6941,6 +6941,7 @@ dependencies = [
  "expander",
  "frame-benchmarking",
  "frame-support",
+ "frame-support-procedural-core",
  "frame-support-procedural-tools",
  "frame-system",
  "itertools 0.11.0",
