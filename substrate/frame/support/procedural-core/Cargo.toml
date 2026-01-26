@@ -1,5 +1,5 @@
 [package]
-name = "frame-support-procedural"
+name = "frame-support-procedural-core"
 version = "35.0.0"
 authors.workspace = true
 edition.workspace = true
@@ -16,9 +16,6 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [lib]
 proc-macro = true
-
-[[example]]
-name = "proc_main"
 
 [dependencies]
 Inflector = { workspace = true }

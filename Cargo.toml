@@ -456,6 +456,7 @@ members = [
 	"substrate/frame/sudo",
 	"substrate/frame/support",
 	"substrate/frame/support/procedural",
+	"substrate/frame/support/procedural-core",
 	"substrate/frame/support/procedural/tools",
 	"substrate/frame/support/procedural/tools/derive",
 	"substrate/frame/support/test",
@@ -825,6 +826,7 @@ frame-metadata-hash-extension = { path = "substrate/frame/metadata-hash-extensio
 frame-storage-access-test-runtime = { path = "substrate/utils/frame/storage-access-test-runtime", default-features = false }
 frame-support = { path = "substrate/frame/support", default-features = false }
 frame-support-procedural = { path = "substrate/frame/support/procedural", default-features = false }
+frame-support-procedural-core = { path = "substrate/frame/support/procedural-core", default-features = false }
 frame-support-procedural-tools = { path = "substrate/frame/support/procedural/tools", default-features = false }
 frame-support-procedural-tools-derive = { path = "substrate/frame/support/procedural/tools/derive", default-features = false }
 frame-support-test = { path = "substrate/frame/support/test" }
