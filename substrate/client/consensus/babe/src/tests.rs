@@ -384,7 +384,7 @@ async fn run_one_test(mutator: impl Fn(&mut TestHeader, Stage) + Send + Sync + '
 					// this test fail.
 					let parent_header = client_clone.header(parent).ok().flatten().unwrap();
 					let slot = Slot::from(
-						find_pre_digest::<TestBlock>(&parent_header).unwrap().slot() + 1,
+						find_pre_digest::<TestBlock>(&parent_header).unwrap().unwrap().slot() + 1,
 					);
 
 					async move { Ok((InherentDataProvider::new(slot),)) }
@@ -624,7 +624,7 @@ async fn propose_and_import_block(
 
 	let slot = slot.unwrap_or_else(|| {
 		let parent_pre_digest = find_pre_digest::<TestBlock>(parent).unwrap();
-		parent_pre_digest.slot() + 1
+		parent_pre_digest.unwrap().slot() + 1
 	});
 
 	let pre_digest = sp_runtime::generic::Digest {

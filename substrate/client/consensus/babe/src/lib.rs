@@ -897,8 +897,7 @@ where
 	fn proposing_remaining_duration(&self, slot_info: &SlotInfo<B>) -> Duration {
 		let parent_slot = find_pre_digest::<B>(&slot_info.chain_head)
 			.ok()
-			.map(|d| d.map(|d| d.slot()))
-			.flatten();
+			.and_then(|d| d.map(|d| d.slot()));
 
 		sc_consensus_slots::proposing_remaining_duration(
 			parent_slot,

@@ -56,6 +56,7 @@ use sc_sysinfo::Metric;
 use sc_telemetry::TelemetryWorkerHandle;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sp_consensus_beefy::ecdsa_crypto;
+use sc_consensus_grandpa::warp_proof::HardForks;
 use sp_runtime::traits::Block as BlockT;
 use std::{
 	collections::{HashMap, HashSet},
@@ -368,7 +369,7 @@ where
 		let warp_sync = Arc::new(sc_consensus_grandpa::warp_proof::NetworkProvider::new(
 			backend.clone(),
 			import_setup.1.shared_authority_set().clone(),
-			grandpa_hard_forks,
+			HardForks::new_hard_forked_authorities(grandpa_hard_forks),
 		));
 
 		let ext_overseer_args = if is_parachain_node.is_running_alongside_parachain_node() {

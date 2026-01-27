@@ -175,6 +175,7 @@ where
 			select_chain.clone(),
 			grandpa_hard_forks,
 			telemetry.as_ref().map(|x| x.handle()),
+			None,
 		)?;
 	let justification_import = grandpa_block_import.clone();
 
