@@ -316,9 +316,11 @@ impl<Hash: hash::Hash + Member + Serialize, Ex: std::fmt::Debug> BasePool<Hash, 
 		}
 
 		let tx = WaitingTransaction::new(tx, self.ready.provided_tags(), &self.recently_pruned);
+		let is_evm = tx.transaction.provides.iter().any(|tag| tag.starts_with(b"evm:"));
 		trace!(
 			target: LOG_TARGET,
 			tx_hash = ?tx.transaction.hash,
+			tx_type = if is_evm { "evm" } else { "substrate" },
 			?tx,
 			set = if tx.is_ready() { "ready" } else { "future" },
 			"Importing transaction"
