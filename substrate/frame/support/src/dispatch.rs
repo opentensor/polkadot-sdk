@@ -705,6 +705,16 @@ impl<T> PaysFee<T> for (u64, Pays) {
 
 // END TODO
 
+pub trait DispatchGuard<Call: Dispatchable> {
+	fn check(origin: &Call::RuntimeOrigin, call: &Call) -> DispatchResultWithPostInfo;
+}
+
+impl<Call: Dispatchable> DispatchGuard<Call> for () {
+	fn check(_origin: &Call::RuntimeOrigin, _call: &Call) -> DispatchResultWithPostInfo {
+		Ok(().into())
+	}
+}
+
 #[cfg(test)]
 // Do not complain about unused `dispatch` and `dispatch_aux`.
 #[allow(dead_code)]
