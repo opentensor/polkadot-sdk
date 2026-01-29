@@ -58,5 +58,5 @@ no-metadata-docs = []
 experimental = []
 # Generate impl-trait for tuples with the given number of tuples. Will be needed as the number of
 # pallets in a runtime grows. Does increase the compile time!
-tuples-96 = []
-tuples-128 = []
+tuples-96 = ["frame-support-procedural-core/tuples-96"]
+tuples-128 = ["frame-support-procedural-core/tuples-128"]
