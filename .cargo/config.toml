@@ -14,10 +14,3 @@ SQLX_OFFLINE = "true"
 [net]
 retry = 5
 # git-fetch-with-cli = true # commented because there is a risk that a runner can be banned by github
-
-[target.x86_64-unknown-linux-gnu]
-rustflags = ["-A", "mismatched_lifetime_syntaxes"]
-[target.aarch64-apple-darwin]
-rustflags = ["-A", "mismatched_lifetime_syntaxes"]
-[target.x86_64-apple-darwin]
-rustflags = ["-A", "mismatched_lifetime_syntaxes"]
