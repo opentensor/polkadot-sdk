@@ -30,12 +30,11 @@ jobs:
           - directory: substrate/frame
             exclude: '^(contracts|pallet-revive-fixtures|pallet-contracts-fixtures-common)$'
           - directory: substrate/primitives
-            exclude: '^sp-state-machine-fuzz|sp-api-test$'
+            exclude: '^sp-state-machine-fuzz$'
           - directory: substrate/client
             exclude: '^THIS_PATTERN_MATCHES_NOTHING$'
     env:
       RUST_BACKTRACE: full
-      SKIP_WASM_BUILD: 1
       SKIP_PALLET_REVIVE_FIXTURES: 1
     steps:
       - name: Check-out repository under $GITHUB_WORKSPACE
@@ -49,6 +48,7 @@ jobs:
         with:
           default: true
           toolchain: 1.89.0
+          targets: wasm32v1-none
 
       - name: Utilize Shared Rust Cache
         uses: Swatinem/rust-cache@v2
