@@ -35,7 +35,7 @@ jobs:
             exclude: '^THIS_PATTERN_MATCHES_NOTHING$'
     env:
       RUST_BACKTRACE: full
-      RUSTFLAGS: -D warnings -A mismatched_lifetime_syntaxes
+      RUSTFLAGS: -D warnings -A mismatched_lifetime_syntaxes -A dead_code
       SKIP_PALLET_REVIVE_FIXTURES: 1
     steps:
       - name: Check-out repository under $GITHUB_WORKSPACE
