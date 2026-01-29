@@ -45,10 +45,6 @@ jobs:
 
       - name: Install Rust
         uses: actions-rs/toolchain@v1
-        with:
-          default: true
-          toolchain: 1.89.0
-          target: wasm32-unknown-unknown
 
       - name: Utilize Shared Rust Cache
         uses: Swatinem/rust-cache@v2
