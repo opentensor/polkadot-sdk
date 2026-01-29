@@ -30,7 +30,7 @@ jobs:
           - directory: substrate/frame
             exclude: '^(contracts|pallet-revive-fixtures|pallet-contracts-fixtures-common)$'
           - directory: substrate/primitives
-            exclude: '^sp-state-machine-fuzz$'
+            exclude: '^sp-state-machine-fuzz|sp-api-test$'
           - directory: substrate/client
             exclude: '^THIS_PATTERN_MATCHES_NOTHING$'
     env:
