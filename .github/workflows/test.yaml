@@ -28,7 +28,7 @@ jobs:
       matrix:
         include:
           - directory: substrate/frame
-            exclude: '^(contracts|pallet-revive-fixtures|pallet-contracts-fixtures-common)$'
+            exclude: '^(contracts|pallet-contracts-fixtures-common)$'
           - directory: substrate/primitives
             exclude: '^sp-state-machine-fuzz$'
           - directory: substrate/client
@@ -36,7 +36,7 @@ jobs:
     env:
       RUST_BACKTRACE: full
       RUSTFLAGS: -D warnings -A mismatched_lifetime_syntaxes -A dead_code
-      SKIP_PALLET_REVIVE_FIXTURES: 1
+
     steps:
       - name: Check-out repository under $GITHUB_WORKSPACE
         uses: actions/checkout@v4
@@ -52,6 +52,28 @@ jobs:
         with:
           key: cargo-cache
           cache-on-failure: true
+          
+      - uses: taiki-e/install-action@nextest
+      
+      - name: Install solidity compiler
+        run: |
+            VERSION="0.8.33"
+            ASSET_URL="https://github.com/argotorg/solidity/releases/download/v$VERSION/solc-static-linux"
+            echo "Downloading solc v$VERSION from $ASSET_URL"
+            curl -Lsf --show-error -o $HOME/.cargo/bin/solc "$ASSET_URL"
+            chmod +x $HOME/.cargo/bin/solc
+            xattr -c $HOME/.cargo/bin/solc
+            solc --version
+            
+      - name: Install revive compiler (Polkadot VM)
+        run: |
+            VERSION="0.6.0"
+            ASSET_URL="https://github.com/paritytech/revive/releases/download/v$VERSION/resolc-x86_64-unknown-linux-musl"
+            echo "Downloading resolc v$VERSION from $ASSET_URL"
+            curl -Lsf --show-error -o $HOME/.cargo/bin/resolc "$ASSET_URL"
+            chmod +x $HOME/.cargo/bin/resolc
+            xattr -c $HOME/.cargo/bin/resolc
+            resolc --version
 
       - name: Test ${{ matrix.directory }}
         run: |
@@ -59,4 +81,4 @@ jobs:
             | grep -vE '${{ matrix.exclude }}' \
             | while read crate; do echo "-p $crate"; done \
             | tr '\n' ' ')
-          cargo test $PACKAGES
+          cargo nextest run --no-fail-fast $PACKAGES 
