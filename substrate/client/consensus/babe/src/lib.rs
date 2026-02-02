@@ -1513,9 +1513,7 @@ where
 
 		let pre_digest = find_pre_digest::<Block>(&block.header)
 			.map_err(|e| ConsensusError::Other(Box::new(e)))?
-			.expect(
-			"valid babe leaders must contain a predigest; header has been already verified; qed"
-		);
+			.ok_or_else(|| ConsensusError::Other(Box::new(Error::<Block>::NoPreRuntimeDigest)))?;
 		let slot = pre_digest.slot();
 
 		let parent_hash = *block.header.parent_hash();
