@@ -36,6 +36,7 @@ jobs:
     env:
       RUST_BACKTRACE: full
       RUSTFLAGS: -D warnings -A mismatched_lifetime_syntaxes -A dead_code
+      SUBSTRATE_ALLOW_TX_REPLACEMENT: 1
 
     steps:
       - name: Check-out repository under $GITHUB_WORKSPACE
@@ -79,4 +80,4 @@ jobs:
             | grep -vE '${{ matrix.exclude }}' \
             | while read crate; do echo "-p $crate"; done \
             | tr '\n' ' ')
-          cargo nextest run --no-fail-fast $PACKAGES 
+          cargo nextest run --release --no-fail-fast $PACKAGES 
