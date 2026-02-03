@@ -58,7 +58,7 @@ impl<Hash, Ex> Ord for TransactionRef<Hash, Ex> {
 			.priority
 			.cmp(&other.transaction.priority)
 			// Disable transaction longevity effect on its priority.
-			//			.then_with(|| other.transaction.valid_till.cmp(&self.transaction.valid_till))
+			// .then_with(|| other.transaction.valid_till.cmp(&self.transaction.valid_till))
 			.then_with(|| other.insertion_id.cmp(&self.insertion_id))
 	}
 }
@@ -426,22 +426,6 @@ impl<Hash: hash::Hash + Member + Serialize, Ex> ReadyTransactions<Hash, Ex> {
 		&mut self,
 		tx: &Transaction<Hash, Ex>,
 	) -> error::Result<(Vec<Arc<Transaction<Hash, Ex>>>, Vec<Hash>)> {
-
-		// Feature toggle:
-		// - if SUBSTRATE_TXPOOL_ENABLE_REPLACE_PREVIOUS == "1" => run the replacement logic
-		// - if it's "0" (or unset/anything else) => do not run (no replacement)
-		const ENV_ENABLE_REPLACE_PREVIOUS: &str = "SUBSTRATE_TXPOOL_ENABLE_REPLACE_PREVIOUS";
-
-		let replace_enabled = match std::env::var(ENV_ENABLE_REPLACE_PREVIOUS) {
-			Ok(v) => v.trim() == "1",
-			Err(_) => false,
-		};
-
-		if !replace_enabled {
-			return Ok((vec![], vec![]));
-		}
-
-
 		let (to_remove, unlocks) = {
 			// check if we are replacing a transaction
 			let replace_hashes = tx
@@ -450,9 +434,11 @@ impl<Hash: hash::Hash + Member + Serialize, Ex> ReadyTransactions<Hash, Ex> {
 				.filter_map(|tag| self.provided_tags.get(tag))
 				.collect::<HashSet<_>>();
 
-			// early exit if we are not replacing anything.
+			// early exit if we are not replacing anything or not allowed to replace.
 			if replace_hashes.is_empty() {
-				return Ok((vec![], vec![]))
+				return Ok((vec![], vec![]));
+			} else if !is_tx_replacement_allowed() {
+				return Err(error::Error::TemporarilyBanned);
 			}
 
 			// now check if collective priority is lower than the replacement transaction.
@@ -607,9 +593,14 @@ fn remove_item<T: PartialEq>(vec: &mut Vec<T>, item: &T) {
 	}
 }
 
+fn is_tx_replacement_allowed() -> bool {
+	std::env::var("SUBSTRATE_ALLOW_TX_REPLACEMENT").is_ok_and(|v| v.trim() == "1")
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use assert_matches::assert_matches;
 
 	fn tx(id: u8) -> Transaction<u64, Vec<u8>> {
 		Transaction {
@@ -698,6 +689,28 @@ mod tests {
 		assert_eq!(ready.get().count(), 3);
 	}
 
+	#[test]
+	fn should_ban_transaction_replacement_if_not_allowed() {
+		std::env::remove_var("SUBSTRATE_ALLOW_TX_REPLACEMENT");
+
+		// given
+		let mut ready = ReadyTransactions::default();
+		let mut tx1 = tx(1);
+		tx1.requires.clear();
+		let mut tx2 = tx(2);
+		tx2.requires.clear();
+		tx2.provides = tx1.provides.clone();
+
+		// we can safely import the transaction
+		import(&mut ready, tx1).unwrap();
+
+		// but we cannot replace it without being banned
+		let res = import(&mut ready, tx2);
+		assert_matches!(res.unwrap_err(), error::Error::TemporarilyBanned);
+
+		std::env::set_var("SUBSTRATE_ALLOW_TX_REPLACEMENT", "1");
+	}
+
 	/// Populate the pool, with a graph that looks like so:
 	///
 	/// tx1 -> tx2 \
@@ -735,7 +748,7 @@ mod tests {
 		};
 
 		// when
-		for tx in vec![tx1, tx2, tx3, tx7, tx4, tx5, tx6] {
+		for tx in vec![tx1, tx2, tx3, tx4, tx5, tx6, tx7] {
 			import(ready, tx).unwrap();
 		}
 
@@ -830,7 +843,7 @@ mod tests {
 		assert_eq!(tx1_unlocks[0], tx2.hash);
 		assert_eq!(tx1_unlocks[1], tx2.hash);
 		assert_eq!(tx1_unlocks[2], tx3.hash);
-		assert_eq!(tx1_unlocks[4], tx4.hash);
+		assert_eq!(tx1_unlocks[3], tx4.hash);
 		drop(lock);
 
 		// then consider tx2 invalid, and hence, remove it.
