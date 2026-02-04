@@ -586,23 +586,20 @@ pub mod pallet {
 	}
 
 	impl<T: Config> Pallet<T> {
-		/// Get the accumulated `weight` and the dispatch class for the given `calls`.
+		/// Get the accumulated `weight`, dispatch class and `pays` for the given `calls`.
 		fn weight_and_dispatch_class(
 			calls: &[<T as Config>::RuntimeCall],
 		) -> (Weight, DispatchClass, Pays) {
 			let dispatch_infos = calls.iter().map(|call| call.get_dispatch_info());
-			let pays = if dispatch_infos.clone().any(|di| di.pays_fee == Pays::No) {
-				Pays::No
-			} else {
-				Pays::Yes
-			};
-			let (dispatch_weight, dispatch_class) = dispatch_infos.fold(
-				(Weight::zero(), DispatchClass::Operational),
-				|(total_weight, dispatch_class): (Weight, DispatchClass), di| {
+			let (dispatch_weight, dispatch_class, pays) = dispatch_infos.fold(
+				(Weight::zero(), DispatchClass::Operational, Pays::No),
+				|(total_weight, dispatch_class, pays): (Weight, DispatchClass, Pays), di| {
 					(
 						total_weight.saturating_add(di.call_weight),
 						// If not all are `Operational`, we want to use `DispatchClass::Normal`.
 						if di.class == DispatchClass::Normal { di.class } else { dispatch_class },
+						// If not all are `No`, we want to use `Pays::Yes`.
+						if di.pays_fee == Pays::Yes { Pays::Yes } else { pays },
 					)
 				},
 			);
