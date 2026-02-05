@@ -22,7 +22,7 @@ env:
 jobs:
   test:
     name: cargo test (${{ matrix.directory }})
-    runs-on: ubuntu-latest
+    runs-on: SubtensorCI
     strategy:
       fail-fast: false
       matrix:
