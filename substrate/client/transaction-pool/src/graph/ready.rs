@@ -394,11 +394,14 @@ impl<Hash: hash::Hash + Member + Serialize, Ex> ReadyTransactions<Hash, Ex> {
 				let current_tag = &tag;
 				for tag in &tx.provides {
 					let removed = self.provided_tags.remove(tag);
-					tracing::error!(
-						target: LOG_TARGET, ?removed, ?current_tag, ?tag, ?tx.hash, 
-						"The pool contains exactly one transaction providing given tag; the removed transaction
-						claims to provide that tag, so it has to be mapped to it's hash; qed"
-					);
+					let other = if current_tag == tag { None } else { Some(&tx.hash) };
+					if removed.as_ref() != other {
+						tracing::error!(
+							target: LOG_TARGET, ?removed, ?current_tag, ?tag, ?tx.hash,
+							"The pool contains exactly one transaction providing given tag; the removed transaction
+							claims to provide that tag, so it has to be mapped to it's hash; qed"
+						);
+					}
 				}
 
 				removed.push(tx);
