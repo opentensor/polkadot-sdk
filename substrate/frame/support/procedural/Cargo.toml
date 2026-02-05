@@ -53,6 +53,7 @@ sp-runtime = { features = ["serde"], default-features = true, workspace = true }
 default = ["std"]
 std = [
 	"sp-crypto-hashing/std",
+	"frame-support-procedural-core/std"
 ]
 no-metadata-docs = []
 experimental = []
