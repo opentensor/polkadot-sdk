@@ -109,12 +109,13 @@ pub mod generic {
 			let compact = CompactStatus::decode(value)?;
 			let chain_status = match <Vec<u8>>::decode(value) {
 				Ok(v) => v,
-				Err(e) =>
+				Err(e) => {
 					if compact.version <= LAST_CHAIN_STATUS_VERSION {
-						return Err(e)
+						return Err(e);
 					} else {
 						Vec::new()
-					},
+					}
+				},
 			};
 
 			let CompactStatus {
@@ -220,7 +221,7 @@ pub mod generic {
 		/// Storage key which changes are requested.
 		pub key: Vec<u8>,
 	}
-	
+
 	#[allow(dead_code)]
 	#[derive(Debug, PartialEq, Eq, Clone, Encode, Decode)]
 	/// Remote changes response.

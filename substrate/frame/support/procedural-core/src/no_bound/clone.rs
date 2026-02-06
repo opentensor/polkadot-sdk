@@ -87,7 +87,7 @@ pub fn derive_clone_no_bound(input: syn::DeriveInput) -> proc_macro2::TokenStrea
 		},
 		syn::Data::Union(_) => {
 			let msg = "Union type not supported by `derive(CloneNoBound)`";
-			return syn::Error::new(input.span(), msg).to_compile_error().into()
+			return syn::Error::new(input.span(), msg).to_compile_error().into();
 		},
 	};
 

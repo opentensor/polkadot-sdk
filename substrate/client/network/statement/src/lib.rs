@@ -382,7 +382,7 @@ where
 			NotificationEvent::NotificationStreamOpened { peer, handshake, .. } => {
 				let Some(role) = self.network.peer_role(peer, handshake) else {
 					log::debug!(target: LOG_TARGET, "role for {peer} couldn't be determined");
-					return
+					return;
 				};
 
 				let _was_in = self.peers.insert(
@@ -407,7 +407,7 @@ where
 						target: LOG_TARGET,
 						"{peer}: Ignoring statements while major syncing or offline"
 					);
-					return
+					return;
 				}
 
 				if let Ok(statements) = <Statements as Decode>::decode(&mut notification.as_ref()) {
@@ -435,7 +435,7 @@ where
 					self.metrics.as_ref().map(|metrics| {
 						metrics.ignored_statements.inc_by(statements_left);
 					});
-					break
+					break;
 				}
 
 				let hash = s.hash();
@@ -503,10 +503,12 @@ where
 
 	fn on_handle_statement_import(&mut self, who: PeerId, import: &SubmitResult) {
 		match import {
-			SubmitResult::New(NetworkPriority::High) =>
-				self.network.report_peer(who, rep::EXCELLENT_STATEMENT),
-			SubmitResult::New(NetworkPriority::Low) =>
-				self.network.report_peer(who, rep::GOOD_STATEMENT),
+			SubmitResult::New(NetworkPriority::High) => {
+				self.network.report_peer(who, rep::EXCELLENT_STATEMENT)
+			},
+			SubmitResult::New(NetworkPriority::Low) => {
+				self.network.report_peer(who, rep::GOOD_STATEMENT)
+			},
 			SubmitResult::Known => self.network.report_peer(who, rep::ANY_STATEMENT_REFUND),
 			SubmitResult::KnownExpired => {},
 			SubmitResult::Ignored => {},
@@ -519,7 +521,7 @@ where
 	pub async fn propagate_statement(&mut self, hash: &Hash) {
 		// Accept statements only when node is not major syncing
 		if self.sync.is_major_syncing() {
-			return
+			return;
 		}
 
 		log::debug!(target: LOG_TARGET, "Propagating statement [{:?}]", hash);
@@ -536,7 +538,7 @@ where
 			// never send statements to light nodes
 			if peer.role.is_light() {
 				log::trace!(target: LOG_TARGET, "{} is a light node, skipping propagation", who);
-				continue
+				continue;
 			}
 
 			let to_send = statements
@@ -608,7 +610,7 @@ where
 	async fn propagate_statements(&mut self) {
 		// Send out statements only when node is not major syncing
 		if self.sync.is_major_syncing() {
-			return
+			return;
 		}
 
 		let Ok(statements) = self.statement_store.take_recent_statements() else { return };

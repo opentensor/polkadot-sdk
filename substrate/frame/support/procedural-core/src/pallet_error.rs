@@ -31,8 +31,8 @@ pub fn derive_pallet_error(input: syn::DeriveInput) -> proc_macro2::TokenStream 
 
 	let max_encoded_size = match data {
 		syn::Data::Struct(syn::DataStruct { fields, .. }) => match fields {
-			syn::Fields::Named(syn::FieldsNamed { named: fields, .. }) |
-			syn::Fields::Unnamed(syn::FieldsUnnamed { unnamed: fields, .. }) => {
+			syn::Fields::Named(syn::FieldsNamed { named: fields, .. })
+			| syn::Fields::Unnamed(syn::FieldsUnnamed { unnamed: fields, .. }) => {
 				let maybe_field_tys = fields
 					.iter()
 					.map(|f| generate_field_types(f, &frame_support))
@@ -90,7 +90,7 @@ pub fn derive_pallet_error(input: syn::DeriveInput) -> proc_macro2::TokenStream 
 		},
 		syn::Data::Union(syn::DataUnion { union_token, .. }) => {
 			let msg = "Cannot derive `PalletError` for union; please implement it directly";
-			return syn::Error::new(union_token.span, msg).into_compile_error().into()
+			return syn::Error::new(union_token.span, msg).into_compile_error().into();
 		},
 	};
 
@@ -130,7 +130,7 @@ fn generate_field_types(
 			})?;
 
 			if let Some(v) = res {
-				return Ok(v)
+				return Ok(v);
 			}
 		}
 	}
@@ -156,14 +156,14 @@ fn generate_variant_field_types(
 			});
 
 			if skip {
-				return Ok(None)
+				return Ok(None);
 			}
 		}
 	}
 
 	match &variant.fields {
-		syn::Fields::Named(syn::FieldsNamed { named: fields, .. }) |
-		syn::Fields::Unnamed(syn::FieldsUnnamed { unnamed: fields, .. }) => {
+		syn::Fields::Named(syn::FieldsNamed { named: fields, .. })
+		| syn::Fields::Unnamed(syn::FieldsUnnamed { unnamed: fields, .. }) => {
 			let field_tys = fields
 				.iter()
 				.map(|field| generate_field_types(field, scrate))

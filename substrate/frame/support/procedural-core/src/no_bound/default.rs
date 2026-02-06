@@ -53,7 +53,7 @@ pub fn derive_default_no_bound(input: DeriveInput) -> proc_macro2::TokenStream {
 			if enum_.variants.is_empty() {
 				return syn::Error::new_spanned(name, "cannot derive Default for an empty enum")
 					.to_compile_error()
-					.into()
+					.into();
 			}
 
 			// all #[default] attrs with the variant they're on; i.e. a var
@@ -91,7 +91,7 @@ pub fn derive_default_no_bound(input: DeriveInput) -> proc_macro2::TokenStream {
 							},
 						));
 
-						return err.into_compile_error().into()
+						return err.into_compile_error().into();
 					}
 
 					let variant_ident = &default_variant.ident;
@@ -132,17 +132,18 @@ pub fn derive_default_no_bound(input: DeriveInput) -> proc_macro2::TokenStream {
 							.map(|variant| syn::Error::new_spanned(variant, "additional default")),
 					);
 
-					return err.into_compile_error().into()
+					return err.into_compile_error().into();
 				},
 			}
 		},
-		Data::Union(union_) =>
+		Data::Union(union_) => {
 			return syn::Error::new_spanned(
 				union_.union_token,
 				"Union type not supported by `derive(DefaultNoBound)`",
 			)
 			.to_compile_error()
-			.into(),
+			.into()
+		},
 	};
 
 	quote!(

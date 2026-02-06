@@ -124,13 +124,13 @@ pub mod code {
 		let len: u64 = pvm_blob.len() as u64;
 		if len > crate::limits::code::BLOB_BYTES.into() {
 			log::debug!(target: LOG_TARGET, "contract blob too large: {len} limit: {BLOB_BYTES}");
-			return Err(<Error<T>>::BlobTooLarge.into())
+			return Err(<Error<T>>::BlobTooLarge.into());
 		}
 
 		#[cfg(feature = "std")]
 		if std::env::var_os("REVIVE_SKIP_VALIDATION").is_some() {
 			log::warn!(target: LOG_TARGET, "Skipping validation because env var REVIVE_SKIP_VALIDATION is set");
-			return Ok(pvm_blob)
+			return Ok(pvm_blob);
 		}
 
 		let program = polkavm::ProgramBlob::parse(pvm_blob.as_slice().into()).map_err(|err| {
@@ -182,11 +182,11 @@ pub mod code {
 			match inst.kind {
 				Instruction::invalid => {
 					log::debug!(target: LOG_TARGET, "invalid instruction at offset {}", inst.offset);
-					return Err(<Error<T>>::InvalidInstruction.into())
+					return Err(<Error<T>>::InvalidInstruction.into());
 				},
 				Instruction::sbrk(_, _) => {
 					log::debug!(target: LOG_TARGET, "sbrk instruction is not allowed. offset {}", inst.offset);
-					return Err(<Error<T>>::InvalidInstruction.into())
+					return Err(<Error<T>>::InvalidInstruction.into());
 				},
 				// Only benchmarking code is allowed to circumvent the import table. We might want
 				// to remove this magic syscall number later. Hence we need to prevent contracts
@@ -194,7 +194,7 @@ pub mod code {
 				#[cfg(not(feature = "runtime-benchmarks"))]
 				Instruction::ecalli(idx) if idx == crate::SENTINEL => {
 					log::debug!(target: LOG_TARGET, "reserved syscall idx {idx}. offset {}", inst.offset);
-					return Err(<Error<T>>::InvalidInstruction.into())
+					return Err(<Error<T>>::InvalidInstruction.into());
 				},
 				_ => (),
 			}
@@ -203,7 +203,7 @@ pub mod code {
 
 		if max_block_size > BASIC_BLOCK_SIZE {
 			log::debug!(target: LOG_TARGET, "basic block too large: {max_block_size} limit: {BASIC_BLOCK_SIZE}");
-			return Err(Error::<T>::BasicBlockTooLarge.into())
+			return Err(Error::<T>::BasicBlockTooLarge.into());
 		}
 
 		let usage_args = EstimateInterpreterMemoryUsageArgs::BoundedCache {
@@ -231,7 +231,7 @@ pub mod code {
 				program_info.purgeable_ram_consumption,
 				PURGABLE_MEMORY_LIMIT,
 			);
-			return Err(Error::<T>::StaticMemoryTooLarge.into())
+			return Err(Error::<T>::StaticMemoryTooLarge.into());
 		}
 
 		if program_info.baseline_ram_consumption > BASELINE_MEMORY_LIMIT {
@@ -239,7 +239,7 @@ pub mod code {
 				program_info.baseline_ram_consumption,
 				BASELINE_MEMORY_LIMIT,
 			);
-			return Err(Error::<T>::StaticMemoryTooLarge.into())
+			return Err(Error::<T>::StaticMemoryTooLarge.into());
 		}
 
 		Ok(pvm_blob)

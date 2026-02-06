@@ -24,8 +24,8 @@ use frame_support_procedural_tools::generate_access_from_frame_or_crate;
 use macro_magic::{import_tokens_attr, import_tokens_attr_verbatim};
 use proc_macro::TokenStream;
 use quote::{quote, ToTokens};
-use syn::{parse_macro_input, Error, ItemImpl, ItemMod, TraitItemType, WhereClause};
 use syn::parse::Nothing;
+use syn::{parse_macro_input, Error, ItemImpl, ItemMod, TraitItemType, WhereClause};
 
 use frame_support_procedural_core::*;
 
@@ -249,7 +249,8 @@ pub fn block(_attrs: TokenStream, _tokens: TokenStream) -> TokenStream {
 pub fn transactional(attr: TokenStream, input: TokenStream) -> TokenStream {
 	let item = syn::parse_macro_input!(input as syn::ItemFn);
 	transactional::transactional(attr.into(), item)
-		.unwrap_or_else(|e| e.to_compile_error()).into()
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
 }
 
 ///
@@ -260,7 +261,8 @@ pub fn transactional(attr: TokenStream, input: TokenStream) -> TokenStream {
 pub fn require_transactional(attr: TokenStream, input: TokenStream) -> TokenStream {
 	let item = syn::parse_macro_input!(input as syn::ItemFn);
 	transactional::require_transactional(attr.into(), item)
-		.unwrap_or_else(|e| e.to_compile_error()).into()
+		.unwrap_or_else(|e| e.to_compile_error())
+		.into()
 }
 
 /// Derive [`Clone`] but do not bound any generic.
@@ -782,15 +784,15 @@ pub fn register_default_impl(attrs: TokenStream, tokens: TokenStream) -> TokenSt
 pub fn inject_runtime_type(_: TokenStream, tokens: TokenStream) -> TokenStream {
 	let item = tokens.clone();
 	let item = syn::parse_macro_input!(item as TraitItemType);
-	if item.ident != "RuntimeCall" &&
-		item.ident != "RuntimeEvent" &&
-		item.ident != "RuntimeTask" &&
-		item.ident != "RuntimeViewFunction" &&
-		item.ident != "RuntimeOrigin" &&
-		item.ident != "RuntimeHoldReason" &&
-		item.ident != "RuntimeFreezeReason" &&
-		item.ident != "RuntimeParameters" &&
-		item.ident != "PalletInfo"
+	if item.ident != "RuntimeCall"
+		&& item.ident != "RuntimeEvent"
+		&& item.ident != "RuntimeTask"
+		&& item.ident != "RuntimeViewFunction"
+		&& item.ident != "RuntimeOrigin"
+		&& item.ident != "RuntimeHoldReason"
+		&& item.ident != "RuntimeFreezeReason"
+		&& item.ident != "RuntimeParameters"
+		&& item.ident != "PalletInfo"
 	{
 		return syn::Error::new_spanned(
 			item,

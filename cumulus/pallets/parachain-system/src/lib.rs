@@ -293,7 +293,7 @@ pub mod pallet {
 						false,
 						"host configuration is promised to set until `on_finalize`; qed",
 					);
-					return
+					return;
 				},
 			};
 
@@ -308,7 +308,7 @@ pub mod pallet {
 						"relevant messaging state is promised to be set until `on_finalize`; \
 							qed",
 					);
-					return
+					return;
 				},
 			};
 
@@ -329,7 +329,7 @@ pub mod pallet {
 							"relevant messaging state is promised to be set until `on_finalize`; \
 								qed",
 						);
-						return (0, 0)
+						return (0, 0);
 					},
 				};
 
@@ -1048,7 +1048,7 @@ impl<T: Config> GetChannelInfo for Pallet<T> {
 		let channels = match RelevantMessagingState::<T>::get() {
 			None => {
 				log::warn!("calling `get_channel_status` with no RelevantMessagingState?!");
-				return ChannelStatus::Closed
+				return ChannelStatus::Closed;
 			},
 			Some(d) => d.egress_channels,
 		};
@@ -1065,7 +1065,7 @@ impl<T: Config> GetChannelInfo for Pallet<T> {
 		let meta = &channels[index].1;
 		if meta.msg_count + 1 > meta.max_capacity {
 			// The channel is at its capacity. Skip it for now.
-			return ChannelStatus::Full
+			return ChannelStatus::Full;
 		}
 		let max_size_now = meta.max_total_size - meta.total_size;
 		let max_size_ever = meta.max_message_size;
@@ -1696,7 +1696,7 @@ impl<T: Config> UpwardMessageSender for Pallet<T> {
 		const MAX_CODE_SIZE: u32 = 3 * 1024 * 1024;
 		HostConfiguration::<T>::mutate(|cfg| match cfg {
 			Some(cfg) => cfg.max_upward_message_size = MAX_UPWARD_MESSAGE_SIZE,
-			None =>
+			None => {
 				*cfg = Some(AbridgedHostConfiguration {
 					max_code_size: MAX_CODE_SIZE,
 					max_head_data_size: 32 * 1024,
@@ -1711,7 +1711,8 @@ impl<T: Config> UpwardMessageSender for Pallet<T> {
 						allowed_ancestry_len: 0,
 						max_candidate_depth: 0,
 					},
-				}),
+				})
+			},
 		})
 	}
 }

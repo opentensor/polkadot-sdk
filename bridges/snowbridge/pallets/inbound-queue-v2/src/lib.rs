@@ -303,7 +303,7 @@ pub mod pallet {
 			Tips::<T>::mutate(nonce, |tip| {
 				*tip = Some(tip.unwrap_or_default().saturating_add(amount));
 			});
-			return Ok(())
+			return Ok(());
 		}
 	}
 }

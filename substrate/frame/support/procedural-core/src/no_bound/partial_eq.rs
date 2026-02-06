@@ -117,7 +117,7 @@ pub fn derive_partial_eq_no_bound(input: syn::DeriveInput) -> proc_macro2::Token
 		},
 		syn::Data::Union(_) => {
 			let msg = "Union type not supported by `derive(PartialEqNoBound)`";
-			return syn::Error::new(input.span(), msg).to_compile_error().into()
+			return syn::Error::new(input.span(), msg).to_compile_error().into();
 		},
 	};
 

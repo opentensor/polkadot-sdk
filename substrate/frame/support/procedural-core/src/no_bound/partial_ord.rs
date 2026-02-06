@@ -22,9 +22,9 @@ pub fn derive_partial_ord_no_bound(input: syn::DeriveInput) -> proc_macro2::Toke
 	let name = &input.ident;
 	let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
-	let impl_ = match input.data {
-		syn::Data::Struct(struct_) =>
-			match struct_.fields {
+	let impl_ =
+		match input.data {
+			syn::Data::Struct(struct_) => match struct_.fields {
 				syn::Fields::Named(named) => {
 					let fields =
 						named.named.iter().map(|i| &i.ident).map(
@@ -61,15 +61,15 @@ pub fn derive_partial_ord_no_bound(input: syn::DeriveInput) -> proc_macro2::Toke
 					quote::quote!(Some(core::cmp::Ordering::Equal))
 				},
 			},
-		syn::Data::Enum(_) => {
-			let msg = "Enum type not supported by `derive(PartialOrdNoBound)`";
-			return syn::Error::new(input.span(), msg).to_compile_error().into()
-		},
-		syn::Data::Union(_) => {
-			let msg = "Union type not supported by `derive(PartialOrdNoBound)`";
-			return syn::Error::new(input.span(), msg).to_compile_error().into()
-		},
-	};
+			syn::Data::Enum(_) => {
+				let msg = "Enum type not supported by `derive(PartialOrdNoBound)`";
+				return syn::Error::new(input.span(), msg).to_compile_error().into();
+			},
+			syn::Data::Union(_) => {
+				let msg = "Union type not supported by `derive(PartialOrdNoBound)`";
+				return syn::Error::new(input.span(), msg).to_compile_error().into();
+			},
+		};
 
 	quote::quote!(
 		const _: () = {

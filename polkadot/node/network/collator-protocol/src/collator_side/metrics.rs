@@ -264,7 +264,7 @@ impl CollationTracker {
 				?head,
 				"Collation already backed in a fork, skipping",
 			);
-			return
+			return;
 		}
 
 		entry.set_backed_at(block_number);
@@ -310,7 +310,7 @@ impl CollationTracker {
 				?head,
 				"Collation already included in a fork, skipping",
 			);
-			return
+			return;
 		}
 
 		entry.set_included_at(block_number);
@@ -544,7 +544,7 @@ impl CollationStats {
 	pub fn is_tracking_expired(&self, current_block: BlockNumber) -> bool {
 		// Don't expire included collations
 		if self.included().is_some() {
-			return false
+			return false;
 		}
 		let expiry_block = self.relay_parent_number + self.tracking_ttl();
 		expiry_block <= current_block

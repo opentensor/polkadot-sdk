@@ -226,7 +226,7 @@ pub fn runtime(
 				`legacy_ordering` attribute, such as `#[frame_support::runtime(legacy_ordering)]` or \
 				#[runtime(legacy_ordering)].";
 			let span = attr.span();
-			return syn::Error::new(span, msg).to_compile_error().into()
+			return syn::Error::new(span, msg).to_compile_error().into();
 		}
 	}
 
