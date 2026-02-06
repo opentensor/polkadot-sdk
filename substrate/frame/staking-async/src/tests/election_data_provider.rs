@@ -635,10 +635,10 @@ mod paged_snapshot {
 			// requested.
 			let snapshot = Staking::electable_targets(bounds, 0).unwrap();
 			assert!(
-				snapshot == all_targets &&
-					snapshot == Staking::electable_targets(bounds, 1).unwrap() &&
-					snapshot == Staking::electable_targets(bounds, 2).unwrap() &&
-					snapshot == Staking::electable_targets(bounds, u32::MAX).unwrap(),
+				snapshot == all_targets
+					&& snapshot == Staking::electable_targets(bounds, 1).unwrap()
+					&& snapshot == Staking::electable_targets(bounds, 2).unwrap()
+					&& snapshot == Staking::electable_targets(bounds, u32::MAX).unwrap(),
 			);
 		})
 	}
@@ -868,9 +868,9 @@ mod score_provider {
 		ExtBuilder::default().build_and_execute(|| {
 			// given 41 being a chilled staker
 			assert!(
-				Ledger::<Test>::get(41).is_some() &&
-					!Validators::<Test>::contains_key(41) &&
-					!Nominators::<Test>::contains_key(41)
+				Ledger::<Test>::get(41).is_some()
+					&& !Validators::<Test>::contains_key(41)
+					&& !Nominators::<Test>::contains_key(41)
 			);
 
 			// then they will not have a score when bags-list wants to update it.
@@ -883,9 +883,9 @@ mod score_provider {
 		ExtBuilder::default().build_and_execute(|| {
 			// given 777 being neither a nominator nor a validator in this pallet.
 			assert!(
-				!Ledger::<Test>::get(777).is_some() &&
-					!Validators::<Test>::contains_key(777) &&
-					!Nominators::<Test>::contains_key(777)
+				!Ledger::<Test>::get(777).is_some()
+					&& !Validators::<Test>::contains_key(777)
+					&& !Nominators::<Test>::contains_key(777)
 			);
 
 			// then it will not have a score when bags-list wants to update it.
@@ -898,9 +898,9 @@ mod score_provider {
 		ExtBuilder::default().nominate(true).build_and_execute(|| {
 			// Given 101 being a nominator
 			assert!(
-				Ledger::<Test>::get(101).unwrap().active == 500 &&
-					!Validators::<Test>::contains_key(101) &&
-					Nominators::<Test>::contains_key(101)
+				Ledger::<Test>::get(101).unwrap().active == 500
+					&& !Validators::<Test>::contains_key(101)
+					&& Nominators::<Test>::contains_key(101)
 			);
 
 			// then it will have a score.
@@ -908,9 +908,9 @@ mod score_provider {
 
 			// given 11 being a validator
 			assert!(
-				Ledger::<Test>::get(11).unwrap().active == 1000 &&
-					Validators::<Test>::contains_key(11) &&
-					!Nominators::<Test>::contains_key(11)
+				Ledger::<Test>::get(11).unwrap().active == 1000
+					&& Validators::<Test>::contains_key(11)
+					&& !Nominators::<Test>::contains_key(11)
 			);
 
 			// then it will have a score.

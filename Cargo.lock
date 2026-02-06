@@ -6941,6 +6941,36 @@ dependencies = [
  "expander",
  "frame-benchmarking",
  "frame-support",
+ "frame-support-procedural-core",
+ "frame-support-procedural-tools",
+ "frame-system",
+ "itertools 0.11.0",
+ "macro_magic",
+ "parity-scale-codec",
+ "pretty_assertions",
+ "proc-macro-warning",
+ "proc-macro2 1.0.95",
+ "quote 1.0.40",
+ "regex",
+ "scale-info",
+ "sp-crypto-hashing 0.1.0",
+ "sp-io",
+ "sp-metadata-ir",
+ "sp-runtime",
+ "syn 2.0.98",
+]
+
+[[package]]
+name = "frame-support-procedural-core"
+version = "35.0.0"
+dependencies = [
+ "Inflector",
+ "cfg-expr",
+ "derive-syn-parse",
+ "docify",
+ "expander",
+ "frame-benchmarking",
+ "frame-support",
  "frame-support-procedural-tools",
  "frame-system",
  "itertools 0.11.0",

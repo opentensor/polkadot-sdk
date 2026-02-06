@@ -123,8 +123,9 @@ pub enum Direction {
 impl Direction {
 	fn set_reserved(&mut self, new_reserved: Reserved) {
 		match self {
-			Direction::Inbound(ref mut reserved) | Direction::Outbound(ref mut reserved) =>
-				*reserved = new_reserved,
+			Direction::Inbound(ref mut reserved) | Direction::Outbound(ref mut reserved) => {
+				*reserved = new_reserved
+			},
 		}
 	}
 }
@@ -473,7 +474,7 @@ impl Peerset {
 		let Some(state) = self.peers.get_mut(&peer) else {
 			log::warn!(target: LOG_TARGET, "{}: substream opened for unknown peer {peer:?}", self.protocol);
 			debug_assert!(false);
-			return OpenResult::Reject
+			return OpenResult::Reject;
 		};
 
 		match state {
@@ -483,7 +484,7 @@ impl Peerset {
 				*state = PeerState::Connected { direction: *substream_direction };
 				self.connected_peers.fetch_add(1usize, Ordering::Relaxed);
 
-				return OpenResult::Accept { direction: real_direction }
+				return OpenResult::Accept { direction: real_direction };
 			},
 			// litep2p doesn't support the ability to cancel an opening substream so if the
 			// substream was closed while it was opening, it was marked as canceled and if the
@@ -498,7 +499,7 @@ impl Peerset {
 				self.connected_peers.fetch_add(1usize, Ordering::Relaxed);
 				*state = PeerState::Closing { direction: *substream_direction };
 
-				return OpenResult::Reject
+				return OpenResult::Reject;
 			},
 			// The peer was already rejected by the `report_inbound_substream` call and this
 			// should never happen. However, this code path is exercised by our fuzzer.
@@ -508,7 +509,7 @@ impl Peerset {
 					"{}: substream opened for a peer that was previously rejected {peer:?}",
 					self.protocol,
 				);
-				return OpenResult::Reject
+				return OpenResult::Reject;
 			},
 			state => {
 				log::error!(
@@ -535,14 +536,14 @@ impl Peerset {
 		let Some(state) = self.peers.get_mut(&peer) else {
 			log::warn!(target: LOG_TARGET, "{}: substream closed for unknown peer {peer:?}", self.protocol);
 			debug_assert!(false);
-			return
+			return;
 		};
 
 		match &state {
 			// close was initiated either by remote ([`PeerState::Connected`]) or local node
 			// ([`PeerState::Closing`]) and it was a non-reserved peer
-			PeerState::Connected { direction: Direction::Inbound(Reserved::No) } |
-			PeerState::Closing { direction: Direction::Inbound(Reserved::No) } => {
+			PeerState::Connected { direction: Direction::Inbound(Reserved::No) }
+			| PeerState::Closing { direction: Direction::Inbound(Reserved::No) } => {
 				log::trace!(
 					target: LOG_TARGET,
 					"{}: inbound substream closed to non-reserved peer {peer:?}: {state:?}",
@@ -558,8 +559,8 @@ impl Peerset {
 			},
 			// close was initiated either by remote ([`PeerState::Connected`]) or local node
 			// ([`PeerState::Closing`]) and it was a non-reserved peer
-			PeerState::Connected { direction: Direction::Outbound(Reserved::No) } |
-			PeerState::Closing { direction: Direction::Outbound(Reserved::No) } => {
+			PeerState::Connected { direction: Direction::Outbound(Reserved::No) }
+			| PeerState::Closing { direction: Direction::Outbound(Reserved::No) } => {
 				log::trace!(
 					target: LOG_TARGET,
 					"{}: outbound substream closed to non-reserved peer {peer:?} {state:?}",
@@ -633,7 +634,7 @@ impl Peerset {
 					self.protocol,
 				);
 
-				return ValidationResult::Reject
+				return ValidationResult::Reject;
 			},
 			// disconnected peers proceed directly to inbound slot allocation
 			PeerState::Disconnected => {},
@@ -647,14 +648,14 @@ impl Peerset {
 						self.protocol,
 					);
 
-					return ValidationResult::Reject
+					return ValidationResult::Reject;
 				}
 
 				// The peer remains in the `PeerState::Backoff` state until the current timer
 				// expires. Then, the peer will be in the disconnected state, subject to further
 				// rejection if the peer is not reserved by then.
 				if should_reject {
-					return ValidationResult::Reject
+					return ValidationResult::Reject;
 				}
 			},
 
@@ -680,7 +681,7 @@ impl Peerset {
 					);
 
 					*state = PeerState::Canceled { direction: Direction::Outbound(*reserved) };
-					return ValidationResult::Reject
+					return ValidationResult::Reject;
 				}
 
 				log::trace!(
@@ -699,7 +700,7 @@ impl Peerset {
 				);
 
 				*state = PeerState::Canceled { direction: *direction };
-				return ValidationResult::Reject
+				return ValidationResult::Reject;
 			},
 			state => {
 				log::warn!(
@@ -708,7 +709,7 @@ impl Peerset {
 					self.protocol
 				);
 				debug_assert!(false);
-				return ValidationResult::Reject
+				return ValidationResult::Reject;
 			},
 		}
 
@@ -720,7 +721,7 @@ impl Peerset {
 			);
 
 			*state = PeerState::Opening { direction: Direction::Inbound(is_reserved_peer.into()) };
-			return ValidationResult::Accept
+			return ValidationResult::Accept;
 		}
 
 		if self.num_in < self.max_in {
@@ -733,7 +734,7 @@ impl Peerset {
 			self.num_in += 1;
 
 			*state = PeerState::Opening { direction: Direction::Inbound(is_reserved_peer.into()) };
-			return ValidationResult::Accept
+			return ValidationResult::Accept;
 		}
 
 		log::trace!(
@@ -743,7 +744,7 @@ impl Peerset {
 		);
 
 		*state = PeerState::Disconnected;
-		return ValidationResult::Reject
+		return ValidationResult::Reject;
 	}
 
 	/// Report to [`Peerset`] that there was an error opening a substream.
@@ -791,8 +792,8 @@ impl Peerset {
 				_ => {},
 			},
 			// reserved peers do not require change in the slot counts
-			Some(PeerState::Opening { direction: Direction::Inbound(Reserved::Yes) }) |
-			Some(PeerState::Opening { direction: Direction::Outbound(Reserved::Yes) }) => {
+			Some(PeerState::Opening { direction: Direction::Inbound(Reserved::Yes) })
+			| Some(PeerState::Opening { direction: Direction::Outbound(Reserved::Yes) }) => {
 				log::debug!(
 					target: LOG_TARGET,
 					"{}: substream open failure for reserved peer {peer:?}",
@@ -884,10 +885,10 @@ impl Peerset {
 			match self.peers.get_mut(peer) {
 				Some(PeerState::Disconnected | PeerState::Backoff) => {},
 				Some(
-					PeerState::Opening { ref mut direction } |
-					PeerState::Connected { ref mut direction } |
-					PeerState::Canceled { ref mut direction } |
-					PeerState::Closing { ref mut direction },
+					PeerState::Opening { ref mut direction }
+					| PeerState::Connected { ref mut direction }
+					| PeerState::Canceled { ref mut direction }
+					| PeerState::Closing { ref mut direction },
 				) => {
 					*direction = match direction {
 						Direction::Inbound(Reserved::No) => {
@@ -1011,7 +1012,7 @@ impl Stream for Peerset {
 			log::trace!(target: LOG_TARGET, "{}: received command {action:?}", self.protocol);
 
 			match action {
-				PeersetCommand::DisconnectPeer { peer } if !self.reserved_peers.contains(&peer) =>
+				PeersetCommand::DisconnectPeer { peer } if !self.reserved_peers.contains(&peer) => {
 					match self.peers.remove(&peer) {
 						Some(PeerState::Connected { direction }) => {
 							log::trace!(
@@ -1089,7 +1090,8 @@ impl Stream for Peerset {
 						None => {
 							log::debug!(target: LOG_TARGET, "{}: {peer:?} doesn't exist", self.protocol);
 						},
-					},
+					}
+				},
 				PeersetCommand::DisconnectPeer { peer } => {
 					log::debug!(
 						target: LOG_TARGET,
@@ -1228,7 +1230,7 @@ impl Stream for Peerset {
 									"{}: {peer:?} is already a reserved peer",
 									self.protocol,
 								);
-								return None
+								return None;
 							}
 
 							std::matches!(
@@ -1439,8 +1441,8 @@ impl Stream for Peerset {
 							.peers
 							.iter()
 							.filter_map(|(peer, state)| {
-								(!self.reserved_peers.contains(peer) &&
-									std::matches!(state, PeerState::Connected { .. }))
+								(!self.reserved_peers.contains(peer)
+									&& std::matches!(state, PeerState::Connected { .. }))
 								.then_some(*peer)
 							})
 							.collect::<Vec<_>>();

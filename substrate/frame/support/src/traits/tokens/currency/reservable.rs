@@ -241,6 +241,7 @@ pub trait NamedReservableCurrency<AccountId>: ReservableCurrency<AccountId> {
 /// together with an `Id`.
 ///
 /// All "anonymous" operations are then implemented as their named counterparts with the given `Id`.
+#[allow(dead_code)]
 pub struct WithName<NamedReservable, Id, AccountId>(
 	core::marker::PhantomData<(NamedReservable, Id, AccountId)>,
 );

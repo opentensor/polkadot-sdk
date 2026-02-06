@@ -118,17 +118,21 @@ impl<T: Config + Send + Sync> TransactionExtension<<T as frame_system::Config>::
 			// Extension is passthrough
 			None => Weight::zero(),
 			// Alias with existing account
-			Some(AsPersonInfo::AsPersonalAliasWithAccount(_)) =>
-				T::WeightInfo::as_person_alias_with_account(),
+			Some(AsPersonInfo::AsPersonalAliasWithAccount(_)) => {
+				T::WeightInfo::as_person_alias_with_account()
+			},
 			// Alias with proof
-			Some(AsPersonInfo::AsPersonalAliasWithProof(_, _, _)) =>
-				T::WeightInfo::as_person_alias_with_proof(),
+			Some(AsPersonInfo::AsPersonalAliasWithProof(_, _, _)) => {
+				T::WeightInfo::as_person_alias_with_proof()
+			},
 			// Personal Identity with proof
-			Some(AsPersonInfo::AsPersonalIdentityWithProof(_, _)) =>
-				T::WeightInfo::as_person_identity_with_proof(),
+			Some(AsPersonInfo::AsPersonalIdentityWithProof(_, _)) => {
+				T::WeightInfo::as_person_identity_with_proof()
+			},
 			// Personal Identity with existing account
-			Some(AsPersonInfo::AsPersonalIdentityWithAccount(_)) =>
-				T::WeightInfo::as_person_identity_with_account(),
+			Some(AsPersonInfo::AsPersonalIdentityWithAccount(_)) => {
+				T::WeightInfo::as_person_identity_with_account()
+			},
 		}
 	}
 
@@ -136,7 +140,7 @@ impl<T: Config + Send + Sync> TransactionExtension<<T as frame_system::Config>::
 		&self,
 		origin: <T as frame_system::Config>::RuntimeOrigin,
 		call: &<T as frame_system::Config>::RuntimeCall,
-		_info: &DispatchInfoOf<<T as frame_system::Config>::RuntimeCall>,
+		info: &DispatchInfoOf<<T as frame_system::Config>::RuntimeCall>,
 		_len: usize,
 		_self_implicit: Self::Implicit,
 		inherited_implication: &impl Encode,
@@ -161,7 +165,7 @@ impl<T: Config + Send + Sync> TransactionExtension<<T as frame_system::Config>::
 				origin.set_caller_from(local_origin);
 
 				let ValidNonceInfo { requires, provides } =
-					CheckNonce::<T>::validate_nonce_for_account(&who, *nonce)?;
+					CheckNonce::<T>::validate_nonce_for_account(&who, *nonce, info)?;
 				let validity = ValidTransaction { requires, provides, ..Default::default() };
 
 				Ok((validity, Val::UsingAccount(who, *nonce), origin))
@@ -179,7 +183,7 @@ impl<T: Config + Send + Sync> TransactionExtension<<T as frame_system::Config>::
 				origin.set_caller_from(local_origin);
 
 				let ValidNonceInfo { requires, provides } =
-					CheckNonce::<T>::validate_nonce_for_account(&who, *nonce)?;
+					CheckNonce::<T>::validate_nonce_for_account(&who, *nonce, info)?;
 				let validity = ValidTransaction { requires, provides, ..Default::default() };
 
 				Ok((validity, Val::UsingAccount(who, *nonce), origin))
@@ -299,8 +303,9 @@ impl<T: Config + Send + Sync> TransactionExtension<<T as frame_system::Config>::
 		_len: usize,
 	) -> Result<Self::Pre, TransactionValidityError> {
 		match val {
-			Val::UsingAccount(who, nonce) =>
-				CheckNonce::<T>::prepare_nonce_for_account(&who, nonce)?,
+			Val::UsingAccount(who, nonce) => {
+				CheckNonce::<T>::prepare_nonce_for_account(&who, nonce)?
+			},
 			Val::NotUsing | Val::UsingProof => (),
 		}
 

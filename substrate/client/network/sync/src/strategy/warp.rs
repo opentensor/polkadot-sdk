@@ -132,8 +132,9 @@ pub enum WarpSyncPhase<Block: BlockT> {
 impl<Block: BlockT> fmt::Display for WarpSyncPhase<Block> {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
 		match self {
-			Self::AwaitingPeers { required_peers } =>
-				write!(f, "Waiting for {required_peers} peers to be connected"),
+			Self::AwaitingPeers { required_peers } => {
+				write!(f, "Waiting for {required_peers} peers to be connected")
+			},
 			Self::DownloadingWarpProofs => write!(f, "Downloading finality proofs"),
 			Self::DownloadingTargetBlock => write!(f, "Downloading target block"),
 			Self::DownloadingState => write!(f, "Downloading state"),
@@ -256,12 +257,13 @@ where
 				actions: vec![SyncingAction::Finished],
 				result: None,
 				min_peers_to_start_warp_sync,
-			}
+			};
 		}
 
 		let phase = match warp_sync_config {
-			WarpSyncConfig::WithProvider(warp_sync_provider) =>
-				Phase::WaitingForPeers { warp_sync_provider },
+			WarpSyncConfig::WithProvider(warp_sync_provider) => {
+				Phase::WaitingForPeers { warp_sync_provider }
+			},
 			WarpSyncConfig::WithTarget(target_header) => Phase::TargetBlock(target_header),
 		};
 
@@ -326,7 +328,7 @@ where
 		let Phase::WaitingForPeers { warp_sync_provider } = &self.phase else { return };
 
 		if self.peers.len() < self.min_peers_to_start_warp_sync {
-			return
+			return;
 		}
 
 		self.phase = Phase::WarpProof {
@@ -402,7 +404,7 @@ where
 			debug!(target: LOG_TARGET, "Unexpected warp proof response");
 			self.actions
 				.push(SyncingAction::DropPeer(BadPeer(*peer_id, rep::UNEXPECTED_RESPONSE)));
-			return
+			return;
 		};
 
 		let proof_to_incoming_block =
@@ -483,7 +485,7 @@ where
 
 		let Phase::TargetBlock(header) = &mut self.phase else {
 			debug!(target: LOG_TARGET, "Unexpected target block response from {peer_id}");
-			return Err(BadPeer(peer_id, rep::UNEXPECTED_RESPONSE))
+			return Err(BadPeer(peer_id, rep::UNEXPECTED_RESPONSE));
 		};
 
 		if blocks.is_empty() {
@@ -491,7 +493,7 @@ where
 				target: LOG_TARGET,
 				"Downloading target block failed: empty block response from {peer_id}",
 			);
-			return Err(BadPeer(peer_id, rep::NO_BLOCK))
+			return Err(BadPeer(peer_id, rep::NO_BLOCK));
 		}
 
 		if blocks.len() > 1 {
@@ -500,7 +502,7 @@ where
 				"Too many blocks ({}) in warp target block response from {peer_id}",
 				blocks.len(),
 			);
-			return Err(BadPeer(peer_id, rep::NOT_REQUESTED))
+			return Err(BadPeer(peer_id, rep::NOT_REQUESTED));
 		}
 
 		validate_blocks::<B>(&blocks, &peer_id, Some(request))?;
@@ -512,7 +514,7 @@ where
 				target: LOG_TARGET,
 				"Downloading target block failed: missing header in response from {peer_id}.",
 			);
-			return Err(BadPeer(peer_id, rep::VERIFICATION_FAIL))
+			return Err(BadPeer(peer_id, rep::VERIFICATION_FAIL));
 		};
 
 		if block_header != header {
@@ -520,7 +522,7 @@ where
 				target: LOG_TARGET,
 				"Downloading target block failed: different header in response from {peer_id}.",
 			);
-			return Err(BadPeer(peer_id, rep::VERIFICATION_FAIL))
+			return Err(BadPeer(peer_id, rep::VERIFICATION_FAIL));
 		}
 
 		if block.body.is_none() {
@@ -528,7 +530,7 @@ where
 				target: LOG_TARGET,
 				"Downloading target block failed: missing body in response from {peer_id}.",
 			);
-			return Err(BadPeer(peer_id, rep::VERIFICATION_FAIL))
+			return Err(BadPeer(peer_id, rep::VERIFICATION_FAIL));
 		}
 
 		self.result = Some(WarpSyncResult {
@@ -549,7 +551,7 @@ where
 	) -> Option<PeerId> {
 		let mut targets: Vec<_> = self.peers.values().map(|p| p.best_number).collect();
 		if targets.is_empty() {
-			return None
+			return None;
 		}
 		targets.sort();
 		let median = targets[targets.len() / 2];
@@ -557,12 +559,12 @@ where
 		// Find a random peer that is synced as much as peer majority and is above
 		// `min_best_number`.
 		for (peer_id, peer) in self.peers.iter_mut() {
-			if peer.state.is_available() &&
-				peer.best_number >= threshold &&
-				self.disconnected_peers.is_peer_available(peer_id)
+			if peer.state.is_available()
+				&& peer.best_number >= threshold
+				&& self.disconnected_peers.is_peer_available(peer_id)
 			{
 				peer.state = new_state;
-				return Some(*peer_id)
+				return Some(*peer_id);
 			}
 		}
 		None
@@ -581,7 +583,7 @@ where
 			.any(|peer| matches!(peer.state, PeerState::DownloadingProofs))
 		{
 			// Only one warp proof request at a time is possible.
-			return None
+			return None;
 		}
 
 		let peer_id = self.schedule_next_peer(PeerState::DownloadingProofs, None)?;
@@ -610,7 +612,7 @@ where
 			.any(|peer| matches!(peer.state, PeerState::DownloadingTargetBlock))
 		{
 			// Only one target block request at a time is possible.
-			return None
+			return None;
 		}
 
 		// Cut the borrowing tie.
@@ -631,9 +633,9 @@ where
 			peer_id,
 			BlockRequest::<B> {
 				id: 0,
-				fields: BlockAttributes::HEADER |
-					BlockAttributes::BODY |
-					BlockAttributes::JUSTIFICATION,
+				fields: BlockAttributes::HEADER
+					| BlockAttributes::BODY
+					| BlockAttributes::JUSTIFICATION,
 				from: FromBlock::Hash(target_hash),
 				direction: Direction::Ascending,
 				max: Some(1),

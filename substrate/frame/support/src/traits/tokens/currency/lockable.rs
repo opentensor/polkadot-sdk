@@ -150,6 +150,7 @@ pub trait VestedTransfer<AccountId> {
 
 // An no-op implementation of `VestedTransfer` for pallets that require this trait, but users may
 // not want to implement this functionality
+#[allow(dead_code)]
 pub struct NoVestedTransfers<C> {
 	phantom: core::marker::PhantomData<C>,
 }

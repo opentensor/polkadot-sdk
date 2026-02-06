@@ -143,8 +143,8 @@ pub mod pallet {
 		fn batched_calls_limit() -> u32 {
 			let allocator_limit = sp_core::MAX_POSSIBLE_ALLOCATION;
 			let call_size = (core::mem::size_of::<<T as Config>::RuntimeCall>() as u32)
-				.div_ceil(CALL_ALIGN) *
-				CALL_ALIGN;
+				.div_ceil(CALL_ALIGN)
+				* CALL_ALIGN;
 			// The margin to take into account vec doubling capacity.
 			let margin_factor = 3;
 
@@ -192,9 +192,9 @@ pub mod pallet {
 		/// event is deposited.
 		#[pallet::call_index(0)]
 		#[pallet::weight({
-			let (dispatch_weight, dispatch_class) = Pallet::<T>::weight_and_dispatch_class(&calls);
+			let (dispatch_weight, dispatch_class, pays) = Pallet::<T>::weight_and_dispatch_class(calls);
 			let dispatch_weight = dispatch_weight.saturating_add(T::WeightInfo::batch(calls.len() as u32));
-			(dispatch_weight, dispatch_class)
+			(dispatch_weight, dispatch_class, pays)
 		})]
 		pub fn batch(
 			origin: OriginFor<T>,
@@ -202,7 +202,7 @@ pub mod pallet {
 		) -> DispatchResultWithPostInfo {
 			// Do not allow the `None` origin.
 			if ensure_none(origin.clone()).is_ok() {
-				return Err(BadOrigin.into())
+				return Err(BadOrigin.into());
 			}
 
 			let is_root = ensure_root(origin.clone()).is_ok();
@@ -229,7 +229,7 @@ pub mod pallet {
 					// Take the weight of this function itself into account.
 					let base_weight = T::WeightInfo::batch(index.saturating_add(1) as u32);
 					// Return the actual used weight + base_weight of this call.
-					return Ok(Some(base_weight.saturating_add(weight)).into())
+					return Ok(Some(base_weight.saturating_add(weight)).into());
 				}
 				Self::deposit_event(Event::ItemCompleted);
 			}
@@ -301,9 +301,9 @@ pub mod pallet {
 		/// - O(C) where C is the number of calls to be batched.
 		#[pallet::call_index(2)]
 		#[pallet::weight({
-			let (dispatch_weight, dispatch_class) = Pallet::<T>::weight_and_dispatch_class(&calls);
+			let (dispatch_weight, dispatch_class, pays) = Pallet::<T>::weight_and_dispatch_class(calls);
 			let dispatch_weight = dispatch_weight.saturating_add(T::WeightInfo::batch_all(calls.len() as u32));
-			(dispatch_weight, dispatch_class)
+			(dispatch_weight, dispatch_class, pays)
 		})]
 		pub fn batch_all(
 			origin: OriginFor<T>,
@@ -311,7 +311,7 @@ pub mod pallet {
 		) -> DispatchResultWithPostInfo {
 			// Do not allow the `None` origin.
 			if ensure_none(origin.clone()).is_ok() {
-				return Err(BadOrigin.into())
+				return Err(BadOrigin.into());
 			}
 
 			let is_root = ensure_root(origin.clone()).is_ok();
@@ -397,9 +397,9 @@ pub mod pallet {
 		/// - O(C) where C is the number of calls to be batched.
 		#[pallet::call_index(4)]
 		#[pallet::weight({
-			let (dispatch_weight, dispatch_class) = Pallet::<T>::weight_and_dispatch_class(&calls);
+			let (dispatch_weight, dispatch_class, pays) = Pallet::<T>::weight_and_dispatch_class(calls);
 			let dispatch_weight = dispatch_weight.saturating_add(T::WeightInfo::force_batch(calls.len() as u32));
-			(dispatch_weight, dispatch_class)
+			(dispatch_weight, dispatch_class, pays)
 		})]
 		pub fn force_batch(
 			origin: OriginFor<T>,
@@ -407,7 +407,7 @@ pub mod pallet {
 		) -> DispatchResultWithPostInfo {
 			// Do not allow the `None` origin.
 			if ensure_none(origin.clone()).is_ok() {
-				return Err(BadOrigin.into())
+				return Err(BadOrigin.into());
 			}
 
 			let is_root = ensure_root(origin.clone()).is_ok();
@@ -440,7 +440,7 @@ pub mod pallet {
 			} else {
 				Self::deposit_event(Event::BatchCompleted);
 			}
-			let base_weight = T::WeightInfo::batch(calls_len as u32);
+			let base_weight = T::WeightInfo::force_batch(calls_len as u32);
 			Ok(Some(base_weight.saturating_add(weight)).into())
 		}
 
@@ -586,28 +586,31 @@ pub mod pallet {
 	}
 
 	impl<T: Config> Pallet<T> {
-		/// Get the accumulated `weight` and the dispatch class for the given `calls`.
+		/// Get the accumulated `weight`, dispatch class and `pays` for the given `calls`.
 		fn weight_and_dispatch_class(
 			calls: &[<T as Config>::RuntimeCall],
-		) -> (Weight, DispatchClass) {
+		) -> (Weight, DispatchClass, Pays) {
 			let dispatch_infos = calls.iter().map(|call| call.get_dispatch_info());
-			let (dispatch_weight, dispatch_class) = dispatch_infos.fold(
-				(Weight::zero(), DispatchClass::Operational),
-				|(total_weight, dispatch_class): (Weight, DispatchClass), di| {
+			let (dispatch_weight, dispatch_class, pays) = dispatch_infos.fold(
+				(Weight::zero(), DispatchClass::Operational, Pays::No),
+				|(total_weight, dispatch_class, pays): (Weight, DispatchClass, Pays), di| {
 					(
 						total_weight.saturating_add(di.call_weight),
 						// If not all are `Operational`, we want to use `DispatchClass::Normal`.
 						if di.class == DispatchClass::Normal { di.class } else { dispatch_class },
+						// If not all are `No`, we want to use `Pays::Yes`.
+						if di.pays_fee == Pays::Yes { Pays::Yes } else { pays },
 					)
 				},
 			);
 
-			(dispatch_weight, dispatch_class)
+			(dispatch_weight, dispatch_class, pays)
 		}
 	}
 }
 
 /// A pallet identifier. These are per pallet and should be stored in a registry somewhere.
+#[allow(dead_code)]
 #[derive(Clone, Copy, Eq, PartialEq, Encode, Decode)]
 struct IndexedUtilityPalletId(u16);
 

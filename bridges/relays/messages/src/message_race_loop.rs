@@ -173,6 +173,7 @@ pub trait RaceStrategy<SourceHeaderId, TargetHeaderId, Proof>: Debug {
 	type TargetNoncesData;
 
 	/// Should return true if nothing has to be synced.
+	#[allow(dead_code)]
 	fn is_empty(&self) -> bool;
 	/// Return id of source header that is required to be on target to continue synchronization.
 	async fn required_source_header_at_target<RS: RaceState<SourceHeaderId, TargetHeaderId>>(
@@ -733,7 +734,7 @@ where
 
 	let need_update = now_time.saturating_duration_since(prev_time) > Duration::from_secs(10);
 	if !need_update {
-		return prev_time
+		return prev_time;
 	}
 
 	let now_best_nonce_at_source = strategy.best_at_source();

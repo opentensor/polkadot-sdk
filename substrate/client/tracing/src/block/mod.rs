@@ -100,11 +100,11 @@ impl BlockSubscriber {
 impl Subscriber for BlockSubscriber {
 	fn enabled(&self, metadata: &tracing::Metadata<'_>) -> bool {
 		if !metadata.is_span() && metadata.fields().field(REQUIRED_EVENT_FIELD).is_none() {
-			return false
+			return false;
 		}
 		for (target, level) in &self.targets {
 			if metadata.level() <= level && metadata.target().starts_with(target) {
-				return true
+				return true;
 			}
 		}
 		false
@@ -184,18 +184,21 @@ pub struct BlockExecutor<Block: BlockT, Client> {
 fn is_parachain(metadata: OpaqueMetadata) -> bool {
 	if let Ok(meta) = RuntimeMetadataPrefixed::decode(&mut metadata.as_ref()) {
 		match meta.1 {
-			RuntimeMetadata::V14(v14) =>
+			RuntimeMetadata::V14(v14) => {
 				v14.extrinsic.signed_extensions.iter().any(|signed_ext| {
 					signed_ext.identifier.starts_with(PARACHAIN_EXTENSION_INDICATOR)
-				}),
-			RuntimeMetadata::V15(v15) =>
+				})
+			},
+			RuntimeMetadata::V15(v15) => {
 				v15.extrinsic.signed_extensions.iter().any(|signed_ext| {
 					signed_ext.identifier.starts_with(PARACHAIN_EXTENSION_INDICATOR)
-				}),
-			RuntimeMetadata::V16(v16) =>
+				})
+			},
+			RuntimeMetadata::V16(v16) => {
 				v16.extrinsic.transaction_extensions.iter().any(|signed_ext| {
 					signed_ext.identifier.starts_with(PARACHAIN_EXTENSION_INDICATOR)
-				}),
+				})
+			},
 			_ => false,
 		}
 	} else {
@@ -284,7 +287,7 @@ where
 				return Err(Error::Dispatch(format!(
 					"Failed to collect traces and execute block: {}",
 					e
-				)))
+				)));
 			}
 		}
 
@@ -359,7 +362,7 @@ fn patch_and_filter(mut span: SpanDatum, targets: &str) -> Option<Span> {
 			span.target = t;
 		}
 		if !check_target(targets, &span.target, &span.level) {
-			return None
+			return None;
 		}
 	}
 	Some(span.into())
@@ -369,7 +372,7 @@ fn patch_and_filter(mut span: SpanDatum, targets: &str) -> Option<Span> {
 fn check_target(targets: &str, target: &str, level: &Level) -> bool {
 	for (t, l) in targets.split(',').map(crate::parse_target) {
 		if target.starts_with(t.as_str()) && level <= &l {
-			return true
+			return true;
 		}
 	}
 	false

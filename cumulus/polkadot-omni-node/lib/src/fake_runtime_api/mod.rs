@@ -21,6 +21,7 @@ mod utils;
 
 use utils::{impl_node_runtime_apis, imports::*};
 
+#[allow(dead_code)]
 type CustomBlock = crate::common::types::Block<u32>;
 pub mod aura_sr25519 {
 	use super::*;

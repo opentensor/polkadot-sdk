@@ -247,10 +247,11 @@ mod benchmarks {
 			T::Currency::balance_on_hold(&HoldReason::AddressMapping.into(), &caller);
 		assert_eq!(
 			T::Currency::balance(&caller),
-			caller_funding::<T>() -
-				value - deposit -
-				code_deposit - mapping_deposit -
-				Pallet::<T>::min_balance(),
+			caller_funding::<T>()
+				- value - deposit
+				- code_deposit
+				- mapping_deposit
+				- Pallet::<T>::min_balance(),
 		);
 		// contract has the full value
 		assert_eq!(T::Currency::balance(&account_id), value + Pallet::<T>::min_balance());
@@ -302,11 +303,11 @@ mod benchmarks {
 		assert_eq!(
 			Pallet::<T>::evm_balance(&deployer),
 			Pallet::<T>::convert_native_to_evm(
-				caller_funding::<T>() -
-					Pallet::<T>::min_balance() -
-					Pallet::<T>::min_balance() -
-					value - deposit - code_deposit -
-					mapping_deposit,
+				caller_funding::<T>()
+					- Pallet::<T>::min_balance()
+					- Pallet::<T>::min_balance()
+					- value - deposit
+					- code_deposit - mapping_deposit,
 			) - dust,
 		);
 
@@ -348,10 +349,11 @@ mod benchmarks {
 		// value was removed from the caller
 		assert_eq!(
 			T::Currency::total_balance(&caller),
-			caller_funding::<T>() -
-				value - deposit -
-				code_deposit - mapping_deposit -
-				Pallet::<T>::min_balance(),
+			caller_funding::<T>()
+				- value - deposit
+				- code_deposit
+				- mapping_deposit
+				- Pallet::<T>::min_balance(),
 		);
 		// contract has the full value
 		assert_eq!(T::Currency::balance(&account_id), value + Pallet::<T>::min_balance());
@@ -391,10 +393,11 @@ mod benchmarks {
 		// value and value transferred via call should be removed from the caller
 		assert_eq!(
 			T::Currency::balance(&instance.caller),
-			caller_funding::<T>() -
-				value - deposit -
-				code_deposit - mapping_deposit -
-				Pallet::<T>::min_balance()
+			caller_funding::<T>()
+				- value - deposit
+				- code_deposit
+				- mapping_deposit
+				- Pallet::<T>::min_balance()
 		);
 		// contract should have received the value
 		assert_eq!(T::Currency::balance(&instance.account_id), before + value);
@@ -437,11 +440,11 @@ mod benchmarks {
 		assert_eq!(
 			Pallet::<T>::evm_balance(&caller_addr),
 			Pallet::<T>::convert_native_to_evm(
-				caller_funding::<T>() -
-					Pallet::<T>::min_balance() -
-					Pallet::<T>::min_balance() -
-					value - deposit - code_deposit -
-					mapping_deposit,
+				caller_funding::<T>()
+					- Pallet::<T>::min_balance()
+					- Pallet::<T>::min_balance()
+					- value - deposit
+					- code_deposit - mapping_deposit,
 			) - dust,
 		);
 

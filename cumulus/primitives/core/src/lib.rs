@@ -275,7 +275,7 @@ impl CumulusDigestItem {
 				let Ok(CumulusDigestItem::CoreInfo(core_info)) =
 					CumulusDigestItem::decode_all(&mut &val[..])
 				else {
-					return None
+					return None;
 				};
 
 				Some(core_info)
@@ -321,7 +321,7 @@ impl CumulusDigestItem {
 				let Ok(CumulusDigestItem::RelayParent(hash)) =
 					CumulusDigestItem::decode_all(&mut &val[..])
 				else {
-					return None
+					return None;
 				};
 
 				Some(RelayBlockIdentifier::ByHash(hash))
@@ -330,7 +330,7 @@ impl CumulusDigestItem {
 				let Ok((storage_root, block_number)) =
 					rpsr_digest::RpsrType::decode_all(&mut &val[..])
 				else {
-					return None
+					return None;
 				};
 
 				Some(RelayBlockIdentifier::ByStorageRoot {
@@ -348,11 +348,12 @@ impl CumulusDigestItem {
 /// well-behaving runtimes should not produce headers with more than one.
 pub fn extract_relay_parent(digest: &Digest) -> Option<relay_chain::Hash> {
 	digest.convert_first(|d| match d {
-		DigestItem::Consensus(id, val) if id == &CUMULUS_CONSENSUS_ID =>
+		DigestItem::Consensus(id, val) if id == &CUMULUS_CONSENSUS_ID => {
 			match CumulusDigestItem::decode(&mut &val[..]) {
 				Ok(CumulusDigestItem::RelayParent(hash)) => Some(hash),
 				_ => None,
-			},
+			}
+		},
 		_ => None,
 	})
 }

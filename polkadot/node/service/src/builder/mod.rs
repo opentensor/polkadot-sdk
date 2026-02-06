@@ -49,6 +49,7 @@ use polkadot_node_subsystem_types::DefaultSubsystemClient;
 use polkadot_overseer::{Handle, OverseerConnector};
 use polkadot_primitives::Block;
 use sc_client_api::Backend;
+use sc_consensus_grandpa::warp_proof::HardForks;
 use sc_network::config::FullNetworkConfiguration;
 use sc_network_sync::WarpSyncConfig;
 use sc_service::{Configuration, RpcHandlers, TaskManager};
@@ -232,17 +233,17 @@ where
 		let force_authoring = config.force_authoring;
 		let disable_grandpa = config.disable_grandpa;
 		let name = config.network.node_name.clone();
-		let backoff_authoring_blocks = if !force_authoring_backoff &&
-			(config.chain_spec.is_polkadot() || config.chain_spec.is_kusama())
+		let backoff_authoring_blocks = if !force_authoring_backoff
+			&& (config.chain_spec.is_polkadot() || config.chain_spec.is_kusama())
 		{
 			// the block authoring backoff is disabled by default on production networks
 			None
 		} else {
 			let mut backoff = sc_consensus_slots::BackoffAuthoringOnFinalizedHeadLagging::default();
 
-			if config.chain_spec.is_rococo() ||
-				config.chain_spec.is_versi() ||
-				config.chain_spec.is_dev()
+			if config.chain_spec.is_rococo()
+				|| config.chain_spec.is_versi()
+				|| config.chain_spec.is_dev()
 			{
 				// on testnets that are in flux (like rococo or versi), finality has stalled
 				// sometimes due to operational issues and it's annoying to slow down block
@@ -316,8 +317,8 @@ where
 		//
 		// Collators and parachain full nodes require the collator and validator networking to send
 		// collations and to be able to recover PoVs.
-		let notification_services = if role.is_authority() ||
-			is_parachain_node.is_running_alongside_parachain_node()
+		let notification_services = if role.is_authority()
+			|| is_parachain_node.is_running_alongside_parachain_node()
 		{
 			use polkadot_network_bridge::{peer_sets_info, IsAuthority};
 			let is_authority = if role.is_authority() { IsAuthority::Yes } else { IsAuthority::No };
@@ -368,7 +369,7 @@ where
 		let warp_sync = Arc::new(sc_consensus_grandpa::warp_proof::NetworkProvider::new(
 			backend.clone(),
 			import_setup.1.shared_authority_set().clone(),
-			grandpa_hard_forks,
+			HardForks::new_hard_forked_authorities(grandpa_hard_forks),
 		));
 
 		let ext_overseer_args = if is_parachain_node.is_running_alongside_parachain_node() {

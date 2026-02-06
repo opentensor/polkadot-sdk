@@ -207,8 +207,8 @@ pub fn sstore<'ext, E: Ext>(context: Context<'_, 'ext, E>) {
 	};
 
 	// EIP-1706 Disable SSTORE with gasleft lower than call stipend
-	if context.interpreter.runtime_flag.spec_id().is_enabled_in(ISTANBUL) &&
-		context.interpreter.gas.remaining() <= CALL_STIPEND
+	if context.interpreter.runtime_flag.spec_id().is_enabled_in(ISTANBUL)
+		&& context.interpreter.gas.remaining() <= CALL_STIPEND
 	{
 		context.interpreter.halt(InstructionResult::ReentrancySentryOOG);
 		return;
@@ -300,8 +300,8 @@ pub fn selfdestruct<'ext, E: Ext>(context: Context<'_, 'ext, E>) {
 	};
 
 	// EIP-3529: Reduction in refunds
-	if !context.interpreter.runtime_flag.spec_id().is_enabled_in(LONDON) &&
-		!res.previously_destroyed
+	if !context.interpreter.runtime_flag.spec_id().is_enabled_in(LONDON)
+		&& !res.previously_destroyed
 	{
 		context.interpreter.gas.record_refund(gas::SELFDESTRUCT)
 	}

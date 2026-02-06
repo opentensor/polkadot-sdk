@@ -98,6 +98,7 @@ pub struct AccountId32Mapper<T>(PhantomData<T>);
 /// The mapper to be used if the account id is `H160`.
 ///
 /// It just trivially returns its inputs and doesn't make use of any state.
+#[allow(dead_code)]
 pub struct H160Mapper<T>(PhantomData<T>);
 
 /// An account mapper that can be used for testing u64 account ids.
@@ -165,8 +166,8 @@ where
 	}
 
 	fn is_mapped(account_id: &T::AccountId) -> bool {
-		is_eth_derived(account_id) ||
-			<OriginalAccount<T>>::contains_key(Self::to_address(account_id))
+		is_eth_derived(account_id)
+			|| <OriginalAccount<T>>::contains_key(Self::to_address(account_id))
 	}
 }
 

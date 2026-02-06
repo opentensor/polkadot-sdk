@@ -16,10 +16,14 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use std::{collections::{HashMap, HashSet}, marker::PhantomData, sync::Arc};
 use codec::Decode;
 use log::debug;
 use parking_lot::Mutex;
+use std::{
+	collections::{HashMap, HashSet},
+	marker::PhantomData,
+	sync::Arc,
+};
 
 use sc_client_api::{backend::Backend, utils::is_descendent_of};
 use sc_consensus::{
@@ -110,9 +114,9 @@ where
 			self.authority_set.inner().pending_changes().cloned().collect();
 
 		for pending_change in pending_changes {
-			if pending_change.delay_kind == DelayKind::Finalized &&
-				pending_change.effective_number() > chain_info.finalized_number &&
-				pending_change.effective_number() <= chain_info.best_number
+			if pending_change.delay_kind == DelayKind::Finalized
+				&& pending_change.effective_number() > chain_info.finalized_number
+				&& pending_change.effective_number() <= chain_info.best_number
 			{
 				let effective_block_hash = if !pending_change.delay.is_zero() {
 					self.select_chain
@@ -239,7 +243,10 @@ where
 	for<'a> &'a Client: BlockImport<Block, Error = ConsensusError>,
 {
 	fn skip_block_justifications(&self, hash: &Block::Hash) -> bool {
-		self.skip_block_justifications.as_ref().map(|hashes| hashes.contains(hash)).unwrap_or(false)
+		self.skip_block_justifications
+			.as_ref()
+			.map(|hashes| hashes.contains(hash))
+			.unwrap_or(false)
 	}
 	// check for a new authority set change.
 	fn check_new_change(
@@ -249,7 +256,7 @@ where
 	) -> Option<PendingChange<Block::Hash, NumberFor<Block>>> {
 		// check for forced authority set hard forks
 		if let Some(change) = self.authority_set_hard_forks.lock().get(&hash) {
-			return Some(change.clone())
+			return Some(change.clone());
 		}
 
 		// check for forced change.
@@ -260,7 +267,7 @@ where
 				canon_height: *header.number(),
 				canon_hash: hash,
 				delay_kind: DelayKind::Best { median_last_finalized },
-			})
+			});
 		}
 
 		// check normal scheduled change.
@@ -452,7 +459,7 @@ where
 					self.inner.storage(hash, &sc_client_api::StorageKey(k.to_vec()))
 				{
 					if let Ok(id) = SetId::decode(&mut id.0.as_ref()) {
-						return Ok(id)
+						return Ok(id);
 					}
 				}
 			}
@@ -541,14 +548,14 @@ where
 			Ok(BlockStatus::InChain) => {
 				// Strip justifications when re-importing an existing block.
 				let _justifications = block.justifications.take();
-				return (&*self.inner).import_block(block).await
+				return (&*self.inner).import_block(block).await;
 			},
 			Ok(BlockStatus::Unknown) => {},
 			Err(e) => return Err(ConsensusError::ClientImport(e.to_string())),
 		}
 
 		if block.with_state() {
-			return self.import_state(block).await
+			return self.import_state(block).await;
 		}
 
 		if number <= self.inner.info().finalized_number {
@@ -557,10 +564,10 @@ where
 				if block.justifications.is_none() {
 					if self.skip_block_justifications(&hash) {
 						log::warn!(
-								"Justifications were skipped for block #{} {:?}.",
-								block.header.number(),
-								hash
-							);
+							"Justifications were skipped for block #{} {:?}.",
+							block.header.number(),
+							hash
+						);
 					} else {
 						return Err(ConsensusError::ClientImport(
 							"Justification required when importing \
@@ -581,7 +588,7 @@ where
 					},
 				);
 			}
-			return (&*self.inner).import_block(block).await
+			return (&*self.inner).import_block(block).await;
 		}
 
 		// on initial sync we will restrict logging under info to avoid spam.
@@ -602,7 +609,7 @@ where
 						"Restoring old authority set after block import result: {:?}", r,
 					);
 					pending_changes.revert();
-					return Ok(r)
+					return Ok(r);
 				},
 				Err(e) => {
 					debug!(
@@ -610,7 +617,7 @@ where
 						"Restoring old authority set after block import error: {}", e,
 					);
 					pending_changes.revert();
-					return Err(ConsensusError::ClientImport(e.to_string()))
+					return Err(ConsensusError::ClientImport(e.to_string()));
 				},
 			}
 		};
@@ -695,7 +702,7 @@ where
 					);
 				}
 			},
-			None =>
+			None => {
 				if needs_justification {
 					debug!(
 						target: LOG_TARGET,
@@ -704,7 +711,8 @@ where
 					);
 
 					imported_aux.needs_justification = true;
-				},
+				}
+			},
 		}
 
 		Ok(ImportResult::Imported(imported_aux))
@@ -798,7 +806,7 @@ where
 			// justification import pipeline similar to what we do for `BlockImport`. In the
 			// meantime we'll just drop the justification, since this is only used for BEEFY which
 			// is still WIP.
-			return Ok(())
+			return Ok(());
 		}
 
 		let justification = GrandpaJustification::decode_and_verify_finalizes(
@@ -811,8 +819,9 @@ where
 		let justification = match justification {
 			Err(e) => {
 				return match e {
-					sp_blockchain::Error::OutdatedJustification =>
-						Err(ConsensusError::OutdatedJustification),
+					sp_blockchain::Error::OutdatedJustification => {
+						Err(ConsensusError::OutdatedJustification)
+					},
 					_ => Err(ConsensusError::ClientImport(e.to_string())),
 				};
 			},
@@ -844,7 +853,7 @@ where
 				// send the command to the voter
 				let _ = self.send_voter_commands.unbounded_send(command);
 			},
-			Err(CommandOrError::Error(e)) =>
+			Err(CommandOrError::Error(e)) => {
 				return Err(match e {
 					Error::Grandpa(error) => ConsensusError::ClientImport(error.to_string()),
 					Error::Network(error) => ConsensusError::ClientImport(error),
@@ -854,7 +863,8 @@ where
 					Error::Signing(error) => ConsensusError::ClientImport(error),
 					Error::Timer(error) => ConsensusError::ClientImport(error.to_string()),
 					Error::RuntimeApi(error) => ConsensusError::ClientImport(error.to_string()),
-				}),
+				})
+			},
 			Ok(_) => {
 				assert!(
 					!enacts_change,

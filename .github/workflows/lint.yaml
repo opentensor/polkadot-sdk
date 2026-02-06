@@ -18,38 +18,18 @@ on:
 env:
   CARGO_TERM_COLOR: always
   VERBOSE: ${{ github.events.input.verbose }}
+  RUST_BACKTRACE: full
 
 jobs:
-  lint:
-    name: cargo clippy (${{ matrix.directory }})
+  cargo-fmt:
+    name: cargo fmt
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - directory: substrate/frame
-            exclude: '^(contracts|pallet-revive-fixtures|pallet-contracts-fixtures-common)$'
-          - directory: substrate/primitives
-            exclude: '^sp-state-machine-fuzz$'
-          - directory: substrate/client
-            exclude: '^THIS_PATTERN_MATCHES_NOTHING$'
-    env:
-      RUST_BACKTRACE: full
-      SKIP_WASM_BUILD: 1
-      SKIP_PALLET_REVIVE_FIXTURES: 1
     steps:
       - name: Check-out repository under $GITHUB_WORKSPACE
         uses: actions/checkout@v4
-        
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v3
 
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: 1.89.0
-          default: true
-          components: clippy
+        uses: actions-rust-lang/setup-rust-toolchain@v1
 
       - name: Utilize Shared Rust Cache
         uses: Swatinem/rust-cache@v2
@@ -57,10 +37,96 @@ jobs:
           key: cargo-cache
           cache-on-failure: true
 
-      - name: Clippy ${{ matrix.directory }}
+      - name: cargo fmt
         run: |
-          PACKAGES=$(find ${{ matrix.directory }} -name Cargo.toml -exec yq -r '.package.name' {} \; 2>/dev/null \
-            | grep -vE '${{ matrix.exclude }}' \
-            | while read crate; do echo "-p $crate"; done \
-            | tr '\n' ' ')
-          cargo clippy $PACKAGES -- -D warnings
+          set -euo pipefail
+          # Run cargo fmt and capture both stdout and stderr
+          output=$(cargo fmt --check --all 2>&1) || {
+            echo "❌ cargo fmt failed with non-zero exit code"
+            echo "$output"
+            exit 1
+          }
+          # Check for panic/ICE messages even if exit code was 0
+          if echo "$output" | grep -qiE "(the compiler unexpectedly panicked|panicked at|Internal Compiler Error|ICE|error: the compiler unexpectedly panicked)"; then
+            echo "❌ rustfmt panicked (ICE detected) - this should fail the build"
+            echo "$output"
+            exit 1
+          fi
+          echo "$output"
+          echo "✅ cargo fmt completed successfully"
+
+  cargo-clippy:
+    name: cargo clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check-out repository under $GITHUB_WORKSPACE
+        uses: actions/checkout@v4
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Utilize Shared Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: cargo-cache
+          cache-on-failure: true
+
+      - name: Cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  cargo-fix:
+    name: cargo fix
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check-out repository under $GITHUB_WORKSPACE
+        uses: actions/checkout@v4
+
+      - name: Install Protoc
+        uses: arduino/setup-protoc@v3
+
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Utilize Shared Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: cargo-cache
+          cache-on-failure: true
+
+      - name: cargo fix --workspace
+        run: |
+          # Run cargo fix on the project
+          cargo fix --workspace
+
+          # Check for local git changes
+          if ! git diff --exit-code; then
+              echo "There are local changes after running 'cargo fix --workspace' ❌"
+              exit 1
+          else
+              echo "No changes detected after running 'cargo fix --workspace' ✅"
+          fi
+
+  feature-propagation:
+    name: zepter run check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+
+      - name: Utilize Shared Rust Cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: zepter
+          cache-on-failure: true
+
+      - name: Install Zepter
+        run: cargo install --locked -q zepter && zepter --version
+
+      - name: Check features
+        run: zepter run check

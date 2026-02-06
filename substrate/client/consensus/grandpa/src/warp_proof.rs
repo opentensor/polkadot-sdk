@@ -98,7 +98,7 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 			.ok_or_else(|| Error::InvalidRequest("Missing start block".to_string()))?;
 
 		if begin_number > blockchain.info().finalized_number {
-			return Err(Error::InvalidRequest("Start block is not finalized".to_string()))
+			return Err(Error::InvalidRequest("Start block is not finalized".to_string()));
 		}
 
 		let canon_hash = blockchain.hash(begin_number)?.expect(
@@ -110,7 +110,7 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 		if canon_hash != begin {
 			return Err(Error::InvalidRequest(
 				"Start block is not in the finalized chain".to_string(),
-			))
+			));
 		}
 
 		let mut proofs = Vec::new();
@@ -124,7 +124,7 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 				Some(hash) => hash,
 				None => {
 					log::debug!(target: LOG_TARGET, "Ignorning warp proof with invalid block number.");
-					return Err(Error::InvalidRequest("header number comes from previously applied set changes; corresponding hash must exist in db.".to_string()))
+					return Err(Error::InvalidRequest("header number comes from previously applied set changes; corresponding hash must exist in db.".to_string()));
 				},
 			};
 
@@ -132,7 +132,7 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 				Some(header) => header,
 				None => {
 					log::debug!(target: LOG_TARGET, "Ignorning warp proof with invalid block hash.");
-					return Err(Error::InvalidRequest("header hash obtained from header number exists in db; corresponding header must exist in db too.".to_string()))
+					return Err(Error::InvalidRequest("header hash obtained from header number exists in db; corresponding header must exist in db too.".to_string()));
 				},
 			};
 
@@ -142,7 +142,7 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 				// if it doesn't contain a signal for standard change then the set must have changed
 				// through a forced changed, in which case we stop collecting proofs as the chain of
 				// trust in authority handoffs was broken.
-				break
+				break;
 			}
 
 			let justification = blockchain
@@ -160,7 +160,7 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 			// room for rest of the data (the size of the `Vec` and the boolean).
 			if proofs_encoded_len + proof_size >= MAX_WARP_SYNC_PROOF_SIZE - 50 {
 				proof_limit_reached = true;
-				break
+				break;
 			}
 
 			proofs_encoded_len += proof_size;
@@ -242,7 +242,7 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 				if proof.justification.target().1 != hash {
 					return Err(Error::InvalidProof(
 						"Mismatch between header and justification".to_owned(),
-					))
+					));
 				}
 
 				if let Some(scheduled_change) = find_scheduled_change::<Block>(&proof.header) {
@@ -253,7 +253,7 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 					// authority set change.
 					return Err(Error::InvalidProof(
 						"Header is missing authority set change digest".to_string(),
-					))
+					));
 				}
 			}
 		}
@@ -402,7 +402,7 @@ where
 
 #[cfg(test)]
 mod tests {
-	use super::WarpSyncProof;
+	use super::{HardForks, WarpSyncProof};
 	use crate::{AuthoritySetChanges, GrandpaJustification};
 	use codec::Encode;
 	use rand::prelude::*;
@@ -519,8 +519,9 @@ mod tests {
 			WarpSyncProof::generate(&*backend, genesis_hash, &authority_set_changes).unwrap();
 
 		// verifying the proof should yield the last set id and authorities
+		let hard_forks = HardForks::new_hard_forked_authorities(vec![]);
 		let (new_set_id, new_authorities) =
-			warp_sync_proof.verify(0, genesis_authorities, &Default::default()).unwrap();
+			warp_sync_proof.verify(0, genesis_authorities, &hard_forks).unwrap();
 
 		let expected_authorities = current_authorities
 			.iter()

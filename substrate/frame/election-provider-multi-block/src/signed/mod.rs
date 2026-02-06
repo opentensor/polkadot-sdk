@@ -507,7 +507,7 @@ pub mod pallet {
 						true
 					} else {
 						// we don't have a better solution
-						return Err(Error::<T>::QueueFull.into())
+						return Err(Error::<T>::QueueFull.into());
 					}
 				} else {
 					sorted_scores

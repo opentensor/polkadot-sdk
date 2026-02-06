@@ -198,11 +198,13 @@ impl<'a> serde::Deserialize<'a> for BlockNumberOrTagOrHash {
 				BlockNumberOrTagOrHash::BlockNumber(val.into())
 			},
 
-			BlockNumberOrTagOrHashWithAlias::NestedBlockNumber { block_number: val } =>
-				BlockNumberOrTagOrHash::BlockNumber(val),
-			BlockNumberOrTagOrHashWithAlias::BlockHash(val) |
-			BlockNumberOrTagOrHashWithAlias::NestedBlockHash { block_hash: val } =>
-				BlockNumberOrTagOrHash::BlockHash(val),
+			BlockNumberOrTagOrHashWithAlias::NestedBlockNumber { block_number: val } => {
+				BlockNumberOrTagOrHash::BlockNumber(val)
+			},
+			BlockNumberOrTagOrHashWithAlias::BlockHash(val)
+			| BlockNumberOrTagOrHashWithAlias::NestedBlockHash { block_hash: val } => {
+				BlockNumberOrTagOrHash::BlockHash(val)
+			},
 		})
 	}
 }
@@ -722,8 +724,9 @@ impl TransactionSigned {
 	/// Get the effective gas price.
 	pub fn effective_gas_price(&self, base_gas_price: U256) -> U256 {
 		match &self {
-			TransactionSigned::TransactionLegacySigned(tx) =>
-				tx.transaction_legacy_unsigned.gas_price,
+			TransactionSigned::TransactionLegacySigned(tx) => {
+				tx.transaction_legacy_unsigned.gas_price
+			},
 			TransactionSigned::Transaction7702Signed(tx) => base_gas_price
 				.saturating_add(tx.transaction_7702_unsigned.max_priority_fee_per_gas)
 				.min(tx.transaction_7702_unsigned.max_fee_per_gas),

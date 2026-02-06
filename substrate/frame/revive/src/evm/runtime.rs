@@ -145,7 +145,7 @@ where
 		if !self.0.is_signed() {
 			if let Some(crate::Call::eth_transact { payload }) = self.0.function.is_sub_type() {
 				let checked = E::try_into_checked_extrinsic(payload.to_vec(), self.encoded_size())?;
-				return Ok(checked)
+				return Ok(checked);
 			};
 		}
 		self.0.check(lookup)
@@ -297,9 +297,9 @@ pub trait EthExtra {
 
 		// Check transaction type and reject unsupported transaction types
 		match &tx {
-			crate::evm::api::TransactionSigned::Transaction1559Signed(_) |
-			crate::evm::api::TransactionSigned::Transaction2930Signed(_) |
-			crate::evm::api::TransactionSigned::TransactionLegacySigned(_) => {
+			crate::evm::api::TransactionSigned::Transaction1559Signed(_)
+			| crate::evm::api::TransactionSigned::Transaction2930Signed(_)
+			| crate::evm::api::TransactionSigned::TransactionLegacySigned(_) => {
 				// Supported transaction types, continue processing
 			},
 			crate::evm::api::TransactionSigned::Transaction7702Signed(_) => {
@@ -353,7 +353,7 @@ pub trait EthExtra {
 
 				if !value.is_zero() {
 					log::debug!(target: LOG_TARGET, "Runtime pallets address cannot be called with value");
-					return Err(InvalidTransaction::Call)
+					return Err(InvalidTransaction::Call);
 				}
 
 				call
@@ -413,7 +413,7 @@ pub trait EthExtra {
 		// by the account.
 		if eth_fee < actual_fee {
 			log::debug!(target: LOG_TARGET, "eth fees {eth_fee:?} too low, actual fees: {actual_fee:?}");
-			return Err(InvalidTransaction::Payment.into())
+			return Err(InvalidTransaction::Payment.into());
 		}
 
 		let tip =

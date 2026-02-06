@@ -937,12 +937,13 @@ where
 				// is a delegate call or not
 				let mut contract = match (cached_info, &precompile) {
 					(Some(info), _) => CachedContract::Cached(info),
-					(None, None) =>
+					(None, None) => {
 						if let Some(info) = AccountInfo::<T>::load_contract(&address) {
 							CachedContract::Cached(info)
 						} else {
 							return Ok(None);
-						},
+						}
+					},
 					(None, Some(precompile)) if precompile.has_contract_info() => {
 						if let Some(info) = AccountInfo::<T>::load_contract(&address) {
 							CachedContract::Cached(info)
@@ -1200,9 +1201,9 @@ where
 			//  - Only when not delegate calling we are executing in the context of the pre-compile.
 			//    Pre-compiles itself cannot delegate call.
 			if let Some(precompile) = executable.as_precompile() {
-				if precompile.has_contract_info() &&
-					frame.delegate.is_none() &&
-					!<System<T>>::account_exists(account_id)
+				if precompile.has_contract_info()
+					&& frame.delegate.is_none()
+					&& !<System<T>>::account_exists(account_id)
 				{
 					// prefix matching pre-compiles cannot have a contract info
 					// hence we only mint once per pre-compile
@@ -1218,10 +1219,12 @@ where
 				.unwrap_or_default();
 
 			let mut output = match executable {
-				ExecutableOrPrecompile::Executable(executable) =>
-					executable.execute(self, entry_point, input_data),
-				ExecutableOrPrecompile::Precompile { instance, .. } =>
-					instance.call(input_data, self),
+				ExecutableOrPrecompile::Executable(executable) => {
+					executable.execute(self, entry_point, input_data)
+				},
+				ExecutableOrPrecompile::Precompile { instance, .. } => {
+					instance.call(input_data, self)
+				},
 			}
 			.and_then(|output| {
 				if u32::try_from(output.data.len())
@@ -1294,8 +1297,9 @@ where
 			with_transaction(|| -> TransactionOutcome<Result<_, DispatchError>> {
 				let output = do_transaction();
 				match &output {
-					Ok(result) if !result.did_revert() =>
-						TransactionOutcome::Commit(Ok((true, output))),
+					Ok(result) if !result.did_revert() => {
+						TransactionOutcome::Commit(Ok((true, output)))
+					},
 					_ => TransactionOutcome::Rollback(Ok((false, output))),
 				}
 			});
@@ -1465,7 +1469,7 @@ where
 			}
 
 			if dust.is_zero() {
-				return transfer_balance::<T>(from, to, value)
+				return transfer_balance::<T>(from, to, value);
 			}
 
 			let from_addr = <T::AddressMapper as AddressMapper<T>>::to_address(from);
@@ -1514,7 +1518,7 @@ where
 		}
 
 		if <System<T>>::account_exists(to) {
-			return transfer_with_dust::<T>(from, to, value)
+			return transfer_with_dust::<T>(from, to, value);
 		}
 
 		let origin = origin.account_id()?;
@@ -1975,7 +1979,7 @@ where
 
 	fn code_hash(&self, address: &H160) -> H256 {
 		if let Some(code) = <AllPrecompiles<T>>::code(address.as_fixed_bytes()) {
-			return sp_io::hashing::keccak_256(code).into()
+			return sp_io::hashing::keccak_256(code).into();
 		}
 
 		<AccountInfo<T>>::load_contract(&address)
@@ -1990,7 +1994,7 @@ where
 
 	fn code_size(&self, address: &H160) -> u64 {
 		if let Some(code) = <AllPrecompiles<T>>::code(address.as_fixed_bytes()) {
-			return code.len() as u64
+			return code.len() as u64;
 		}
 
 		<AccountInfo<T>>::load_contract(&address)

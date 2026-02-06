@@ -111,7 +111,7 @@ fn combine_batches(
 	db_batches: Vec<BenchmarkBatch>,
 ) -> Vec<BenchmarkBatchSplitResults> {
 	if time_batches.is_empty() && db_batches.is_empty() {
-		return Default::default()
+		return Default::default();
 	}
 
 	let mut all_benchmarks =
@@ -166,8 +166,9 @@ impl PalletCmd {
 		chain_spec_from_api: Option<Box<dyn ChainSpec>>,
 	) -> Result<GenesisStateHandler> {
 		let genesis_builder_to_source = || match self.genesis_builder {
-			Some(GenesisBuilderPolicy::Runtime) | Some(GenesisBuilderPolicy::SpecRuntime) =>
-				SpecGenesisSource::Runtime(self.genesis_builder_preset.clone()),
+			Some(GenesisBuilderPolicy::Runtime) | Some(GenesisBuilderPolicy::SpecRuntime) => {
+				SpecGenesisSource::Runtime(self.genesis_builder_preset.clone())
+			},
 			Some(GenesisBuilderPolicy::SpecGenesis) | None => {
 				log::warn!(target: LOG_TARGET, "{WARN_SPEC_GENESIS_CTOR}");
 				SpecGenesisSource::SpecJson
@@ -180,7 +181,7 @@ impl PalletCmd {
 			log::debug!("Initializing state handler with chain-spec from API: {:?}", chain_spec);
 
 			let source = genesis_builder_to_source();
-			return Ok(GenesisStateHandler::ChainSpec(chain_spec, source))
+			return Ok(GenesisStateHandler::ChainSpec(chain_spec, source));
 		};
 
 		// Handle chain-spec passed in via CLI.
@@ -194,7 +195,7 @@ impl PalletCmd {
 
 			let source = genesis_builder_to_source();
 
-			return Ok(GenesisStateHandler::ChainSpec(chain_spec, source))
+			return Ok(GenesisStateHandler::ChainSpec(chain_spec, source));
 		};
 
 		// Check for runtimes. In general, we make sure that `--runtime` and `--chain` are
@@ -210,7 +211,7 @@ impl PalletCmd {
 					runtime_blob,
 					Some(self.genesis_builder_preset.clone()),
 				))
-			}
+			};
 		};
 
 		Err("Neither a runtime nor a chain-spec were specified".to_string().into())
@@ -244,15 +245,17 @@ impl PalletCmd {
 		if let Some(json_input) = &self.json_input {
 			let raw_data = match std::fs::read(json_input) {
 				Ok(raw_data) => raw_data,
-				Err(error) =>
-					return Err(format!("Failed to read {:?}: {}", json_input, error).into()),
+				Err(error) => {
+					return Err(format!("Failed to read {:?}: {}", json_input, error).into())
+				},
 			};
 			let batches: Vec<BenchmarkBatchSplitResults> = match serde_json::from_slice(&raw_data) {
 				Ok(batches) => batches,
-				Err(error) =>
-					return Err(format!("Failed to deserialize {:?}: {}", json_input, error).into()),
+				Err(error) => {
+					return Err(format!("Failed to deserialize {:?}: {}", json_input, error).into())
+				},
 			};
-			return self.output_from_results(&batches)
+			return self.output_from_results(&batches);
 		}
 		super::logging::init(self.runtime_log.clone());
 
@@ -344,7 +347,7 @@ impl PalletCmd {
 
 		if let Some(list_output) = self.list {
 			list_benchmark(benchmarks_to_run, list_output, self.no_csv_header);
-			return Ok(())
+			return Ok(());
 		}
 
 		// Run the benchmarks
@@ -379,7 +382,7 @@ impl PalletCmd {
 					// The slope logic needs at least two points
 					// to compute a slope.
 					if self.steps < 2 {
-						return Err("`steps` must be at least 2.".into())
+						return Err("`steps` must be at least 2.".into());
 					}
 
 					let step_size = (diff as f32 / (self.steps - 1) as f32).max(0.0);
@@ -460,12 +463,12 @@ impl PalletCmd {
 						Err(e) => {
 							log::error!(target: LOG_TARGET, "Benchmark {pallet}::{extrinsic} failed: {e}");
 							failed.push((pallet.clone(), extrinsic.clone()));
-							continue 'outer
+							continue 'outer;
 						},
 						Ok(Err(e)) => {
 							log::error!(target: LOG_TARGET, "Benchmark {pallet}::{extrinsic} failed: {e}");
 							failed.push((pallet.clone(), extrinsic.clone()));
-							continue 'outer
+							continue 'outer;
 						},
 						Ok(Ok(b)) => b,
 					};
@@ -493,12 +496,12 @@ impl PalletCmd {
 						Err(e) => {
 							log::error!(target: LOG_TARGET, "Benchmark {pallet}::{extrinsic} failed: {e}");
 							failed.push((pallet.clone(), extrinsic.clone()));
-							continue 'outer
+							continue 'outer;
 						},
 						Ok(Err(e)) => {
 							log::error!(target: LOG_TARGET, "Benchmark {pallet}::{extrinsic} failed: {e}");
 							failed.push((pallet.clone(), extrinsic.clone()));
-							continue 'outer
+							continue 'outer;
 						},
 						Ok(Ok(b)) => b,
 					};
@@ -570,7 +573,7 @@ impl PalletCmd {
 				failed.len(),
 				failed.iter().map(|(p, e)| format!("- {p}::{e}")).collect::<Vec<_>>().join("\n")
 			);
-			return Err(format!("{} benchmarks failed", failed.len()).into())
+			return Err(format!("{} benchmarks failed", failed.len()).into());
 		}
 
 		// Combine all of the benchmark results, so that benchmarks of the same pallet/function
@@ -620,7 +623,7 @@ impl PalletCmd {
 			.collect();
 
 		if benchmarks_to_run.is_empty() {
-			return Err("No benchmarks found which match your input. Try `--list --all` to list all available benchmarks. Make sure pallet is in `define_benchmarks!`".into())
+			return Err("No benchmarks found which match your input. Try `--list --all` to list all available benchmarks. Make sure pallet is in `define_benchmarks!`".into());
 		}
 
 		Ok(benchmarks_to_run)
@@ -630,10 +633,10 @@ impl PalletCmd {
 	fn pallet_selected(&self, pallet: &Vec<u8>) -> bool {
 		let include = self.pallets.clone();
 
-		let included = include.is_empty() ||
-			include.iter().any(|p| p.as_bytes() == pallet) ||
-			include.iter().any(|p| p == "*") ||
-			include.iter().any(|p| p == "all");
+		let included = include.is_empty()
+			|| include.iter().any(|p| p.as_bytes() == pallet)
+			|| include.iter().any(|p| p == "*")
+			|| include.iter().any(|p| p == "all");
 		let excluded = self.exclude_pallets.iter().any(|p| p.as_bytes() == pallet);
 
 		included && !excluded
@@ -649,10 +652,10 @@ impl PalletCmd {
 		let extrinsic_split: Vec<&str> = extrinsic_filter.split(',').collect();
 		let extrinsics: Vec<_> = extrinsic_split.iter().map(|x| x.trim().as_bytes()).collect();
 
-		let included = extrinsic_filter.is_empty() ||
-			extrinsic_filter == "*" ||
-			extrinsic_filter == "all" ||
-			extrinsics.contains(&&extrinsic[..]);
+		let included = extrinsic_filter.is_empty()
+			|| extrinsic_filter == "*"
+			|| extrinsic_filter == "all"
+			|| extrinsics.contains(&&extrinsic[..]);
 
 		let excluded = self
 			.excluded_extrinsics()
@@ -825,7 +828,7 @@ impl PalletCmd {
 				fs::write(path, json)?;
 			} else {
 				print!("{json}");
-				return Ok(true)
+				return Ok(true);
 			}
 		}
 
@@ -856,7 +859,7 @@ impl PalletCmd {
 
 			// Skip raw data + analysis if there are no results
 			if batch.time_results.is_empty() {
-				continue
+				continue;
 			}
 
 			if !self.no_storage_info {
@@ -951,7 +954,7 @@ impl PalletCmd {
 						"Expected 'Pallet::Storage' as storage name but got: {}",
 						pallet_storage
 					)
-					.into())
+					.into());
 				}
 				let (pov_pallet, pov_storage) =
 					(splits[0].trim(), splits.get(1).unwrap_or(&"ALL").trim());
@@ -961,12 +964,13 @@ impl PalletCmd {
 					.or_default()
 					.entry((pov_pallet.to_string(), pov_storage.to_string()))
 				{
-					Entry::Occupied(_) =>
+					Entry::Occupied(_) => {
 						return Err(format!(
 							"Cannot specify pov_mode tag twice for the same key: {}",
 							pallet_storage
 						)
-						.into()),
+						.into())
+					},
 					Entry::Vacant(e) => {
 						e.insert(mode);
 					},
@@ -1024,17 +1028,18 @@ impl PalletCmd {
 				ErrorKind::MissingRequiredArgument,
 				"Provide either a runtime via `--runtime` or a chain spec via `--chain`"
 					.to_string(),
-			))
+			));
 		}
 
 		match self.genesis_builder {
-			Some(GenesisBuilderPolicy::SpecGenesis | GenesisBuilderPolicy::SpecRuntime) =>
+			Some(GenesisBuilderPolicy::SpecGenesis | GenesisBuilderPolicy::SpecRuntime) => {
 				if chain_spec.is_none() && self.shared_params.chain.is_none() {
 					return Err((
 						ErrorKind::MissingRequiredArgument,
 						"Provide a chain spec via `--chain`.".to_string(),
-					))
-				},
+					));
+				}
+			},
 			_ => {},
 		}
 
