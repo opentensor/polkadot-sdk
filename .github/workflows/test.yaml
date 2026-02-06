@@ -22,18 +22,8 @@ env:
 
 jobs:
   test:
-    name: cargo test (${{ matrix.directory }})
+    name: cargo nextest
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - directory: substrate/frame
-            exclude: '^(contracts|pallet-contracts-fixtures-common)$'
-          - directory: substrate/primitives
-            exclude: '^sp-state-machine-fuzz$'
-          - directory: substrate/client
-            exclude: '^THIS_PATTERN_MATCHES_NOTHING$'
     env:
       RUSTFLAGS: -Cdebug-assertions=y
       SUBSTRATE_ALLOW_TX_REPLACEMENT: 1
@@ -41,7 +31,7 @@ jobs:
     steps:
       - name: Check-out repository under $GITHUB_WORKSPACE
         uses: actions/checkout@v4
-        
+
       - name: Install Protoc
         uses: arduino/setup-protoc@v3
 
@@ -53,31 +43,26 @@ jobs:
         with:
           key: cargo-cache
           cache-on-failure: true
-          
+
       - uses: taiki-e/install-action@nextest
-      
+
       - name: Install solidity compiler
         run: |
-            VERSION="0.8.33"
-            ASSET_URL="https://github.com/argotorg/solidity/releases/download/v$VERSION/solc-static-linux"
-            echo "Downloading solc v$VERSION from $ASSET_URL"
-            curl -Lsf --show-error -o $HOME/.cargo/bin/solc "$ASSET_URL"
-            chmod +x $HOME/.cargo/bin/solc
-            solc --version
-            
+          VERSION="0.8.33"
+          ASSET_URL="https://github.com/argotorg/solidity/releases/download/v$VERSION/solc-static-linux"
+          echo "Downloading solc v$VERSION from $ASSET_URL"
+          curl -Lsf --show-error -o $HOME/.cargo/bin/solc "$ASSET_URL"
+          chmod +x $HOME/.cargo/bin/solc
+          solc --version
+
       - name: Install revive compiler (Polkadot VM)
         run: |
-            VERSION="0.6.0"
-            ASSET_URL="https://github.com/paritytech/revive/releases/download/v$VERSION/resolc-x86_64-unknown-linux-musl"
-            echo "Downloading resolc v$VERSION from $ASSET_URL"
-            curl -Lsf --show-error -o $HOME/.cargo/bin/resolc "$ASSET_URL"
-            chmod +x $HOME/.cargo/bin/resolc
-            resolc --version
+          VERSION="0.6.0"
+          ASSET_URL="https://github.com/paritytech/revive/releases/download/v$VERSION/resolc-x86_64-unknown-linux-musl"
+          echo "Downloading resolc v$VERSION from $ASSET_URL"
+          curl -Lsf --show-error -o $HOME/.cargo/bin/resolc "$ASSET_URL"
+          chmod +x $HOME/.cargo/bin/resolc
+          resolc --version
 
-      - name: Test ${{ matrix.directory }}
-        run: |
-          PACKAGES=$(find ${{ matrix.directory }} -name Cargo.toml -exec yq -r '.package.name' {} \; 2>/dev/null \
-            | grep -vE '${{ matrix.exclude }}' \
-            | while read crate; do echo "-p $crate"; done \
-            | tr '\n' ' ')
-          cargo nextest run --release --no-fail-fast $PACKAGES 
+      - name: Cargo nextest
+        run: cargo nextest run --release --workspace --no-fail-fast

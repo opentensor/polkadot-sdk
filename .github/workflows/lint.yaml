@@ -29,11 +29,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: 1.89.0
-          default: true
-          components: rustfmt
+        uses: actions-rust-lang/setup-rust-toolchain@v1
 
       - name: Utilize Shared Rust Cache
         uses: Swatinem/rust-cache@v2
@@ -67,11 +63,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: 1.89.0
-          default: true
-          components: clippy
+        uses: actions-rust-lang/setup-rust-toolchain@v1
 
       - name: Utilize Shared Rust Cache
         uses: Swatinem/rust-cache@v2
@@ -89,11 +81,8 @@ jobs:
       - name: Check-out repository under $GITHUB_WORKSPACE
         uses: actions/checkout@v4
 
-     - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: 1.89.0
-          default: true
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
 
       - name: Utilize Shared Rust Cache
         uses: Swatinem/rust-cache@v2
@@ -122,10 +111,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: 1.89.0
-          default: true
+        uses: actions-rust-lang/setup-rust-toolchain@v1
 
       - name: Utilize Shared Rust Cache
         uses: Swatinem/rust-cache@v2
