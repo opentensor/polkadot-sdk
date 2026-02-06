@@ -98,6 +98,7 @@ parameter_types! {
 	pub DefaultMyRewardKind: BridgeReward = BridgeReward::Snowbridge;
 }
 
+#[allow(dead_code)]
 pub const DOT: u128 = 10_000_000_000;
 
 impl crate::Config for Test {

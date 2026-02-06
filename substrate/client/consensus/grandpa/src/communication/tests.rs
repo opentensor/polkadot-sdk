@@ -334,6 +334,7 @@ pub(crate) fn make_test_network() -> (impl Future<Output = Tester>, TestNetwork)
 	let net = TestNetwork { sender: tx };
 	let sync = TestSync {};
 
+    #[allow(dead_code)]
 	#[derive(Clone)]
 	struct Exit;
 

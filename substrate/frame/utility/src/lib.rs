@@ -610,6 +610,7 @@ pub mod pallet {
 }
 
 /// A pallet identifier. These are per pallet and should be stored in a registry somewhere.
+#[allow(dead_code)]
 #[derive(Clone, Copy, Eq, PartialEq, Encode, Decode)]
 struct IndexedUtilityPalletId(u16);
 

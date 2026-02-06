@@ -173,6 +173,7 @@ pub trait RaceStrategy<SourceHeaderId, TargetHeaderId, Proof>: Debug {
 	type TargetNoncesData;
 
 	/// Should return true if nothing has to be synced.
+    #[allow(dead_code)]
 	fn is_empty(&self) -> bool;
 	/// Return id of source header that is required to be on target to continue synchronization.
 	async fn required_source_header_at_target<RS: RaceState<SourceHeaderId, TargetHeaderId>>(

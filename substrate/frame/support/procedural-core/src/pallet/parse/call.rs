@@ -363,9 +363,11 @@ impl CallDef {
 					}
 				}
 
-				if weight_of_authorize.is_some() && authorize.is_none() {
-					let msg = "Invalid pallet::call, weight_of_authorize attribute must be used with authorize attribute";
-					return Err(syn::Error::new(weight_of_authorize.unwrap().span(), msg))
+				if authorize.is_none() {
+                    if let Some(weight_of_authorize) = weight_of_authorize {
+						let msg = "Invalid pallet::call, weight_of_authorize attribute must be used with authorize attribute";
+						return Err(syn::Error::new(weight_of_authorize.span(), msg))
+					}
 				}
 
 				let authorize = if let Some(expr) = authorize {
