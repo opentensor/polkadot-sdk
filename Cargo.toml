@@ -601,6 +601,7 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 	'cfg(ignore_flaky_test)',
 	'cfg(substrate_runtime)',
 ] }
+mismatched-lifetime-syntaxes = { level = "allow", priority = 2 }
 
 [workspace.lints.clippy]
 all = { level = "allow", priority = 0 }
