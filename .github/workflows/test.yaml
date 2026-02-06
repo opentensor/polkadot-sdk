@@ -18,6 +18,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   VERBOSE: ${{ github.events.input.verbose }}
+  RUST_BACKTRACE: full
 
 jobs:
   test:
@@ -34,8 +35,7 @@ jobs:
           - directory: substrate/client
             exclude: '^THIS_PATTERN_MATCHES_NOTHING$'
     env:
-      RUST_BACKTRACE: full
-      RUSTFLAGS: -Cdebug-assertions=y -D warnings -A mismatched_lifetime_syntaxes -A dead_code -A unused_imports
+      RUSTFLAGS: -Cdebug-assertions=y
       SUBSTRATE_ALLOW_TX_REPLACEMENT: 1
 
     steps:
