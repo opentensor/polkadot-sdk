@@ -13288,6 +13288,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-shield-runtime-api"
+version = "0.0.1"
+dependencies = [
+ "parity-scale-codec",
+ "sp-api 37.0.0",
+ "sp-runtime 42.0.0",
+]
+
+[[package]]
 name = "pallet-skip-feeless-payment"
 version = "16.0.0"
 dependencies = [
@@ -19238,6 +19247,7 @@ version = "0.50.0"
 dependencies = [
  "futures",
  "log",
+ "pallet-shield-runtime-api",
  "parity-scale-codec",
  "parking_lot 0.12.3",
  "sc-block-builder",

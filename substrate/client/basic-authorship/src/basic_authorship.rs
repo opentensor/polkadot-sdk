@@ -40,6 +40,7 @@ use sp_runtime::{
 	Digest, ExtrinsicInclusionMode, Percent, SaturatedConversion,
 };
 use std::{marker::PhantomData, pin::Pin, sync::Arc, time};
+use pallet_shield_runtime_api::MevShieldApi;
 
 use prometheus_endpoint::Registry as PrometheusRegistry;
 use sc_proposer_metrics::{EndProposingReason, MetricsLink as PrometheusMetrics};
@@ -82,6 +83,7 @@ pub struct ProposerFactory<A, C, PR> {
 	telemetry: Option<TelemetryHandle>,
 	/// When estimating the block size, should the proof be included?
 	include_proof_in_block_size_estimation: bool,
+	curr_sk_bytes: Arc<dyn Fn() -> Option<Vec<u8>> + Send + Sync + 'static>,
 	/// phantom member to pin the `ProofRecording` type.
 	_phantom: PhantomData<PR>,
 }
@@ -97,6 +99,7 @@ impl<A, C, PR> Clone for ProposerFactory<A, C, PR> {
 			soft_deadline_percent: self.soft_deadline_percent,
 			telemetry: self.telemetry.clone(),
 			include_proof_in_block_size_estimation: self.include_proof_in_block_size_estimation,
+			curr_sk_bytes: self.curr_sk_bytes.clone(),
 			_phantom: self._phantom,
 		}
 	}
@@ -113,6 +116,7 @@ impl<A, C> ProposerFactory<A, C, DisableProofRecording> {
 		transaction_pool: Arc<A>,
 		prometheus: Option<&PrometheusRegistry>,
 		telemetry: Option<TelemetryHandle>,
+		curr_sk_bytes: Arc<dyn Fn() -> Option<Vec<u8>> + Send + Sync + 'static>,
 	) -> Self {
 		ProposerFactory {
 			spawn_handle: Box::new(spawn_handle),
@@ -123,6 +127,7 @@ impl<A, C> ProposerFactory<A, C, DisableProofRecording> {
 			telemetry,
 			client,
 			include_proof_in_block_size_estimation: false,
+			curr_sk_bytes,
 			_phantom: PhantomData,
 		}
 	}
@@ -141,6 +146,7 @@ impl<A, C> ProposerFactory<A, C, EnableProofRecording> {
 		transaction_pool: Arc<A>,
 		prometheus: Option<&PrometheusRegistry>,
 		telemetry: Option<TelemetryHandle>,
+		curr_sk_bytes: Arc<dyn Fn() -> Option<Vec<u8>> + Send + Sync + 'static>,
 	) -> Self {
 		ProposerFactory {
 			client,
@@ -151,6 +157,7 @@ impl<A, C> ProposerFactory<A, C, EnableProofRecording> {
 			soft_deadline_percent: DEFAULT_SOFT_DEADLINE_PERCENT,
 			telemetry,
 			include_proof_in_block_size_estimation: true,
+			curr_sk_bytes,
 			_phantom: PhantomData,
 		}
 	}
@@ -221,6 +228,7 @@ where
 			default_block_size_limit: self.default_block_size_limit,
 			soft_deadline_percent: self.soft_deadline_percent,
 			telemetry: self.telemetry.clone(),
+			curr_sk_bytes: self.curr_sk_bytes.clone(),
 			_phantom: PhantomData,
 			include_proof_in_block_size_estimation: self.include_proof_in_block_size_estimation,
 		};
@@ -234,7 +242,7 @@ where
 	A: TransactionPool<Block = Block> + 'static,
 	Block: BlockT,
 	C: HeaderBackend<Block> + ProvideRuntimeApi<Block> + CallApiAt<Block> + Send + Sync + 'static,
-	C::Api: ApiExt<Block> + BlockBuilderApi<Block>,
+	C::Api: ApiExt<Block> + BlockBuilderApi<Block> + MevShieldApi<Block>,
 	PR: ProofRecording,
 {
 	type CreateProposer = future::Ready<Result<Self::Proposer, Self::Error>>;
@@ -259,6 +267,7 @@ pub struct Proposer<Block: BlockT, C, A: TransactionPool, PR> {
 	include_proof_in_block_size_estimation: bool,
 	soft_deadline_percent: Percent,
 	telemetry: Option<TelemetryHandle>,
+	curr_sk_bytes: Arc<dyn Fn() -> Option<Vec<u8>> + Send + Sync + 'static>,
 	_phantom: PhantomData<PR>,
 }
 
@@ -267,7 +276,7 @@ where
 	A: TransactionPool<Block = Block> + 'static,
 	Block: BlockT,
 	C: HeaderBackend<Block> + ProvideRuntimeApi<Block> + CallApiAt<Block> + Send + Sync + 'static,
-	C::Api: ApiExt<Block> + BlockBuilderApi<Block>,
+	C::Api: ApiExt<Block> + BlockBuilderApi<Block> + MevShieldApi<Block>,
 	PR: ProofRecording,
 {
 	type Proposal =
@@ -318,7 +327,7 @@ where
 	A: TransactionPool<Block = Block>,
 	Block: BlockT,
 	C: HeaderBackend<Block> + ProvideRuntimeApi<Block> + CallApiAt<Block> + Send + Sync + 'static,
-	C::Api: ApiExt<Block> + BlockBuilderApi<Block>,
+	C::Api: ApiExt<Block> + BlockBuilderApi<Block> + MevShieldApi<Block>,
 	PR: ProofRecording,
 {
 	async fn propose_with(
@@ -445,8 +454,19 @@ where
 				);
 				break EndProposingReason::HitDeadline
 			}
-
-			let pending_tx_data = (**pending_tx.data()).clone();
+			
+			let api = self.client.runtime_api();
+			let mut pending_tx_data = (**pending_tx.data()).clone();
+			
+			if let Some(curr_sk_bytes) = self.curr_sk_bytes.clone()() {
+				if let Some(decrypted_tx_data) = api.try_decrypt_extrinsic(
+					self.parent_hash,
+					pending_tx_data.clone(),
+					curr_sk_bytes,
+				).unwrap() {
+					log::info!("Decrypted transaction: {:?}", decrypted_tx_data);
+				}
+			}
 			let pending_tx_hash = pending_tx.hash().clone();
 
 			let block_size =
