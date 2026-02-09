@@ -611,8 +611,8 @@ pub mod pallet {
 					.len() as u32;
 
 			let max_immutable_key_size = T::AccountId::max_encoded_len() as u32;
-			let max_immutable_size: u32 = ((max_block_ref_time /
-				(<RuntimeCosts as gas::Token<T>>::weight(&RuntimeCosts::SetImmutableData(
+			let max_immutable_size: u32 = ((max_block_ref_time
+				/ (<RuntimeCosts as gas::Token<T>>::weight(&RuntimeCosts::SetImmutableData(
 					limits::IMMUTABLE_BYTES,
 				))
 				.ref_time()))
@@ -622,8 +622,8 @@ pub mod pallet {
 
 			// We can use storage to store items using the available block ref_time with the
 			// `set_storage` host function.
-			let max_storage_size: u32 = ((max_block_ref_time /
-				(<RuntimeCosts as gas::Token<T>>::weight(&RuntimeCosts::SetStorage {
+			let max_storage_size: u32 = ((max_block_ref_time
+				/ (<RuntimeCosts as gas::Token<T>>::weight(&RuntimeCosts::SetStorage {
 					new_bytes: max_payload_size,
 					old_bytes: 0,
 				})
@@ -646,8 +646,8 @@ pub mod pallet {
 			// We can use storage to store events using the available block ref_time with the
 			// `deposit_event` host function. The overhead of stored events, which is around 100B,
 			// is not taken into account to simplify calculations, as it does not change much.
-			let max_events_size: u32 = ((max_block_ref_time /
-				(<RuntimeCosts as gas::Token<T>>::weight(&RuntimeCosts::DepositEvent {
+			let max_events_size: u32 = ((max_block_ref_time
+				/ (<RuntimeCosts as gas::Token<T>>::weight(&RuntimeCosts::DepositEvent {
 					num_topic: 0,
 					len: max_payload_size,
 				})
@@ -1002,8 +1002,9 @@ where
 			let origin = Origin::from_runtime_origin(origin)?;
 			let mut storage_meter = match storage_deposit_limit {
 				DepositLimit::Balance(limit) => StorageMeter::new(limit),
-				DepositLimit::UnsafeOnlyForDryRun =>
-					StorageMeter::new_unchecked(BalanceOf::<T>::max_value()),
+				DepositLimit::UnsafeOnlyForDryRun => {
+					StorageMeter::new_unchecked(BalanceOf::<T>::max_value())
+				},
 			};
 			let result = ExecStack::<T, WasmBlob<T>>::run_call(
 				origin.clone(),
@@ -1077,8 +1078,9 @@ where
 					storage_deposit_limit.saturating_reduce(upload_deposit);
 					(executable, upload_deposit)
 				},
-				Code::Existing(code_hash) =>
-					(WasmBlob::from_storage(code_hash, &mut gas_meter)?, Default::default()),
+				Code::Existing(code_hash) => {
+					(WasmBlob::from_storage(code_hash, &mut gas_meter)?, Default::default())
+				},
 			};
 			let instantiate_origin = Origin::from_account_id(instantiate_account.clone());
 			let mut storage_meter = if unchecked_deposit_limit {
@@ -1178,9 +1180,9 @@ where
 		let input = tx.input.clone().to_vec();
 
 		let extract_error = |err| {
-			if err == Error::<T>::TransferFailed.into() ||
-				err == Error::<T>::StorageDepositNotEnoughFunds.into() ||
-				err == Error::<T>::StorageDepositLimitExhausted.into()
+			if err == Error::<T>::TransferFailed.into()
+				|| err == Error::<T>::StorageDepositNotEnoughFunds.into()
+				|| err == Error::<T>::StorageDepositLimitExhausted.into()
 			{
 				let balance = Self::evm_balance(&from);
 				return Err(EthTransactError::Message(
@@ -1217,7 +1219,7 @@ where
 					},
 					Err(err) => {
 						log::debug!(target: LOG_TARGET, "Failed to execute call: {err:?}");
-						return extract_error(err)
+						return extract_error(err);
 					},
 				};
 
@@ -1277,7 +1279,7 @@ where
 					},
 					Err(err) => {
 						log::debug!(target: LOG_TARGET, "Failed to instantiate: {err:?}");
-						return extract_error(err)
+						return extract_error(err);
 					},
 				};
 
@@ -1458,7 +1460,7 @@ where
 		precision: ConversionPrecision,
 	) -> Result<BalanceOf<T>, Error<T>> {
 		if value.is_zero() {
-			return Ok(Zero::zero())
+			return Ok(Zero::zero());
 		}
 
 		let (quotient, remainder) = value.div_mod(T::NativeToEthRatio::get().into());
@@ -1681,7 +1683,7 @@ macro_rules! impl_runtime_apis_plus_revive {
 						dest,
 						value,
 						gas_limit.unwrap_or(blockweights.max_block),
-						$crate::DepositLimit::Balance(storage_deposit_limit.unwrap_or(u128::MAX)),
+						$crate::DepositLimit::Balance(storage_deposit_limit.unwrap_or(Balance::MAX)),
 						input_data,
 					)
 				}
@@ -1704,7 +1706,7 @@ macro_rules! impl_runtime_apis_plus_revive {
 						<Self as $crate::frame_system::Config>::RuntimeOrigin::signed(origin),
 						value,
 						gas_limit.unwrap_or(blockweights.max_block),
-						$crate::DepositLimit::Balance(storage_deposit_limit.unwrap_or(u128::MAX)),
+						$crate::DepositLimit::Balance(storage_deposit_limit.unwrap_or(Balance::MAX)),
 						code,
 						data,
 						salt,
@@ -1721,7 +1723,7 @@ macro_rules! impl_runtime_apis_plus_revive {
 					$crate::Pallet::<Self>::bare_upload_code(
 						origin,
 						code,
-						storage_deposit_limit.unwrap_or(u128::MAX),
+						storage_deposit_limit.unwrap_or(Balance::MAX),
 					)
 				}
 
