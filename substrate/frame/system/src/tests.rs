@@ -969,9 +969,9 @@ fn reclaim_works() {
 fn dispatch_guard_root_bypasses() {
 	new_test_ext().execute_with(|| {
 		// Root should always bypass the dispatch guard, even if all guards would reject.
-		mock::DispatchGuardShouldFail::set(true);
-		mock::SecondGuardShouldFail::set(true);
-		mock::ThirdGuardShouldFail::set(true);
+		mock::DispatchGuard1ShouldFail::set(true);
+		mock::DispatchGuard2ShouldFail::set(true);
+		mock::DispatchGuard3ShouldFail::set(true);
 		let origin = RuntimeOrigin::root();
 		assert_ok!(System::check_dispatch_guard(&origin, CALL));
 	});
@@ -988,7 +988,7 @@ fn dispatch_guard_signed_passes_when_all_guards_allow() {
 #[test]
 fn dispatch_guard_signed_fails_when_first_guard_rejects() {
 	new_test_ext().execute_with(|| {
-		mock::DispatchGuardShouldFail::set(true);
+		mock::DispatchGuard1ShouldFail::set(true);
 		let origin = RuntimeOrigin::signed(1);
 		assert_noop!(
 			System::check_dispatch_guard(&origin, CALL),
@@ -1000,7 +1000,7 @@ fn dispatch_guard_signed_fails_when_first_guard_rejects() {
 #[test]
 fn dispatch_guard_none_origin_fails_when_guard_rejects() {
 	new_test_ext().execute_with(|| {
-		mock::DispatchGuardShouldFail::set(true);
+		mock::DispatchGuard1ShouldFail::set(true);
 		let origin = RuntimeOrigin::none();
 		assert_noop!(
 			System::check_dispatch_guard(&origin, CALL),
@@ -1013,7 +1013,7 @@ fn dispatch_guard_none_origin_fails_when_guard_rejects() {
 fn dispatch_guard_rolls_back_storage_writes() {
 	new_test_ext().execute_with(|| {
 		// Enable storage writes inside the first guard.
-		mock::DispatchGuardStorageWrite::set(true);
+		mock::DispatchGuard1StorageWrite::set(true);
 
 		let origin = RuntimeOrigin::signed(1);
 		assert_ok!(System::check_dispatch_guard(&origin, CALL));
@@ -1027,8 +1027,8 @@ fn dispatch_guard_rolls_back_storage_writes() {
 fn dispatch_guard_rolls_back_storage_writes_on_failure() {
 	new_test_ext().execute_with(|| {
 		// Enable storage writes and make the guard fail.
-		mock::DispatchGuardStorageWrite::set(true);
-		mock::DispatchGuardShouldFail::set(true);
+		mock::DispatchGuard1StorageWrite::set(true);
+		mock::DispatchGuard1ShouldFail::set(true);
 
 		let origin = RuntimeOrigin::signed(1);
 		assert_noop!(
@@ -1045,7 +1045,7 @@ fn dispatch_guard_rolls_back_storage_writes_on_failure() {
 fn dispatch_guard_tuple_second_guard_rejects() {
 	new_test_ext().execute_with(|| {
 		// First guard passes, second rejects — should surface the second guard's error.
-		mock::SecondGuardShouldFail::set(true);
+		mock::DispatchGuard2ShouldFail::set(true);
 		let origin = RuntimeOrigin::signed(1);
 		assert_noop!(
 			System::check_dispatch_guard(&origin, CALL),
@@ -1058,7 +1058,7 @@ fn dispatch_guard_tuple_second_guard_rejects() {
 fn dispatch_guard_tuple_third_guard_rejects() {
 	new_test_ext().execute_with(|| {
 		// First two guards pass, third rejects.
-		mock::ThirdGuardShouldFail::set(true);
+		mock::DispatchGuard3ShouldFail::set(true);
 		let origin = RuntimeOrigin::signed(1);
 		assert_noop!(
 			System::check_dispatch_guard(&origin, CALL),
@@ -1072,9 +1072,9 @@ fn dispatch_guard_tuple_first_guard_short_circuits() {
 	new_test_ext().execute_with(|| {
 		// All three guards would reject, but the first one should short-circuit
 		// and we should see its error, not the others.
-		mock::DispatchGuardShouldFail::set(true);
-		mock::SecondGuardShouldFail::set(true);
-		mock::ThirdGuardShouldFail::set(true);
+		mock::DispatchGuard1ShouldFail::set(true);
+		mock::DispatchGuard2ShouldFail::set(true);
+		mock::DispatchGuard3ShouldFail::set(true);
 		let origin = RuntimeOrigin::signed(1);
 		assert_noop!(
 			System::check_dispatch_guard(&origin, CALL),

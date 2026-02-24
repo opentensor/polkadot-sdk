@@ -96,7 +96,7 @@ impl Config for Test {
 	type OnKilledAccount = RecordKilled;
 	type MultiBlockMigrator = MockedMigrator;
 	type Nonce = TypeWithDefault<u64, DefaultNonceProvider>;
-	type DispatchGuard = (MockDispatchGuardFirst, MockDispatchGuardSecond, MockDispatchGuardThird);
+	type DispatchGuard = (DispatchGuard1, DispatchGuard2, DispatchGuard3);
 }
 
 parameter_types! {
@@ -104,48 +104,48 @@ parameter_types! {
 }
 
 parameter_types! {
-	pub static DispatchGuardShouldFail: bool = false;
-	pub static DispatchGuardStorageWrite: bool = false;
-	pub static SecondGuardShouldFail: bool = false;
-	pub static ThirdGuardShouldFail: bool = false;
+	pub static DispatchGuard1ShouldFail: bool = false;
+	pub static DispatchGuard1StorageWrite: bool = false;
+	pub static DispatchGuard2ShouldFail: bool = false;
+	pub static DispatchGuard3ShouldFail: bool = false;
 }
 
-pub struct MockDispatchGuardFirst;
-impl frame_support::dispatch::DispatchGuard<<Test as Config>::RuntimeCall> for MockDispatchGuardFirst {
+pub struct DispatchGuard1;
+impl frame_support::dispatch::DispatchGuard<<Test as Config>::RuntimeCall> for DispatchGuard1 {
 	fn check(
 		_origin: &<Test as Config>::RuntimeOrigin,
 		_call: &<Test as Config>::RuntimeCall,
 	) -> frame_support::dispatch::DispatchResultWithPostInfo {
-		if DispatchGuardStorageWrite::get() {
+		if DispatchGuard1StorageWrite::get() {
 			frame_support::storage::unhashed::put_raw(b"dispatch_guard_write", b"written");
 		}
-		if DispatchGuardShouldFail::get() {
+		if DispatchGuard1ShouldFail::get() {
 			return Err(sp_runtime::DispatchError::Other("first guard rejected").into());
 		}
 		Ok(().into())
 	}
 }
 
-pub struct MockDispatchGuardSecond;
-impl frame_support::dispatch::DispatchGuard<<Test as Config>::RuntimeCall> for MockDispatchGuardSecond {
+pub struct DispatchGuard2;
+impl frame_support::dispatch::DispatchGuard<<Test as Config>::RuntimeCall> for DispatchGuard2 {
 	fn check(
 		_origin: &<Test as Config>::RuntimeOrigin,
 		_call: &<Test as Config>::RuntimeCall,
 	) -> frame_support::dispatch::DispatchResultWithPostInfo {
-		if SecondGuardShouldFail::get() {
+		if DispatchGuard2ShouldFail::get() {
 			return Err(sp_runtime::DispatchError::Other("second guard rejected").into());
 		}
 		Ok(().into())
 	}
 }
 
-pub struct MockDispatchGuardThird;
-impl frame_support::dispatch::DispatchGuard<<Test as Config>::RuntimeCall> for MockDispatchGuardThird {
+pub struct DispatchGuard3;
+impl frame_support::dispatch::DispatchGuard<<Test as Config>::RuntimeCall> for DispatchGuard3 {
 	fn check(
 		_origin: &<Test as Config>::RuntimeOrigin,
 		_call: &<Test as Config>::RuntimeCall,
 	) -> frame_support::dispatch::DispatchResultWithPostInfo {
-		if ThirdGuardShouldFail::get() {
+		if DispatchGuard3ShouldFail::get() {
 			return Err(sp_runtime::DispatchError::Other("third guard rejected").into());
 		}
 		Ok(().into())
