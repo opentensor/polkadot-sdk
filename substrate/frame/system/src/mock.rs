@@ -96,10 +96,60 @@ impl Config for Test {
 	type OnKilledAccount = RecordKilled;
 	type MultiBlockMigrator = MockedMigrator;
 	type Nonce = TypeWithDefault<u64, DefaultNonceProvider>;
+	type DispatchGuard = (MockDispatchGuardFirst, MockDispatchGuardSecond, MockDispatchGuardThird);
 }
 
 parameter_types! {
 	pub static Ongoing: bool = false;
+}
+
+parameter_types! {
+	pub static DispatchGuardShouldFail: bool = false;
+	pub static DispatchGuardStorageWrite: bool = false;
+	pub static SecondGuardShouldFail: bool = false;
+	pub static ThirdGuardShouldFail: bool = false;
+}
+
+pub struct MockDispatchGuardFirst;
+impl frame_support::dispatch::DispatchGuard<<Test as Config>::RuntimeCall> for MockDispatchGuardFirst {
+	fn check(
+		_origin: &<Test as Config>::RuntimeOrigin,
+		_call: &<Test as Config>::RuntimeCall,
+	) -> frame_support::dispatch::DispatchResultWithPostInfo {
+		if DispatchGuardStorageWrite::get() {
+			frame_support::storage::unhashed::put_raw(b"dispatch_guard_write", b"written");
+		}
+		if DispatchGuardShouldFail::get() {
+			return Err(sp_runtime::DispatchError::Other("first guard rejected").into());
+		}
+		Ok(().into())
+	}
+}
+
+pub struct MockDispatchGuardSecond;
+impl frame_support::dispatch::DispatchGuard<<Test as Config>::RuntimeCall> for MockDispatchGuardSecond {
+	fn check(
+		_origin: &<Test as Config>::RuntimeOrigin,
+		_call: &<Test as Config>::RuntimeCall,
+	) -> frame_support::dispatch::DispatchResultWithPostInfo {
+		if SecondGuardShouldFail::get() {
+			return Err(sp_runtime::DispatchError::Other("second guard rejected").into());
+		}
+		Ok(().into())
+	}
+}
+
+pub struct MockDispatchGuardThird;
+impl frame_support::dispatch::DispatchGuard<<Test as Config>::RuntimeCall> for MockDispatchGuardThird {
+	fn check(
+		_origin: &<Test as Config>::RuntimeOrigin,
+		_call: &<Test as Config>::RuntimeCall,
+	) -> frame_support::dispatch::DispatchResultWithPostInfo {
+		if ThirdGuardShouldFail::get() {
+			return Err(sp_runtime::DispatchError::Other("third guard rejected").into());
+		}
+		Ok(().into())
+	}
 }
 
 pub struct MockedMigrator;
