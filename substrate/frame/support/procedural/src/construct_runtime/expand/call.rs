@@ -110,12 +110,18 @@ pub fn expand_outer_dispatch(
 		}
 		impl #scrate::dispatch::GetDispatchInfo for RuntimeCall {
 			fn get_dispatch_info(&self) -> #scrate::dispatch::DispatchInfo {
-				match self {
+				let mut info = match self {
 					#(
 						#pallet_attrs
 						#variant_patterns => call.get_dispatch_info(),
 					)*
-				}
+				};
+				info.call_weight = info.call_weight.saturating_add(
+					<<#runtime as #system_path::Config>::DispatchExtension
+						as #scrate::dispatch::DispatchExtension<RuntimeCall>
+					>::weight(self)
+				);
+				info
 			}
 		}
 

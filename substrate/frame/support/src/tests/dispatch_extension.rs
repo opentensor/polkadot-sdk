@@ -125,7 +125,7 @@ impl DispatchExtension<RuntimeCall> for DispatchExt1 {
 	type Pre = ();
 
 	fn weight(_call: &RuntimeCall) -> crate::weights::Weight {
-		crate::weights::Weight::zero()
+		crate::weights::Weight::from_parts(100, 0)
 	}
 
 	fn pre_dispatch(
@@ -149,7 +149,7 @@ impl DispatchExtension<RuntimeCall> for DispatchExt2 {
 	type Pre = ();
 
 	fn weight(_call: &RuntimeCall) -> crate::weights::Weight {
-		crate::weights::Weight::zero()
+		crate::weights::Weight::from_parts(200, 0)
 	}
 
 	fn pre_dispatch(
@@ -170,7 +170,7 @@ impl DispatchExtension<RuntimeCall> for DispatchExt3 {
 	type Pre = ();
 
 	fn weight(_call: &RuntimeCall) -> crate::weights::Weight {
-		crate::weights::Weight::zero()
+		crate::weights::Weight::from_parts(50, 0)
 	}
 
 	fn pre_dispatch(
@@ -345,4 +345,14 @@ fn dispatch_with_extension_post_dispatch_runs_on_failed_call() {
 		assert!(result.is_err());
 		assert!(PostDispatchCalled::get());
 	});
+}
+
+#[test]
+fn get_dispatch_info_includes_extension_weight() {
+	use crate::dispatch::GetDispatchInfo;
+
+	let call = RuntimeCall::System(frame_system::Call::noop {});
+	let info = call.get_dispatch_info();
+	// noop has weight 0, extensions add 100 + 200 + 50 = 350
+	assert_eq!(info.call_weight, crate::weights::Weight::from_parts(350, 0));
 }
