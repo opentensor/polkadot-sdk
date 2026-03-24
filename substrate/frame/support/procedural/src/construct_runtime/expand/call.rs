@@ -178,9 +178,9 @@ pub fn expand_outer_dispatch(
 					);
 				}
 
-				#system_path::Pallet::<#runtime>::check_dispatch_guard(&origin, &self)?;
-
-				#scrate::traits::UnfilteredDispatchable::dispatch_bypass_filter(self, origin)
+				<<#runtime as #system_path::Config>::DispatchExtension
+					as #scrate::traits::ExtendedDispatchable<RuntimeCall>
+				>::dispatch_with_extension(origin, self)
 			}
 		}
 		impl #scrate::traits::UnfilteredDispatchable for RuntimeCall {
