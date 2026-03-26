@@ -737,7 +737,11 @@ fn get_module_names_and_indices() {
 			("NestedModule3", 34),
 			("Module3", 35),
 		],
-		module_names.iter().copied().zip(module_indices.iter().copied()).collect::<Vec<_>>()
+		module_names
+			.iter()
+			.copied()
+			.zip(module_indices.iter().copied())
+			.collect::<Vec<_>>()
 	);
 }
 

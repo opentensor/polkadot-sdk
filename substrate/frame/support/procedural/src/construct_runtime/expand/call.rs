@@ -154,7 +154,7 @@ pub fn expand_outer_dispatch(
 					stringify!(#pallet_names),
 				)*]
 			}
-			
+
 			fn get_module_indices() -> &'static [u8] {
 				&[#(
 					#pallet_indices,

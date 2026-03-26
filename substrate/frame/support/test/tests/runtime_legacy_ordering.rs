@@ -737,7 +737,11 @@ fn get_module_names_and_indices() {
 			("Module1_8", 12),
 			("Module1_9", 13),
 		],
-		module_names.iter().copied().zip(module_indices.iter().copied()).collect::<Vec<_>>()
+		module_names
+			.iter()
+			.copied()
+			.zip(module_indices.iter().copied())
+			.collect::<Vec<_>>()
 	);
 }
 
