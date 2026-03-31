@@ -109,8 +109,8 @@ impl<Block: BlockT> WarpSyncFragment<Block> {
 		let mut parent_number = *self.header.number();
 
 		for header in &self.descendant_headers {
-			if *header.parent_hash() != parent_hash
-				|| *header.number() != parent_number + One::one()
+			if *header.parent_hash() != parent_hash ||
+				*header.number() != parent_number + One::one()
 			{
 				return Err(Error::InvalidProof(
 					"Descendant headers do not form a contiguous chain".to_string(),
