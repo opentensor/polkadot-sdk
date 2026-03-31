@@ -62,12 +62,68 @@ pub(super) const MAX_WARP_SYNC_PROOF_SIZE: usize = 8 * 1024 * 1024;
 /// A proof of an authority set change.
 #[derive(Decode, Encode, Debug)]
 pub struct WarpSyncFragment<Block: BlockT> {
-	/// The last block that the given authority set finalized. This block should contain a digest
-	/// signaling an authority set change from which we can fetch the next authority set.
+	/// The finalized block that signaled the authority set change for this fragment.
 	pub header: Block::Header,
+	/// Headers in the range `(header; justification.target]`, ordered by block number.
+	///
+	/// These are only needed when the block that signaled the authority set change does not itself
+	/// carry a stored justification. Finality of the justification target implies finality of all
+	/// ancestors in this range, including `header`.
+	pub descendant_headers: Vec<Block::Header>,
 	/// A justification for the header above which proves its finality. In order to validate it the
 	/// verifier must be aware of the authorities and set id for which the justification refers to.
 	pub justification: GrandpaJustification<Block>,
+}
+
+impl<Block: BlockT> WarpSyncFragment<Block> {
+	fn target_header(&self) -> Result<&Block::Header, Error> {
+		let (target_number, target_hash) = self.justification.target();
+
+		if let Some(last_header) = self.descendant_headers.last() {
+			if last_header.hash() != target_hash || *last_header.number() != target_number {
+				return Err(Error::InvalidProof(
+					"Mismatch between descendant headers and justification".to_owned(),
+				));
+			}
+
+			return Ok(last_header);
+		}
+
+		if self.header.hash() != target_hash || *self.header.number() != target_number {
+			return Err(Error::InvalidProof("Mismatch between header and justification".to_owned()));
+		}
+
+		Ok(&self.header)
+	}
+
+	fn verify_descendant_headers(&self) -> Result<(), Error>
+	where
+		NumberFor<Block>: BlockNumberOps,
+	{
+		if self.descendant_headers.is_empty() {
+			self.target_header()?;
+			return Ok(());
+		}
+
+		let mut parent_hash = self.header.hash();
+		let mut parent_number = *self.header.number();
+
+		for header in &self.descendant_headers {
+			if *header.parent_hash() != parent_hash
+				|| *header.number() != parent_number + One::one()
+			{
+				return Err(Error::InvalidProof(
+					"Descendant headers do not form a contiguous chain".to_string(),
+				));
+			}
+
+			parent_hash = header.hash();
+			parent_number = *header.number();
+		}
+
+		self.target_header()?;
+		Ok(())
+	}
 }
 
 /// An accumulated proof of multiple authority set changes.
@@ -88,6 +144,7 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 	) -> Result<WarpSyncProof<Block>, Error>
 	where
 		Backend: ClientBackend<Block>,
+		NumberFor<Block>: BlockNumberOps,
 	{
 		// TODO: cache best response (i.e. the one with lowest begin_number)
 		let blockchain = backend.blockchain();
@@ -97,7 +154,7 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 			.ok_or_else(|| Error::InvalidRequest("Missing start block".to_string()))?;
 
 		if begin_number > blockchain.info().finalized_number {
-			return Err(Error::InvalidRequest("Start block is not finalized".to_string()))
+			return Err(Error::InvalidRequest("Start block is not finalized".to_string()));
 		}
 
 		let canon_hash = blockchain.hash(begin_number)?.expect(
@@ -109,49 +166,38 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 		if canon_hash != begin {
 			return Err(Error::InvalidRequest(
 				"Start block is not in the finalized chain".to_string(),
-			))
+			));
 		}
 
 		let mut proofs = Vec::new();
 		let mut proofs_encoded_len = 0;
 		let mut proof_limit_reached = false;
+		let mut lower_bound = begin_number;
 
 		let set_changes = set_changes.iter_from(begin_number).ok_or(Error::MissingData)?;
 
 		for (_, last_block) in set_changes {
-			let hash = match blockchain.block_hash_from_id(&BlockId::Number(*last_block))? {
-				Some(hash) => hash,
-				None => {
-					log::debug!(target: LOG_TARGET, "Ignorning warp proof with invalid block number.");
-					return Err(Error::InvalidRequest("header number comes from previously applied set changes; corresponding hash must exist in db.".to_string()))
-				},
-			};
+			let (header, descendant_headers) =
+				match find_fragment_header::<Block, _>(blockchain, lower_bound, *last_block)? {
+					Some(fragment) => fragment,
+					None => {
+						// If we could not walk back to a scheduling digest inside this authority
+						// set, the transition was either forced or the required history is
+						// missing. In either case we stop extending the trust chain here.
+						break;
+					},
+				};
 
-			let header = match blockchain.header(hash)? {
-				Some(header) => header,
-				None => {
-					log::debug!(target: LOG_TARGET, "Ignorning warp proof with invalid block hash.");
-					return Err(Error::InvalidRequest("header hash obtained from header number exists in db; corresponding header must exist in db too.".to_string()))
-				},
-			};
-
-			// the last block in a set is the one that triggers a change to the next set,
-			// therefore the block must have a digest that signals the authority set change
-			if find_scheduled_change::<Block>(&header).is_none() {
-				// if it doesn't contain a signal for standard change then the set must have changed
-				// through a forced changed, in which case we stop collecting proofs as the chain of
-				// trust in authority handoffs was broken.
-				break
-			}
+			let target_header = descendant_headers.last().unwrap_or(&header);
 
 			let justification = blockchain
-				.justifications(header.hash())?
+				.justifications(target_header.hash())?
 				.and_then(|just| just.into_justification(GRANDPA_ENGINE_ID))
 				.ok_or_else(|| Error::MissingData)?;
 
 			let justification = GrandpaJustification::<Block>::decode_all(&mut &justification[..])?;
 
-			let proof = WarpSyncFragment { header: header.clone(), justification };
+			let proof = WarpSyncFragment { header, descendant_headers, justification };
 			let proof_size = proof.encoded_size();
 
 			// Check for the limit. We remove some bytes from the maximum size, because we're only
@@ -159,11 +205,12 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 			// room for rest of the data (the size of the `Vec` and the boolean).
 			if proofs_encoded_len + proof_size >= MAX_WARP_SYNC_PROOF_SIZE - 50 {
 				proof_limit_reached = true;
-				break
+				break;
 			}
 
 			proofs_encoded_len += proof_size;
 			proofs.push(proof);
+			lower_bound = *last_block;
 		}
 
 		let is_finished = if proof_limit_reached {
@@ -186,7 +233,11 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 				let header = blockchain.header(latest_justification.target().1)?
 					.expect("header hash corresponds to a justification in db; must exist in db as well; qed.");
 
-				let proof = WarpSyncFragment { header, justification: latest_justification };
+				let proof = WarpSyncFragment {
+					header,
+					descendant_headers: Vec::new(),
+					justification: latest_justification,
+				};
 
 				// Check for the limit. We remove some bytes from the maximum size, because we're
 				// only counting the size of the `WarpSyncFragment`s. The extra margin is here
@@ -233,16 +284,11 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 				current_set_id += initial_set_id;
 			}
 			{
+				proof.verify_descendant_headers()?;
 				proof
 					.justification
 					.verify(current_set_id, &current_authorities)
 					.map_err(|err| Error::InvalidProof(err.to_string()))?;
-
-				if proof.justification.target().1 != hash {
-					return Err(Error::InvalidProof(
-						"Mismatch between header and justification".to_owned(),
-					))
-				}
 
 				if let Some(scheduled_change) = find_scheduled_change::<Block>(&proof.header) {
 					current_authorities = scheduled_change.next_authorities;
@@ -252,11 +298,65 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 					// authority set change.
 					return Err(Error::InvalidProof(
 						"Header is missing authority set change digest".to_string(),
-					))
+					));
 				}
 			}
 		}
 		Ok((current_set_id, current_authorities))
+	}
+}
+
+fn expect_header<Block, Backend>(
+	blockchain: &Backend,
+	block_number: NumberFor<Block>,
+) -> Result<Block::Header, Error>
+where
+	Block: BlockT,
+	Backend: BlockchainBackend<Block>,
+{
+	let hash = blockchain.block_hash_from_id(&BlockId::Number(block_number))?.ok_or_else(|| {
+		log::debug!(target: LOG_TARGET, "Ignorning warp proof with invalid block number.");
+		Error::InvalidRequest(
+			"header number comes from previously applied set changes; corresponding hash must exist in db."
+				.to_string(),
+		)
+	})?;
+
+	blockchain.header(hash)?.ok_or_else(|| {
+		log::debug!(target: LOG_TARGET, "Ignorning warp proof with invalid block hash.");
+		Error::InvalidRequest(
+			"header hash obtained from header number exists in db; corresponding header must exist in db too."
+				.to_string(),
+		)
+	})
+}
+
+fn find_fragment_header<Block, Backend>(
+	blockchain: &Backend,
+	lower_bound: NumberFor<Block>,
+	last_block: NumberFor<Block>,
+) -> Result<Option<(Block::Header, Vec<Block::Header>)>, Error>
+where
+	Block: BlockT,
+	Backend: BlockchainBackend<Block>,
+	NumberFor<Block>: BlockNumberOps,
+{
+	let mut current_header = expect_header::<Block, _>(blockchain, last_block)?;
+	let mut descendant_headers = Vec::new();
+
+	loop {
+		if find_scheduled_change::<Block>(&current_header).is_some() {
+			descendant_headers.reverse();
+			return Ok(Some((current_header, descendant_headers)));
+		}
+
+		if *current_header.number() <= lower_bound {
+			return Ok(None);
+		}
+
+		let parent_hash = *current_header.parent_hash();
+		descendant_headers.push(current_header);
+		current_header = blockchain.header(parent_hash)?.ok_or(Error::MissingData)?;
 	}
 }
 
@@ -364,7 +464,10 @@ where
 		let last_header = proof
 			.proofs
 			.last()
-			.map(|p| p.header.clone())
+			.map(WarpSyncFragment::target_header)
+			.transpose()
+			.map_err(Box::new)?
+			.cloned()
 			.ok_or_else(|| "Empty proof".to_string())?;
 		let (next_set_id, next_authorities) =
 			proof.verify(set_id, authorities, &self.hard_forks).map_err(Box::new)?;
@@ -386,20 +489,62 @@ where
 
 #[cfg(test)]
 mod tests {
-	use super::WarpSyncProof;
+	use super::{HardForks, WarpSyncProof};
 	use crate::{AuthoritySetChanges, GrandpaJustification};
-	use codec::Encode;
+	use codec::{DecodeAll, Encode};
 	use rand::prelude::*;
 	use sc_block_builder::BlockBuilderBuilder;
+	use sc_client_api::{apply_aux, BlockBackend, LockImportRun};
 	use sp_blockchain::HeaderBackend;
 	use sp_consensus::BlockOrigin;
 	use sp_consensus_grandpa::GRANDPA_ENGINE_ID;
 	use sp_keyring::Ed25519Keyring;
-	use std::sync::Arc;
+	use sp_runtime::traits::{Header as HeaderT, NumberFor};
+	use std::{collections::VecDeque, sync::Arc};
 	use substrate_test_runtime_client::{
-		BlockBuilderExt, ClientBlockImportExt, ClientExt, DefaultTestClientBuilderExt,
-		TestClientBuilder, TestClientBuilderExt,
+		runtime::Block, BlockBuilderExt, ClientBlockImportExt, ClientExt,
+		DefaultTestClientBuilderExt, TestClient, TestClientBuilder, TestClientBuilderExt,
 	};
+
+	fn finalize_with_justification(
+		client: &Arc<TestClient>,
+		current_set_id: u64,
+		current_authorities: &[Ed25519Keyring],
+		target_hash: <Block as sp_runtime::traits::Block>::Hash,
+		target_number: NumberFor<Block>,
+	) {
+		let mut precommits = Vec::new();
+		for keyring in current_authorities {
+			let precommit = finality_grandpa::Precommit { target_hash, target_number };
+
+			let msg = finality_grandpa::Message::Precommit(precommit.clone());
+			let encoded = sp_consensus_grandpa::localized_payload(42, current_set_id, &msg);
+			let signature = keyring.sign(&encoded[..]).into();
+
+			precommits.push(finality_grandpa::SignedPrecommit {
+				precommit,
+				signature,
+				id: keyring.public().into(),
+			});
+		}
+
+		let commit = finality_grandpa::Commit { target_hash, target_number, precommits };
+		let justification = GrandpaJustification::from_commit(client, 42, commit).unwrap();
+
+		client
+			.finalize_block(target_hash, Some((GRANDPA_ENGINE_ID, justification.encode())))
+			.unwrap();
+	}
+
+	fn store_best_justification(client: &TestClient, just: &GrandpaJustification<Block>) {
+		client
+			.lock_import_and_run(|import_op| {
+				crate::aux_schema::update_best_justification(just, |insert| {
+					apply_aux(import_op, insert, &[])
+				})
+			})
+			.unwrap();
+	}
 
 	#[test]
 	fn warp_sync_proof_generate_verify() {
@@ -455,37 +600,17 @@ mod tests {
 			futures::executor::block_on(client.import(BlockOrigin::Own, block)).unwrap();
 
 			if let Some(new_authorities) = new_authorities {
-				// generate a justification for this block, finalize it and note the authority set
-				// change
 				let (target_hash, target_number) = {
 					let info = client.info();
 					(info.best_hash, info.best_number)
 				};
-
-				let mut precommits = Vec::new();
-				for keyring in &current_authorities {
-					let precommit = finality_grandpa::Precommit { target_hash, target_number };
-
-					let msg = finality_grandpa::Message::Precommit(precommit.clone());
-					let encoded = sp_consensus_grandpa::localized_payload(42, current_set_id, &msg);
-					let signature = keyring.sign(&encoded[..]).into();
-
-					let precommit = finality_grandpa::SignedPrecommit {
-						precommit,
-						signature,
-						id: keyring.public().into(),
-					};
-
-					precommits.push(precommit);
-				}
-
-				let commit = finality_grandpa::Commit { target_hash, target_number, precommits };
-
-				let justification = GrandpaJustification::from_commit(&client, 42, commit).unwrap();
-
-				client
-					.finalize_block(target_hash, Some((GRANDPA_ENGINE_ID, justification.encode())))
-					.unwrap();
+				finalize_with_justification(
+					&client,
+					current_set_id,
+					&current_authorities,
+					target_hash,
+					target_number,
+				);
 
 				authority_set_changes.push((current_set_id, n));
 
@@ -503,8 +628,137 @@ mod tests {
 			WarpSyncProof::generate(&*backend, genesis_hash, &authority_set_changes).unwrap();
 
 		// verifying the proof should yield the last set id and authorities
+		let no_hard_forks = HardForks::new_hard_forked_authorities(Vec::new());
 		let (new_set_id, new_authorities) =
-			warp_sync_proof.verify(0, genesis_authorities, &Default::default()).unwrap();
+			warp_sync_proof.verify(0, genesis_authorities, &no_hard_forks).unwrap();
+
+		let expected_authorities = current_authorities
+			.iter()
+			.map(|keyring| (keyring.public().into(), 1))
+			.collect::<Vec<_>>();
+
+		assert_eq!(new_set_id, current_set_id);
+		assert_eq!(new_authorities, expected_authorities);
+	}
+
+	#[test]
+	fn warp_sync_proof_generate_verify_with_delayed_changes() {
+		let builder = TestClientBuilder::new();
+		let backend = builder.backend();
+		let client = Arc::new(builder.build());
+
+		let genesis_authorities = vec![(Ed25519Keyring::Alice.public().into(), 1)];
+		let mut current_authorities = vec![Ed25519Keyring::Alice];
+		let mut current_set_id = 0;
+		let mut authority_set_changes = Vec::new();
+		let mut pending_changes = VecDeque::from([
+			(10u64, 13u64, vec![Ed25519Keyring::Bob, Ed25519Keyring::Charlie]),
+			(20u64, 22u64, vec![Ed25519Keyring::Dave, Ed25519Keyring::Eve]),
+		]);
+
+		for n in 1..=30u64 {
+			let mut builder = BlockBuilderBuilder::new(&*client)
+				.on_parent_block(client.chain_info().best_hash)
+				.with_parent_block_number(client.chain_info().best_number)
+				.build()
+				.unwrap();
+
+			if let Some((scheduled_at, effective_at, next_authorities)) = pending_changes.front() {
+				if *scheduled_at == n {
+					let next_authorities = next_authorities
+						.iter()
+						.map(|keyring| (keyring.public().into(), 1))
+						.collect::<Vec<_>>();
+
+					let digest = sp_runtime::generic::DigestItem::Consensus(
+						sp_consensus_grandpa::GRANDPA_ENGINE_ID,
+						sp_consensus_grandpa::ConsensusLog::ScheduledChange(
+							sp_consensus_grandpa::ScheduledChange {
+								delay: effective_at - scheduled_at,
+								next_authorities,
+							},
+						)
+						.encode(),
+					);
+
+					builder.push_deposit_log_digest_item(digest).unwrap();
+				}
+			}
+
+			let block = builder.build().unwrap().block;
+			futures::executor::block_on(client.import(BlockOrigin::Own, block)).unwrap();
+
+			if let Some((_, effective_at, next_authorities)) = pending_changes.front() {
+				if *effective_at == n {
+					let (target_hash, target_number) = {
+						let info = client.info();
+						(info.best_hash, info.best_number)
+					};
+
+					finalize_with_justification(
+						&client,
+						current_set_id,
+						&current_authorities,
+						target_hash,
+						target_number,
+					);
+					authority_set_changes.push((current_set_id, n));
+					current_set_id += 1;
+					current_authorities = next_authorities.clone();
+					pending_changes.pop_front();
+				}
+			}
+		}
+
+		let (best_hash, best_number) = {
+			let info = client.info();
+			(info.best_hash, info.best_number)
+		};
+		finalize_with_justification(
+			&client,
+			current_set_id,
+			&current_authorities,
+			best_hash,
+			best_number,
+		);
+		let best_justification = client
+			.justifications(best_hash)
+			.unwrap()
+			.and_then(|just| just.into_justification(GRANDPA_ENGINE_ID))
+			.map(|just| GrandpaJustification::<Block>::decode_all(&mut &just[..]).unwrap())
+			.unwrap();
+		store_best_justification(&client, &best_justification);
+
+		let authority_set_changes = AuthoritySetChanges::from(authority_set_changes);
+		let genesis_hash = client.hash(0).unwrap().unwrap();
+		let warp_sync_proof =
+			WarpSyncProof::generate(&*backend, genesis_hash, &authority_set_changes).unwrap();
+
+		assert_eq!(warp_sync_proof.proofs.len(), 3);
+		assert_eq!(*warp_sync_proof.proofs[0].header.number(), 10);
+		assert_eq!(
+			warp_sync_proof.proofs[0]
+				.descendant_headers
+				.iter()
+				.map(|header| *header.number())
+				.collect::<Vec<_>>(),
+			vec![11, 12, 13],
+		);
+		assert_eq!(*warp_sync_proof.proofs[1].header.number(), 20);
+		assert_eq!(
+			warp_sync_proof.proofs[1]
+				.descendant_headers
+				.iter()
+				.map(|header| *header.number())
+				.collect::<Vec<_>>(),
+			vec![21, 22],
+		);
+		assert_eq!(*warp_sync_proof.proofs[2].header.number(), 30);
+		assert!(warp_sync_proof.proofs[2].descendant_headers.is_empty());
+
+		let no_hard_forks = HardForks::new_hard_forked_authorities(Vec::new());
+		let (new_set_id, new_authorities) =
+			warp_sync_proof.verify(0, genesis_authorities, &no_hard_forks).unwrap();
 
 		let expected_authorities = current_authorities
 			.iter()
