@@ -40,7 +40,9 @@ use sp_runtime::{
 	Digest, ExtrinsicInclusionMode, Percent, SaturatedConversion,
 };
 use std::{marker::PhantomData, pin::Pin, sync::Arc, time};
-use stp_shield::{ShieldApi, ShieldKeystorePtr, ShieldedTransaction};
+use stp_shield::{
+	InnerExtrinsicError, ShieldApi, ShieldError, ShieldKeystorePtr, ShieldedTransaction,
+};
 
 use prometheus_endpoint::Registry as PrometheusRegistry;
 use sc_proposer_metrics::{EndProposingReason, MetricsLink as PrometheusMetrics};
@@ -434,6 +436,11 @@ where
 		debug!(target: LOG_TARGET, "Attempting to push transactions from the pool at {:?}.", self.parent_hash);
 		let mut transaction_pushed = false;
 
+		let api = self.client.runtime_api();
+		let is_shield_api_v2 = api
+			.has_api_with::<dyn ShieldApi<Block>, _>(self.parent_hash, |v| v >= 2)
+			.unwrap_or(false);
+
 		let end_reason = loop {
 			let pending_tx = if let Some(pending_tx) = pending_iterator.next() {
 				pending_tx
@@ -459,17 +466,36 @@ where
 			let pending_tx_data = (**pending_tx.data()).clone();
 			let pending_tx_hash = pending_tx.hash().clone();
 
-			let api = self.client.runtime_api();
+			let maybe_decode_result: Option<Result<ShieldedTransaction, ShieldError>> =
+				if is_shield_api_v2 {
+					api.try_decode_shielded_tx(self.parent_hash, pending_tx_data.clone())
+						.ok()
+						.flatten()
+				} else {
+					#[allow(deprecated)]
+					api.try_decode_shielded_tx_before_version_2(
+						self.parent_hash,
+						pending_tx_data.clone(),
+					)
+					.ok()
+					.flatten()
+					.map(Ok)
+				};
+			log::debug!(target: LOG_TARGET, "Maybe shielded tx: {:?}", maybe_decode_result);
+			let is_shielded = maybe_decode_result.is_some();
 
-			let maybe_shielded_tx = api
-				.try_decode_shielded_tx(self.parent_hash, pending_tx_data.clone())
-				.ok()
-				.flatten();
+			// Determine if this is a shielded tx and whether decode succeeded.
+			// None = not shielded, Some(Ok(tx)) = decoded, Some(Err(e)) = decode failed.
+			let (shielded_tx, decode_error) = match maybe_decode_result {
+				None => (None, None),
+				Some(Ok(tx)) => (Some(tx), None),
+				Some(Err(e)) => (None, Some(e.clone())),
+			};
 
 			// Skip shielded txs we can't decrypt (wrong key or disabled via env var) without
 			// reporting them as invalid, they stay in the pool for the right block author to
-			// pick them up.
-			if let Some(shielded_tx) = &maybe_shielded_tx {
+			// pick them up. Only skip if decode succeeded. Decode errors are always included.
+			if let Some(shielded_tx) = &shielded_tx {
 				let using_current_key = api
 					.is_shielded_using_current_key(self.parent_hash, &shielded_tx.key_hash)
 					.unwrap_or(false);
@@ -480,7 +506,7 @@ where
 				}
 			}
 
-			let pending_tx_data_size = if let Some(shielded_tx) = &maybe_shielded_tx {
+			let pending_tx_data_size = if let Some(shielded_tx) = &shielded_tx {
 				// The ciphertext length for XChaCha20Poly1305 is the length of the plaintext + 16
 				// bytes for the tag (source: https://www.rfc-editor.org/rfc/rfc8439#section-2.8) so we need
 				// to subtract it from the ciphertext length to get the plaintext length
@@ -524,14 +550,32 @@ where
 				}
 			}
 
-			let tx_type = if maybe_shielded_tx.is_some() { "shield wrapper" } else { "normal" };
+			let tx_type = if is_shielded { "shield wrapper" } else { "normal" };
 			trace!(target: LOG_TARGET, "[{:?}] Pushing {} transaction to the block.", pending_tx_hash, tx_type);
-			match sc_block_builder::BlockBuilder::push(block_builder, pending_tx_data) {
+			match sc_block_builder::BlockBuilder::push(block_builder, pending_tx_data.clone()) {
 				Ok(()) => {
 					transaction_pushed = true;
 					trace!(target: LOG_TARGET, "[{:?}] Pushed {} transaction to the block.", pending_tx_hash, tx_type);
 
-					let Some(shielded_tx) = maybe_shielded_tx else {
+					if !is_shielded {
+						continue;
+					}
+
+					// We need the wrapper tx hash to report the error tx in case of decode failure.
+					let wrapper_tx_hash =
+						<<Block as BlockT>::Header as HeaderT>::Hashing::hash_of(&pending_tx_data);
+
+					// If decode failed, include the error tx (only on v2 runtimes).
+					if let Some(error) = decode_error {
+						debug!(target: LOG_TARGET, "[{:?}] Failed to decode shielded transaction: {:?}", pending_tx_hash, error);
+						if is_shield_api_v2 {
+							self.push_shield_error_tx(&api, block_builder, wrapper_tx_hash, error);
+						}
+						continue;
+					}
+
+					let Some(shielded_tx) = shielded_tx else {
+						debug!(target: LOG_TARGET, "[{:?}] No shielded transaction after decode error check; not reachable.", pending_tx_hash);
 						continue;
 					};
 
@@ -543,6 +587,8 @@ where
 						shielded_tx,
 						&mut skipped,
 						soft_deadline,
+						wrapper_tx_hash,
+						is_shield_api_v2,
 					) {
 						break end_reason;
 					}
@@ -591,6 +637,8 @@ where
 		shielded_tx: ShieldedTransaction,
 		skipped: &mut usize,
 		soft_deadline: time::Instant,
+		wrapper_tx_hash: Block::Hash,
+		is_shield_api_v2: bool,
 	) -> Result<(), EndProposingReason> {
 		let dec_key_bytes = self
 			.shield_keystore
@@ -604,11 +652,33 @@ where
 			return Ok(());
 		};
 
-		let Some(unshielded_tx_data) =
-			api.try_unshield_tx(self.parent_hash, dec_key_bytes, shielded_tx).ok().flatten()
-		else {
-			debug!(target: LOG_TARGET, "[{:?}] Failed to unshield transaction", shielded_tx_hash);
-			return Ok(());
+		let unshielded_tx_data = if is_shield_api_v2 {
+			match api.try_unshield_tx(self.parent_hash, dec_key_bytes, shielded_tx) {
+				Ok(Ok(tx)) => tx,
+				Ok(Err(shield_error)) => {
+					debug!(target: LOG_TARGET, "[{:?}] Failed to unshield transaction: {:?}", shielded_tx_hash, shield_error);
+					self.push_shield_error_tx(api, block_builder, wrapper_tx_hash, shield_error);
+					return Ok(());
+				},
+				Err(api_error) => {
+					debug!(target: LOG_TARGET, "[{:?}] Runtime API error during unshield: {}", shielded_tx_hash, api_error);
+					return Ok(());
+				},
+			}
+		} else {
+			#[allow(deprecated)]
+			match api.try_unshield_tx_before_version_2(self.parent_hash, dec_key_bytes, shielded_tx)
+			{
+				Ok(Some(tx)) => tx,
+				Ok(None) => {
+					debug!(target: LOG_TARGET, "[{:?}] Failed to unshield transaction (v1)", shielded_tx_hash);
+					return Ok(());
+				},
+				Err(api_error) => {
+					debug!(target: LOG_TARGET, "[{:?}] Runtime API error during unshield: {}", shielded_tx_hash, api_error);
+					return Ok(());
+				},
+			}
 		};
 		debug!(target: LOG_TARGET, "[{:?}] Unshielded inner transaction: {:?}", shielded_tx_hash, unshielded_tx_data);
 
@@ -625,10 +695,46 @@ where
 					target: LOG_TARGET,
 					"[{:?}] Invalid unshielded transaction: {} at: {}", shielded_tx_hash, e, self.parent_hash
 				);
+				if is_shield_api_v2 {
+					let error: ShieldError = match e {
+						ApplyExtrinsicFailed(Validity(ref ve)) =>
+							InnerExtrinsicError::ValidationFailed(format!("{ve:?}").into_bytes())
+								.into(),
+						_ => InnerExtrinsicError::DecodeFailed(format!("{e}").into_bytes()).into(),
+					};
+					self.push_shield_error_tx(api, block_builder, wrapper_tx_hash, error);
+				}
 			},
 		}
 
 		Ok(())
+	}
+
+	/// Build and push an unsigned `report_unshield_error` extrinsic into the block.
+	fn push_shield_error_tx(
+		&self,
+		api: &ApiRef<'_, C::Api>,
+		block_builder: &mut sc_block_builder::BlockBuilder<'_, Block, C>,
+		wrapper_tx_hash: Block::Hash,
+		error: ShieldError,
+	) {
+		let error_tx =
+			match api.make_unshield_error_extrinsic(self.parent_hash, wrapper_tx_hash, error) {
+				Ok(tx) => tx,
+				Err(e) => {
+					debug!(target: LOG_TARGET, "[{:?}] Failed to build error extrinsic: {}", wrapper_tx_hash, e);
+					return;
+				},
+			};
+
+		match sc_block_builder::BlockBuilder::push(block_builder, error_tx) {
+			Ok(()) => {
+				debug!(target: LOG_TARGET, "[{:?}] Pushed shield error extrinsic to block", wrapper_tx_hash);
+			},
+			Err(e) => {
+				debug!(target: LOG_TARGET, "[{:?}] Failed to push shield error extrinsic: {}", wrapper_tx_hash, e);
+			},
+		}
 	}
 
 	fn report_exhausted_resources(
@@ -1351,7 +1457,8 @@ mod tests {
 	) -> Arc<substrate_test_runtime_client::TestClient> {
 		let mut builder = TestClientBuilder::new();
 		if let Some(tx) = decode {
-			builder = builder.add_extra_storage(SHIELD_TEST_DECODE_KEY.to_vec(), tx.encode());
+			let value: Result<ShieldedTransaction, ShieldError> = Ok(tx);
+			builder = builder.add_extra_storage(SHIELD_TEST_DECODE_KEY.to_vec(), value.encode());
 		}
 		if let Some(ext) = unshield {
 			builder = builder.add_extra_storage(SHIELD_TEST_UNSHIELD_KEY.to_vec(), ext.encode());
@@ -1442,7 +1549,8 @@ mod tests {
 				.map(|r| r.block)
 				.unwrap();
 
-		// Block should contain only the wrapper (inner unshielding failed gracefully)
+		// Block should contain only the wrapper (inner unshielding failed; the error tx
+		// cannot be pushed in the test runtime because it lacks ValidateUnsigned for remark)
 		assert_eq!(block.extrinsics().len(), 1);
 	}
 
