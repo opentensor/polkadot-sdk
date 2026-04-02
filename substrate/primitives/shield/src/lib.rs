@@ -6,10 +6,12 @@ extern crate alloc;
 use sp_inherents::InherentIdentifier;
 use sp_runtime::{traits::ConstU32, BoundedVec};
 
+mod error;
 mod keystore;
 pub mod runtime_api;
 mod shielded_tx;
 
+pub use error::*;
 pub use keystore::*;
 pub use runtime_api::*;
 pub use shielded_tx::*;
