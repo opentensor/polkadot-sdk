@@ -1549,9 +1549,8 @@ mod tests {
 				.map(|r| r.block)
 				.unwrap();
 
-		// Block should contain only the wrapper (inner unshielding failed; the error tx
-		// cannot be pushed in the test runtime because it lacks ValidateUnsigned for remark)
-		assert_eq!(block.extrinsics().len(), 1);
+		// Block should contain wrapper + error tx (unshielding failed, error reported)
+		assert_eq!(block.extrinsics().len(), 2);
 	}
 
 	#[test]

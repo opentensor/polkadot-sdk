@@ -855,8 +855,10 @@ impl_runtime_apis! {
 		}
 
 		fn make_unshield_error_extrinsic(_wrapper_tx_hash: <Block as BlockT>::Hash, _error: stp_shield::ShieldError) -> <Block as BlockT>::Extrinsic {
-			// Test runtime: return a bare remark as a placeholder.
-			Extrinsic::new_bare(RuntimeCall::System(frame_system::Call::remark { remark: Vec::new() }))
+			// Use storage_change which passes ValidateUnsigned in the test runtime.
+			Extrinsic::new_bare(RuntimeCall::SubstrateTest(
+				substrate_test_pallet::Call::storage_change { key: Vec::new(), value: None },
+			))
 		}
 	}
 }
