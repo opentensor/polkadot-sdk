@@ -837,7 +837,7 @@ impl_runtime_apis! {
 	}
 
 	impl stp_shield::ShieldApi<Block> for Runtime {
-		fn try_decode_shielded_tx(_uxt: <Block as BlockT>::Extrinsic) -> Option<stp_shield::ShieldedTransaction> {
+		fn try_decode_shielded_tx(_uxt: <Block as BlockT>::Extrinsic) -> Option<Result<stp_shield::ShieldedTransaction, stp_shield::ShieldError>> {
 			sp_io::storage::get(SHIELD_TEST_DECODE_KEY)
 				.and_then(|bytes| Decode::decode(&mut &bytes[..]).ok())
 		}
@@ -848,9 +848,15 @@ impl_runtime_apis! {
 				.unwrap_or(true)
 		}
 
-		fn try_unshield_tx(_dec_key_bytes: Vec<u8>, _shielded_tx: stp_shield::ShieldedTransaction) -> Option<<Block as BlockT>::Extrinsic> {
+		fn try_unshield_tx(_dec_key_bytes: Vec<u8>, _shielded_tx: stp_shield::ShieldedTransaction) -> Result<<Block as BlockT>::Extrinsic, stp_shield::ShieldError> {
 			sp_io::storage::get(SHIELD_TEST_UNSHIELD_KEY)
 				.and_then(|bytes| Decode::decode(&mut &bytes[..]).ok())
+				.ok_or(stp_shield::ShieldError::Decryption(stp_shield::DecryptionError::AeadDecryptionFailed))
+		}
+
+		fn make_unshield_error_extrinsic(_wrapper_tx_hash: <Block as BlockT>::Hash, _error: stp_shield::ShieldError) -> <Block as BlockT>::Extrinsic {
+			// Test runtime: return a bare remark as a placeholder.
+			Extrinsic::new_bare(RuntimeCall::System(frame_system::Call::remark { remark: Vec::new() }))
 		}
 	}
 }
