@@ -6,10 +6,12 @@ use alloc::vec::Vec;
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 
+use crate::ParsingError;
+
 const KEY_HASH_LEN: usize = 16;
 const NONCE_LEN: usize = 24;
 
-#[derive(Debug, Clone, Encode, Decode, TypeInfo)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, TypeInfo)]
 pub struct ShieldedTransaction {
 	pub key_hash: [u8; KEY_HASH_LEN],
 	pub kem_ct: Vec<u8>,
@@ -18,30 +20,46 @@ pub struct ShieldedTransaction {
 }
 
 impl ShieldedTransaction {
-	pub fn parse(ciphertext: &[u8]) -> Option<Self> {
-		let key_hash: [u8; KEY_HASH_LEN] = ciphertext.get(0..KEY_HASH_LEN)?.try_into().ok()?;
+	pub fn parse(ciphertext: &[u8]) -> Result<Self, ParsingError> {
+		let key_hash: [u8; KEY_HASH_LEN] = ciphertext
+			.get(0..KEY_HASH_LEN)
+			.and_then(|s| s.try_into().ok())
+			.ok_or(ParsingError::TruncatedKeyHash)?;
 		let mut cursor = KEY_HASH_LEN;
 
-		let kem_ct_len_end = cursor.checked_add(2)?;
-		let kem_ct_len = ciphertext
-			.get(cursor..kem_ct_len_end)?
+		let kem_ct_len_end = cursor
+			.checked_add(2)
+			.filter(|&end| end <= ciphertext.len())
+			.ok_or(ParsingError::TruncatedKemLen)?;
+		let kem_ct_len: usize = ciphertext[cursor..kem_ct_len_end]
 			.try_into()
 			.map(u16::from_le_bytes)
-			.ok()?
+			.map_err(|_| ParsingError::TruncatedKemLen)?
 			.into();
 		cursor = kem_ct_len_end;
 
-		let kem_ct_end = cursor.checked_add(kem_ct_len)?;
-		let kem_ct = ciphertext.get(cursor..kem_ct_end)?.to_vec();
+		let kem_ct_end = cursor
+			.checked_add(kem_ct_len)
+			.filter(|&end| end <= ciphertext.len())
+			.ok_or(ParsingError::KemLenExceedsRemaining)?;
+		let kem_ct = ciphertext[cursor..kem_ct_end].to_vec();
 		cursor = kem_ct_end;
 
-		let nonce_end = cursor.checked_add(NONCE_LEN)?;
-		let nonce = ciphertext.get(cursor..nonce_end)?.try_into().ok()?;
+		let nonce_end = cursor
+			.checked_add(NONCE_LEN)
+			.filter(|&end| end <= ciphertext.len())
+			.ok_or(ParsingError::TruncatedNonce)?;
+		let nonce: [u8; NONCE_LEN] = ciphertext[cursor..nonce_end]
+			.try_into()
+			.map_err(|_| ParsingError::TruncatedNonce)?;
 		cursor = nonce_end;
 
-		let aead_ct = ciphertext.get(cursor..)?.to_vec();
+		let aead_ct = ciphertext[cursor..].to_vec();
+		if aead_ct.is_empty() {
+			return Err(ParsingError::MissingAead);
+		}
 
-		Some(Self { key_hash, kem_ct, aead_ct, nonce })
+		Ok(Self { key_hash, kem_ct, aead_ct, nonce })
 	}
 }
 
@@ -88,10 +106,7 @@ mod tests {
 	#[test]
 	fn parse_empty_aead_ct() {
 		let ct = build_ciphertext(&DUMMY_KEY_HASH, &DUMMY_KEM_CT, &DUMMY_NONCE, &[]);
-		let tx = ShieldedTransaction::parse(&ct).expect("should parse with empty aead_ct");
-
-		assert!(tx.aead_ct.is_empty());
-		assert_eq!(tx.kem_ct, DUMMY_KEM_CT);
+		assert_eq!(ShieldedTransaction::parse(&ct), Err(ParsingError::MissingAead));
 	}
 
 	#[test]
@@ -104,21 +119,21 @@ mod tests {
 	}
 
 	#[test]
-	fn parse_empty_returns_none() {
-		assert!(ShieldedTransaction::parse(&[]).is_none());
+	fn parse_empty_returns_err() {
+		assert_eq!(ShieldedTransaction::parse(&[]), Err(ParsingError::TruncatedKeyHash),);
 	}
 
 	#[test]
 	fn parse_truncated_key_hash() {
 		let ct = [0u8; KEY_HASH_LEN - 1];
-		assert!(ShieldedTransaction::parse(&ct).is_none());
+		assert_eq!(ShieldedTransaction::parse(&ct), Err(ParsingError::TruncatedKeyHash),);
 	}
 
 	#[test]
 	fn parse_truncated_kem_len() {
 		// key_hash present but only 1 byte for kem_ct_len (needs 2).
 		let ct = [0u8; KEY_HASH_LEN + 1];
-		assert!(ShieldedTransaction::parse(&ct).is_none());
+		assert_eq!(ShieldedTransaction::parse(&ct), Err(ParsingError::TruncatedKemLen),);
 	}
 
 	#[test]
@@ -128,7 +143,7 @@ mod tests {
 		ct.extend_from_slice(&DUMMY_KEY_HASH);
 		ct.extend_from_slice(&1088u16.to_le_bytes());
 		ct.extend_from_slice(&[0u8; 10]);
-		assert!(ShieldedTransaction::parse(&ct).is_none());
+		assert_eq!(ShieldedTransaction::parse(&ct), Err(ParsingError::KemLenExceedsRemaining),);
 	}
 
 	#[test]
@@ -139,7 +154,7 @@ mod tests {
 		ct.extend_from_slice(&4u16.to_le_bytes());
 		ct.extend_from_slice(&[0u8; 4]); // kem_ct
 		ct.extend_from_slice(&[0u8; 20]); // only 20 of 24 nonce bytes
-		assert!(ShieldedTransaction::parse(&ct).is_none());
+		assert_eq!(ShieldedTransaction::parse(&ct), Err(ParsingError::TruncatedNonce),);
 	}
 
 	#[test]
