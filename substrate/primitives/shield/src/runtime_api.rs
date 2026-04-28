@@ -17,6 +17,12 @@ sp_api::decl_runtime_apis! {
 		fn is_shielded_using_current_key(key_hash: &[u8; 16]) -> bool;
 
 		/// Try to unshield a transaction using a decapsulation key.
-		fn try_unshield_tx(dec_key_bytes: Vec<u8>, shielded_tx: ShieldedTransaction) -> Option<ExtrinsicOf<Block>>;
+		fn try_unshield_tx(
+			dec_key_bytes: Vec<u8>,
+			shielded_tx: ShieldedTransaction,
+		) -> Option<ExtrinsicOf<Block>>;
+
+		/// Return pending PR-2533 encrypted call payloads from pallet_shield.
+		fn pending_encrypted_calls(limit: u32) -> Vec<Vec<u8>>;
 	}
 }
