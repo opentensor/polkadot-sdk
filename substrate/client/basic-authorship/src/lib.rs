@@ -43,17 +43,18 @@
 //! # let shield_keystore = Arc::new(MemoryShieldKeystore::new());
 //! // The first step is to create a `ProposerFactory`.
 //! let mut proposer_factory = ProposerFactory::new(
-//! 		spawner,
-//! 		client.clone(),
-//! 		txpool.clone(),
-//! 		None,
-//! 		None,
-//! 		shield_keystore,
-//! 	);
+//!     spawner,
+//!     client.clone(),
+//!     txpool.clone(),
+//!     None,
+//!     None,
+//!     shield_keystore,
+//!     None,
+//! );
 //!
 //! // From this factory, we create a `Proposer`.
 //! let proposer = proposer_factory.init(
-//! 	&client.header(client.chain_info().genesis_hash).unwrap().unwrap(),
+//!     &client.header(client.chain_info().genesis_hash).unwrap().unwrap(),
 //! );
 //!
 //! // The proposer is created asynchronously.
@@ -62,10 +63,10 @@
 //! // This `Proposer` allows us to create a block proposition.
 //! // The proposer will grab transactions from the transaction pool, and put them into the block.
 //! let future = proposer.propose(
-//! 	Default::default(),
-//! 	Default::default(),
-//! 	Duration::from_secs(2),
-//! 	None,
+//!     Default::default(),
+//!     Default::default(),
+//!     Duration::from_secs(2),
+//!     None,
 //! );
 //!
 //! // We wait until the proposition is performed.
@@ -75,4 +76,10 @@
 
 mod basic_authorship;
 
-pub use crate::basic_authorship::{Proposer, ProposerFactory, DEFAULT_BLOCK_SIZE_LIMIT};
+pub use crate::basic_authorship::{
+	Proposer,
+	ProposerFactory,
+	ThresholdShieldDigestProvider,
+	ThresholdShieldDigestProviderPtr,
+	DEFAULT_BLOCK_SIZE_LIMIT,
+};

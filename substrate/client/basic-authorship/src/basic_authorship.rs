@@ -10,8 +10,8 @@
 
 // This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+// General Public License for more details.
 
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
@@ -36,7 +36,7 @@ use sp_consensus::{DisableProofRecording, EnableProofRecording, ProofRecording, 
 use sp_core::traits::SpawnNamed;
 use sp_inherents::InherentData;
 use sp_runtime::{
-	traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor},
+	traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor, One},
 	Digest, DigestItem, ExtrinsicInclusionMode, Percent, SaturatedConversion,
 };
 use std::{marker::PhantomData, pin::Pin, sync::Arc, time};
@@ -75,7 +75,8 @@ where
 	) -> Option<DigestItem>;
 }
 
-type ThresholdShieldDigestProviderPtr<Block, C> = Arc<dyn ThresholdShieldDigestProvider<Block, C>>;
+pub type ThresholdShieldDigestProviderPtr<Block, C> =
+	Arc<dyn ThresholdShieldDigestProvider<Block, C>>;
 
 /// [`Proposer`] factory.
 pub struct ProposerFactory<A, C, PR>
@@ -306,7 +307,12 @@ where
 }
 
 /// The proposer logic.
-pub struct Proposer<Block: BlockT, C, A: TransactionPool, PR> {
+pub struct Proposer<Block, C, A, PR>
+where
+	Block: BlockT,
+	A: TransactionPool,
+	C: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
+{
 	spawn_handle: Box<dyn SpawnNamed>,
 	client: Arc<C>,
 	parent_hash: Block::Hash,
@@ -392,7 +398,7 @@ where
 	) -> Result<Proposal<Block, PR::Proof>, sp_blockchain::Error> {
 		let block_timer = time::Instant::now();
 
-		let next_block_number = self.parent_number + NumberFor::<Block>::from(1u32);
+		let next_block_number = self.parent_number + One::one();
 
 		if let Some(threshold_shield_digest_provider) = &self.threshold_shield_digest_provider {
 			if let Some(digest_item) = threshold_shield_digest_provider.produce_digest_for_parent(
