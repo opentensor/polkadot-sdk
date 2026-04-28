@@ -36,8 +36,10 @@ use sp_consensus::{DisableProofRecording, EnableProofRecording, ProofRecording, 
 use sp_core::traits::SpawnNamed;
 use sp_inherents::InherentData;
 use sp_runtime::{
-	traits::{BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT},
-	Digest, ExtrinsicInclusionMode, Percent, SaturatedConversion,
+	traits::{
+		BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor,
+	},
+	Digest, DigestItem, ExtrinsicInclusionMode, Percent, SaturatedConversion,
 };
 use std::{marker::PhantomData, pin::Pin, sync::Arc, time};
 use stp_shield::{ShieldApi, ShieldKeystorePtr, ShieldedTransaction};
@@ -58,8 +60,33 @@ const DEFAULT_SOFT_DEADLINE_PERCENT: Percent = Percent::from_percent(50);
 
 const LOG_TARGET: &'static str = "basic-authorship";
 
+/// Provides a pre-runtime threshold-shield digest for the block currently being proposed.
+///
+/// This lives in `sc-basic-authorship` so the SDK crate does not need to depend on the
+/// subtensor node crate. The node implements this trait for its local ThresholdSharePool.
+pub trait ThresholdShieldDigestProvider<Block, C>: Send + Sync
+where
+    Block: BlockT,
+    C: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
+{
+    fn produce_digest_for_parent(
+        &self,
+        client: Arc<C>,
+        parent_hash: Block::Hash,
+        block_number: NumberFor<Block>,
+    ) -> Option<DigestItem>;
+}
+
+type ThresholdShieldDigestProviderPtr<Block, C> =
+	Arc<dyn ThresholdShieldDigestProvider<Block, C>>;
+
 /// [`Proposer`] factory.
-pub struct ProposerFactory<A, C, PR> {
+pub struct ProposerFactory<A, C, PR>
+where
+	A: TransactionPool,
+	A::Block: BlockT,
+	C: HeaderBackend<A::Block> + ProvideRuntimeApi<A::Block> + Send + Sync + 'static,
+{
 	spawn_handle: Box<dyn SpawnNamed>,
 	/// The client instance.
 	client: Arc<C>,
@@ -85,11 +112,19 @@ pub struct ProposerFactory<A, C, PR> {
 	include_proof_in_block_size_estimation: bool,
 	/// The MEV shield keystore.
 	shield_keystore: ShieldKeystorePtr,
+	/// Optional threshold-shield digest provider.
+	threshold_shield_digest_provider:
+		Option<ThresholdShieldDigestProviderPtr<A::Block, C>>,
 	/// phantom member to pin the `ProofRecording` type.
 	_phantom: PhantomData<PR>,
 }
 
-impl<A, C, PR> Clone for ProposerFactory<A, C, PR> {
+impl<A, C, PR> Clone for ProposerFactory<A, C, PR>
+where
+	A: TransactionPool,
+	A::Block: BlockT,
+	C: HeaderBackend<A::Block> + ProvideRuntimeApi<A::Block> + Send + Sync + 'static,
+{
 	fn clone(&self) -> Self {
 		Self {
 			spawn_handle: self.spawn_handle.clone(),
@@ -101,12 +136,18 @@ impl<A, C, PR> Clone for ProposerFactory<A, C, PR> {
 			telemetry: self.telemetry.clone(),
 			include_proof_in_block_size_estimation: self.include_proof_in_block_size_estimation,
 			shield_keystore: self.shield_keystore.clone(),
+			threshold_shield_digest_provider: self.threshold_shield_digest_provider.clone(),
 			_phantom: self._phantom,
 		}
 	}
 }
 
-impl<A, C> ProposerFactory<A, C, DisableProofRecording> {
+impl<A, C> ProposerFactory<A, C, DisableProofRecording>
+where
+	A: TransactionPool,
+	A::Block: BlockT,
+	C: HeaderBackend<A::Block> + ProvideRuntimeApi<A::Block> + Send + Sync + 'static,
+{
 	/// Create a new proposer factory.
 	///
 	/// Proof recording will be disabled when using proposers built by this instance to build
@@ -118,6 +159,8 @@ impl<A, C> ProposerFactory<A, C, DisableProofRecording> {
 		prometheus: Option<&PrometheusRegistry>,
 		telemetry: Option<TelemetryHandle>,
 		shield_keystore: ShieldKeystorePtr,
+		threshold_shield_digest_provider:
+			Option<ThresholdShieldDigestProviderPtr<A::Block, C>>,
 	) -> Self {
 		ProposerFactory {
 			spawn_handle: Box::new(spawn_handle),
@@ -129,12 +172,18 @@ impl<A, C> ProposerFactory<A, C, DisableProofRecording> {
 			client,
 			include_proof_in_block_size_estimation: false,
 			shield_keystore,
+			threshold_shield_digest_provider,
 			_phantom: PhantomData,
 		}
 	}
 }
 
-impl<A, C> ProposerFactory<A, C, EnableProofRecording> {
+impl<A, C> ProposerFactory<A, C, EnableProofRecording>
+where
+	A: TransactionPool,
+	A::Block: BlockT,
+	C: HeaderBackend<A::Block> + ProvideRuntimeApi<A::Block> + Send + Sync + 'static,
+{
 	/// Create a new proposer factory with proof recording enabled.
 	///
 	/// Each proposer created by this instance will record a proof while building a block.
@@ -148,6 +197,8 @@ impl<A, C> ProposerFactory<A, C, EnableProofRecording> {
 		prometheus: Option<&PrometheusRegistry>,
 		telemetry: Option<TelemetryHandle>,
 		shield_keystore: ShieldKeystorePtr,
+		threshold_shield_digest_provider:
+			Option<ThresholdShieldDigestProviderPtr<A::Block, C>>,
 	) -> Self {
 		ProposerFactory {
 			client,
@@ -159,6 +210,7 @@ impl<A, C> ProposerFactory<A, C, EnableProofRecording> {
 			telemetry,
 			include_proof_in_block_size_estimation: true,
 			shield_keystore,
+			threshold_shield_digest_provider,
 			_phantom: PhantomData,
 		}
 	}
@@ -169,7 +221,12 @@ impl<A, C> ProposerFactory<A, C, EnableProofRecording> {
 	}
 }
 
-impl<A, C, PR> ProposerFactory<A, C, PR> {
+impl<A, C, PR> ProposerFactory<A, C, PR>
+	where
+		A: TransactionPool,
+		A::Block: BlockT,
+		C: HeaderBackend<A::Block> + ProvideRuntimeApi<A::Block> + Send + Sync + 'static,
+	{
 	/// Set the default block size limit in bytes.
 	///
 	/// The default value for the block size limit is:
@@ -207,18 +264,18 @@ where
 {
 	fn init_with_now(
 		&mut self,
-		parent_header: &<Block as BlockT>::Header,
+		parent_header: &Block::Header,
 		now: Box<dyn Fn() -> time::Instant + Send + Sync>,
 	) -> Proposer<Block, C, A, PR> {
 		let parent_hash = parent_header.hash();
 
 		info!(
-			"🙌 Starting consensus session on top of parent {:?} (#{})",
+			" Starting consensus session on top of parent {:?} (#{})",
 			parent_hash,
 			parent_header.number()
 		);
 
-		let proposer = Proposer::<_, _, _, PR> {
+		Proposer::<Block, C, A, PR> {
 			spawn_handle: self.spawn_handle.clone(),
 			client: self.client.clone(),
 			parent_hash,
@@ -230,11 +287,10 @@ where
 			soft_deadline_percent: self.soft_deadline_percent,
 			telemetry: self.telemetry.clone(),
 			shield_keystore: self.shield_keystore.clone(),
+			threshold_shield_digest_provider: self.threshold_shield_digest_provider.clone(),
 			_phantom: PhantomData,
 			include_proof_in_block_size_estimation: self.include_proof_in_block_size_estimation,
-		};
-
-		proposer
+		}
 	}
 }
 
@@ -270,6 +326,8 @@ pub struct Proposer<Block: BlockT, C, A: TransactionPool, PR> {
 	telemetry: Option<TelemetryHandle>,
 	shield_keystore: ShieldKeystorePtr,
 	_phantom: PhantomData<PR>,
+	/// Optional threshold-shield digest provider.
+	threshold_shield_digest_provider: Option<ThresholdShieldDigestProviderPtr<Block, C>>,
 }
 
 impl<A, Block, C, PR> sp_consensus::Proposer<Block> for Proposer<Block, C, A, PR>
@@ -334,11 +392,24 @@ where
 	async fn propose_with(
 		self,
 		inherent_data: InherentData,
-		inherent_digests: Digest,
+		mut inherent_digests: Digest,
 		deadline: time::Instant,
 		block_size_limit: Option<usize>,
 	) -> Result<Proposal<Block, PR::Proof>, sp_blockchain::Error> {
 		let block_timer = time::Instant::now();
+
+		let next_block_number = self.parent_number + NumberFor::<Block>::from(1u32);
+
+		if let Some(threshold_shield_digest_provider) = &self.threshold_shield_digest_provider {
+			if let Some(digest_item) = threshold_shield_digest_provider.produce_digest_for_parent(
+				self.client.clone(),
+				self.parent_hash,
+				next_block_number,
+			) {
+				inherent_digests.push(digest_item);
+			}
+		}
+
 		let mut block_builder = BlockBuilderBuilder::new(&*self.client)
 			.on_parent_block(self.parent_hash)
 			.with_parent_block_number(self.parent_number)
@@ -350,8 +421,10 @@ where
 
 		let mode = block_builder.extrinsic_inclusion_mode();
 		let end_reason = match mode {
-			ExtrinsicInclusionMode::AllExtrinsics =>
-				self.apply_extrinsics(&mut block_builder, deadline, block_size_limit).await?,
+			ExtrinsicInclusionMode::AllExtrinsics => {
+				self.apply_extrinsics(&mut block_builder, deadline, block_size_limit)
+					.await?
+			}
 			ExtrinsicInclusionMode::OnlyInherents => EndProposingReason::TransactionForbidden,
 		};
 		let (block, storage_changes, proof) = block_builder.build()?.into_inner();
@@ -361,7 +434,12 @@ where
 			PR::into_proof(proof).map_err(|e| sp_blockchain::Error::Application(Box::new(e)))?;
 
 		self.print_summary(&block, end_reason, block_took, block_timer.elapsed());
-		Ok(Proposal { block, proof, storage_changes })
+
+		Ok(Proposal {
+			block,
+			proof,
+			storage_changes,
+		})
 	}
 
 	/// Apply all inherents to the block.
@@ -806,6 +884,7 @@ mod tests {
 			None,
 			None,
 			shield_keystore,
+			None,
 		);
 
 		let cell = Mutex::new((false, time::Instant::now()));
@@ -857,6 +936,7 @@ mod tests {
 			None,
 			None,
 			shield_keystore,
+			None,
 		);
 
 		let cell = Mutex::new((false, time::Instant::now()));
@@ -913,6 +993,7 @@ mod tests {
 			None,
 			None,
 			shield_keystore,
+			None,
 		);
 
 		let proposer = proposer_factory.init_with_now(
@@ -980,6 +1061,7 @@ mod tests {
 			None,
 			None,
 			shield_keystore,
+			None,
 		);
 		let mut propose_block = |client: &TestClient,
 		                         parent_number,
@@ -1106,6 +1188,7 @@ mod tests {
 			None,
 			None,
 			shield_keystore.clone(),
+			None,
 		);
 
 		let proposer = block_on(proposer_factory.init(&genesis_header)).unwrap();
@@ -1141,6 +1224,7 @@ mod tests {
 			None,
 			None,
 			shield_keystore,
+			None
 		);
 
 		let proposer = block_on(proposer_factory.init(&genesis_header)).unwrap();
@@ -1222,6 +1306,7 @@ mod tests {
 			None,
 			None,
 			shield_keystore,
+			None,
 		);
 
 		let cell = Mutex::new(time::Instant::now());
@@ -1300,6 +1385,7 @@ mod tests {
 			None,
 			None,
 			shield_keystore,
+			None,
 		);
 
 		let deadline = time::Duration::from_secs(600);
@@ -1388,6 +1474,7 @@ mod tests {
 			None,
 			None,
 			shield_keystore,
+			None,
 		);
 
 		let proposer =
@@ -1431,6 +1518,7 @@ mod tests {
 			None,
 			None,
 			shield_keystore,
+			None,
 		);
 
 		let proposer =
@@ -1477,6 +1565,7 @@ mod tests {
 			None,
 			None,
 			shield_keystore,
+			None,
 		);
 
 		let proposer =
@@ -1542,6 +1631,7 @@ mod tests {
 			None,
 			None,
 			shield_keystore,
+			None,
 		);
 
 		let proposer = block_on(proposer_factory.init(&genesis_header)).unwrap();
@@ -1589,6 +1679,7 @@ mod tests {
 			None,
 			None,
 			shield_keystore,
+			None,
 		);
 
 		let proposer =
@@ -1633,6 +1724,7 @@ mod tests {
 			None,
 			None,
 			shield_keystore,
+			None,
 		);
 
 		let proposer =
