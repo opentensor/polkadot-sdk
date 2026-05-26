@@ -6,11 +6,13 @@ source "${SCRIPT_DIR}/ci-package-excludes.sh"
 
 export CARGO_TERM_COLOR="${CARGO_TERM_COLOR:-always}"
 export RUST_BACKTRACE="${RUST_BACKTRACE:-full}"
-export RUSTFLAGS="${RUSTFLAGS:--Cdebug-assertions=y}"
+export SKIP_WASM_BUILD="${SKIP_WASM_BUILD:-1}"
 
-echo "RUSTFLAGS=${RUSTFLAGS}"
-echo
+cargo +nightly fmt --check
+taplo fmt --check --config .config/taplo.toml
 
-cargo nextest run --release --workspace --no-fail-fast \
+cargo clippy --workspace --all-targets \
 	"${CI_PACKAGE_EXCLUDES[@]}" \
-	"$@"
+	-- -D warnings
+
+zepter run check
