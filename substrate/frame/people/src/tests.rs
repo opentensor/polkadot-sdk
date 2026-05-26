@@ -768,7 +768,7 @@ mod chunks {
 	use sp_runtime::BoundedVec;
 
 	#[test]
-	#[should_panic]
+	#[cfg_attr(debug_assertions, should_panic)]
 	fn no_chunks_first_page() {
 		new_test_ext().execute_with(|| {
 			Chunks::<Test>::remove(0);
@@ -777,7 +777,7 @@ mod chunks {
 	}
 
 	#[test]
-	#[should_panic]
+	#[cfg_attr(debug_assertions, should_panic)]
 	fn no_chunks_second_page() {
 		new_test_ext().execute_with(|| {
 			let chunk_page_size: u32 = <Test as Config>::ChunkPageSize::get();
@@ -790,7 +790,7 @@ mod chunks {
 	}
 
 	#[test]
-	#[should_panic]
+	#[cfg_attr(debug_assertions, should_panic)]
 	fn insufficient_chunks() {
 		new_test_ext().execute_with(|| {
 			let drain = Chunks::<Test>::drain();

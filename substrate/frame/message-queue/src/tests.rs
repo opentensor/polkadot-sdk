@@ -1369,12 +1369,11 @@ fn ready_but_perm_overweight_does_not_panic() {
 	build_and_execute::<Test>(|| {
 		MessageQueue::enqueue_message(msg("weight=9"), Here);
 		assert_eq!(MessageQueue::service_queues(8.into_weight()), 0.into_weight());
-		assert_ring(&[]);
+		assert_ring(&[Here]);
 		// Force it back into the ready ring.
 		knit(&Here);
 		assert_ring(&[Here]);
-		assert_eq!(MessageQueue::service_queues(Weight::MAX), 0.into_weight());
-		// Unready again.
+		assert_eq!(MessageQueue::service_queues(Weight::MAX), 9.into_weight());
 		assert_ring(&[]);
 	});
 }

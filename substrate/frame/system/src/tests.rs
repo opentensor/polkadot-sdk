@@ -18,7 +18,7 @@
 use crate::*;
 use frame_support::{
 	assert_noop, assert_ok,
-	dispatch::{DispatchResultWithPostInfo, Pays, PostDispatchInfo, WithPostDispatchInfo},
+	dispatch::{Pays, PostDispatchInfo, WithPostDispatchInfo},
 	traits::{OnRuntimeUpgrade, WhitelistedStorageKeys},
 };
 use mock::{RuntimeOrigin, *};

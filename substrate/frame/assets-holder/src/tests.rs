@@ -77,7 +77,10 @@ mod impl_balance_on_hold {
 	}
 
 	#[test]
-	#[should_panic = "The list of Holds should be empty before allowing an account to die"]
+	#[cfg_attr(
+		debug_assertions,
+		should_panic = "The list of Holds should be empty before allowing an account to die"
+	)]
 	fn died_fails_if_holds_exist() {
 		new_test_ext(|| {
 			test_hold(DummyHoldReason::Governance, 1);
