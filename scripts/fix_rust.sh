@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 # Auto-fix formatting and lint issues, committing at each step.
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/ci-package-excludes.sh"
+
+export CARGO_TERM_COLOR="${CARGO_TERM_COLOR:-always}"
+export RUST_BACKTRACE="${RUST_BACKTRACE:-full}"
+export SKIP_WASM_BUILD="${SKIP_WASM_BUILD:-1}"
 
 # Bail if the working tree is dirty.
 if [ -n "$(git status --porcelain)" ]; then
@@ -41,5 +48,18 @@ if command -v taplo >/dev/null 2>&1; then
 else
 	echo "SKIP: taplo not installed (cargo install taplo-cli --locked)"
 fi
+
+# Step 4: clippy
+echo "==> cargo clippy --fix"
+cargo clippy --workspace --all-targets \
+	"${CI_PACKAGE_EXCLUDES[@]}" \
+	--fix --allow-dirty --allow-staged \
+	-- -D warnings
+commit_if_changes "cargo clippy --fix"
+
+echo "==> cargo clippy"
+cargo clippy --workspace --all-targets \
+	"${CI_PACKAGE_EXCLUDES[@]}" \
+	-- -D warnings
 
 echo "done."
