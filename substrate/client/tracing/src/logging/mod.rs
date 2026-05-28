@@ -483,7 +483,7 @@ mod tests {
 	#[test]
 	fn prefix_in_log_lines_entrypoint() {
 		if env::var("ENABLE_LOGGING").is_ok() {
-			let _guard = init_logger("");
+			let _guard = init_logger("info");
 			prefix_in_log_lines_process();
 		}
 	}
@@ -499,7 +499,7 @@ mod tests {
 	#[test]
 	fn do_not_write_with_colors_on_tty_entrypoint() {
 		if env::var("ENABLE_LOGGING").is_ok() {
-			let _guard = init_logger("");
+			let _guard = init_logger("info");
 			log::info!("{}", console::style(EXPECTED_LOG_MESSAGE).yellow());
 		}
 	}
@@ -606,7 +606,7 @@ mod tests {
 		let output = run_test_in_another_process(
 			"parallel_logs_from_multiple_threads_are_properly_gathered",
 			|| {
-				let builder = LoggerBuilder::new("");
+				let builder = LoggerBuilder::new("info");
 				builder.init().unwrap();
 
 				run_on_many_threads(THREAD_COUNT, |nth_thread| {
@@ -648,7 +648,7 @@ mod tests {
 
 		let output =
 			run_test_in_another_process("huge_single_line_log_is_properly_printed_out", || {
-				let builder = LoggerBuilder::new("");
+				let builder = LoggerBuilder::new("info");
 				builder.init().unwrap();
 				info!("{}", line);
 			});

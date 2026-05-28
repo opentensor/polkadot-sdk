@@ -2251,7 +2251,8 @@ mod phase_rotation {
 		ExtBuilder::full()
 				.pages(2)
 				.election_start(13)
-				.build_and_execute(|| {
+				.build_unchecked()
+				.execute_with(|| {
 					// Create way more targets than the TargetSnapshotPerBlock limit (4)
 					// This will cause bounds.slice_exhausted(&targets) to return true
 					let too_many_targets: Vec<AccountId> = (1..=100).collect();
@@ -2265,7 +2266,11 @@ mod phase_rotation {
 
 					// Roll to next block - on_initialize will be in Phase::Snapshot(2) where x == T::Pages::get()
 					// This triggers target snapshot creation, which should fail due to too many targets
-					roll_to(14);
+					MultiBlock::roll_to(
+						14,
+						matches!(SignedPhaseSwitch::get(), SignedSwitch::Real),
+						false,
+					);
 
 					// Verify that UnexpectedTargetSnapshotFailed event was emitted
 					let events = multi_block_events_since_last_call();
