@@ -22,7 +22,9 @@ use alloc::{vec, vec::Vec};
 use crate::Config;
 use codec::{Decode, DecodeWithMemTracking, Encode};
 use frame_support::{
-	dispatch::DispatchInfo, pallet_prelude::TransactionSource, RuntimeDebugNoBound,
+	dispatch::{DispatchInfo, Pays},
+	pallet_prelude::TransactionSource,
+	RuntimeDebugNoBound,
 };
 use scale_info::TypeInfo;
 use sp_runtime::{
@@ -73,8 +75,17 @@ impl<T: Config> CheckNonce<T> {
 		who: &T::AccountId,
 		nonce: T::Nonce,
 	) -> Result<ValidNonceInfo, TransactionValidityError> {
+		Self::validate_nonce_for_account_with_fee(who, nonce, Pays::Yes).map(|(info, _)| info)
+	}
+
+	/// Validate nonce for account while optionally allowing fee-free calls from unfunded accounts.
+	pub fn validate_nonce_for_account_with_fee(
+		who: &T::AccountId,
+		nonce: T::Nonce,
+		pays_fee: Pays,
+	) -> Result<(ValidNonceInfo, T::Nonce), TransactionValidityError> {
 		let account = crate::Account::<T>::get(who);
-		if account.providers.is_zero() && account.sufficients.is_zero() {
+		if pays_fee == Pays::Yes && account.providers.is_zero() && account.sufficients.is_zero() {
 			// Nonce storage not paid for
 			return Err(InvalidTransaction::Payment.into())
 		}
@@ -89,7 +100,7 @@ impl<T: Config> CheckNonce<T> {
 			vec![]
 		};
 
-		Ok(ValidNonceInfo { provides, requires })
+		Ok((ValidNonceInfo { provides, requires }, account.nonce))
 	}
 
 	/// In transaction extension, prepare nonce for account.
@@ -123,7 +134,7 @@ impl<T: Config> core::fmt::Debug for CheckNonce<T> {
 #[derive(RuntimeDebugNoBound)]
 pub enum Val<T: Config> {
 	/// Account and its nonce to check for.
-	CheckNonce(T::AccountId),
+	CheckNonce((T::AccountId, T::Nonce)),
 	/// Weight to refund.
 	Refund(Weight),
 }
@@ -156,7 +167,7 @@ where
 		&self,
 		origin: <T as Config>::RuntimeOrigin,
 		call: &T::RuntimeCall,
-		_info: &DispatchInfoOf<T::RuntimeCall>,
+		info: &DispatchInfoOf<T::RuntimeCall>,
 		_len: usize,
 		_self_implicit: Self::Implicit,
 		_inherited_implication: &impl Encode,
@@ -165,7 +176,8 @@ where
 		let Some(who) = origin.as_system_origin_signer() else {
 			return Ok((Default::default(), Val::Refund(self.weight(call)), origin))
 		};
-		let ValidNonceInfo { provides, requires } = Self::validate_nonce_for_account(who, self.0)?;
+		let (ValidNonceInfo { provides, requires }, account_nonce) =
+			Self::validate_nonce_for_account_with_fee(who, self.0, info.pays_fee)?;
 
 		let validity = ValidTransaction {
 			priority: 0,
@@ -175,7 +187,7 @@ where
 			propagate: true,
 		};
 
-		Ok((validity, Val::CheckNonce(who.clone()), origin))
+		Ok((validity, Val::CheckNonce((who.clone(), account_nonce)), origin))
 	}
 
 	fn prepare(
@@ -187,10 +199,16 @@ where
 		_len: usize,
 	) -> Result<Self::Pre, TransactionValidityError> {
 		let (who, nonce) = match val {
-			Val::CheckNonce(who) => (who, self.0),
+			Val::CheckNonce((who, nonce)) => (who, nonce),
 			Val::Refund(weight) => return Ok(Pre::Refund(weight)),
 		};
-		Self::prepare_nonce_for_account(&who, nonce).map(|_| Pre::NonceChecked)
+		if self.0 > nonce {
+			return Err(InvalidTransaction::Future.into())
+		}
+		crate::Account::<T>::mutate(who, |account| {
+			account.nonce = nonce.saturating_add(One::one())
+		});
+		Ok(Pre::NonceChecked)
 	}
 
 	fn post_dispatch_details(
