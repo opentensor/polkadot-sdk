@@ -12980,6 +12980,8 @@ dependencies = [
 name = "pallet-proxy"
 version = "41.0.0"
 dependencies = [
+ "frame-support",
+ "frame-system",
  "pallet-balances",
  "pallet-utility",
  "parity-scale-codec",

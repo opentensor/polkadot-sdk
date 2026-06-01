@@ -539,7 +539,7 @@ fn pure_works() {
 	new_test_ext().execute_with(|| {
 		Balances::make_free_balance_be(&1, 11); // An extra one for the ED.
 		assert_ok!(Proxy::create_pure(RuntimeOrigin::signed(1), ProxyType::Any, 0, 0));
-		let anon = Proxy::pure_account(&1, &ProxyType::Any, 0, None);
+		let anon = Proxy::pure_account(&1, &ProxyType::Any, 0, None).unwrap();
 		System::assert_last_event(
 			ProxyEvent::PureCreated {
 				pure: anon,
@@ -553,7 +553,7 @@ fn pure_works() {
 		// other calls to pure allowed as long as they're not exactly the same.
 		assert_ok!(Proxy::create_pure(RuntimeOrigin::signed(1), ProxyType::JustTransfer, 0, 0));
 		assert_ok!(Proxy::create_pure(RuntimeOrigin::signed(1), ProxyType::Any, 0, 1));
-		let anon2 = Proxy::pure_account(&2, &ProxyType::Any, 0, None);
+		let anon2 = Proxy::pure_account(&2, &ProxyType::Any, 0, None).unwrap();
 		assert_ok!(Proxy::create_pure(RuntimeOrigin::signed(2), ProxyType::Any, 0, 0));
 		assert_noop!(
 			Proxy::create_pure(RuntimeOrigin::signed(1), ProxyType::Any, 0, 0),
