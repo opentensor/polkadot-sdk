@@ -21,7 +21,7 @@ pub mod pallet_decl;
 pub mod runtime_struct;
 pub mod runtime_types;
 
-use crate::construct_runtime::parse::Pallet;
+use frame_support_procedural_core::construct_runtime::parse::Pallet;
 use pallet_decl::PalletDeclaration;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::ToTokens;
@@ -202,7 +202,7 @@ impl Def {
 						pallet_decls.push(pallet_decl);
 					},
 					syn::Type::TraitObject(syn::TypeTraitObject { bounds, .. }) => {
-						let pallet = Pallet::try_from(
+						let pallet = pallet::pallet_from_item(
 							item.span(),
 							&pallet_item,
 							pallet_index,

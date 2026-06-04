@@ -6929,6 +6929,7 @@ dependencies = [
  "expander",
  "frame-benchmarking",
  "frame-support",
+ "frame-support-procedural-core",
  "frame-support-procedural-tools",
  "frame-system",
  "itertools 0.11.0",
@@ -6944,6 +6945,17 @@ dependencies = [
  "sp-io 41.0.1",
  "sp-metadata-ir 0.11.0",
  "sp-runtime 42.0.0",
+ "syn 2.0.98",
+]
+
+[[package]]
+name = "frame-support-procedural-core"
+version = "34.0.0"
+dependencies = [
+ "cfg-expr",
+ "frame-support-procedural-tools",
+ "proc-macro2 1.0.95",
+ "quote 1.0.40",
  "syn 2.0.98",
 ]
 
@@ -16213,6 +16225,7 @@ dependencies = [
  "frame-remote-externalities",
  "frame-support",
  "frame-support-procedural",
+ "frame-support-procedural-core",
  "frame-support-procedural-tools",
  "frame-support-procedural-tools-derive",
  "frame-system",

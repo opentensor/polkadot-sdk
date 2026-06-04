@@ -264,6 +264,10 @@ pub use frame_support;
 #[cfg(feature = "frame-support-procedural")]
 pub use frame_support_procedural;
 
+/// Core parser support for FRAME procedural macros.
+#[cfg(feature = "frame-support-procedural-core")]
+pub use frame_support_procedural_core;
+
 /// Proc macro helpers for procedural macros.
 #[cfg(feature = "frame-support-procedural-tools")]
 pub use frame_support_procedural_tools;
