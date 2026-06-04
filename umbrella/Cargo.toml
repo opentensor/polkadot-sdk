@@ -580,6 +580,7 @@ runtime-full = [
 	"frame-metadata-hash-extension",
 	"frame-support",
 	"frame-support-procedural",
+	"frame-support-procedural-core",
 	"frame-support-procedural-tools-derive",
 	"frame-system",
 	"frame-system-benchmarking",
@@ -779,6 +780,7 @@ runtime = [
 	"frame-metadata-hash-extension",
 	"frame-support",
 	"frame-support-procedural",
+	"frame-support-procedural-core",
 	"frame-support-procedural-tools-derive",
 	"frame-system",
 	"frame-system-benchmarking",
@@ -1194,6 +1196,11 @@ path = "../substrate/frame/support"
 default-features = false
 optional = true
 path = "../substrate/frame/support/procedural"
+
+[dependencies.frame-support-procedural-core]
+default-features = false
+optional = true
+path = "../substrate/frame/support/procedural/core"
 
 [dependencies.frame-support-procedural-tools-derive]
 default-features = false

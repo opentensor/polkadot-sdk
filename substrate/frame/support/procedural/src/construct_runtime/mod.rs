@@ -209,15 +209,16 @@
 //! expose.
 
 pub(crate) mod expand;
-pub(crate) mod parse;
 
 use crate::pallet::parse::helper::two128_str;
 use cfg_expr::Predicate;
+use frame_support_procedural_core::construct_runtime::parse::{
+	ExplicitRuntimeDeclaration, ImplicitRuntimeDeclaration, Pallet, RuntimeDeclaration,
+};
 use frame_support_procedural_tools::{
 	generate_access_from_frame_or_crate, generate_crate_access, generate_hidden_includes,
 };
 use itertools::Itertools;
-use parse::{ExplicitRuntimeDeclaration, ImplicitRuntimeDeclaration, Pallet, RuntimeDeclaration};
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
