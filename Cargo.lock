@@ -12980,6 +12980,8 @@ dependencies = [
 name = "pallet-proxy"
 version = "41.0.0"
 dependencies = [
+ "frame-support",
+ "frame-system",
  "pallet-balances",
  "pallet-utility",
  "parity-scale-codec",
@@ -19437,7 +19439,6 @@ dependencies = [
  "array-bytes 6.2.2",
  "criterion",
  "hash-db",
- "kitchensink-runtime",
  "kvdb",
  "kvdb-memorydb",
  "kvdb-rocksdb",
@@ -19459,6 +19460,7 @@ dependencies = [
  "sp-tracing 17.1.0",
  "sp-trie 40.0.0",
  "substrate-prometheus-endpoint",
+ "substrate-test-runtime",
  "substrate-test-runtime-client",
  "sysinfo",
  "tempfile",

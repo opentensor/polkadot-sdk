@@ -81,6 +81,7 @@ pub trait WeightInfo {
 	fn create_pure(p: u32, ) -> Weight;
 	fn kill_pure(p: u32, ) -> Weight;
 	fn poke_deposit() -> Weight;
+	fn set_real_pays_fee(p: u32, ) -> Weight;
 }
 
 /// Weights for `pallet_proxy` using the Substrate node and recommended hardware.
@@ -272,6 +273,23 @@ impl<T: frame_system::Config> WeightInfo for SubstrateWeight<T> {
 			.saturating_add(T::DbWeight::get().reads(3_u64))
 			.saturating_add(T::DbWeight::get().writes(3_u64))
 	}
+
+	/// Storage: `Proxy::Proxies` (r:1 w:0)
+	/// Proof: `Proxy::Proxies` (`max_values`: None, `max_size`: Some(1241), added: 3716, mode: `MaxEncodedLen`)
+	/// Storage: `Proxy::RealPaysFee` (r:0 w:1)
+	/// Proof: `Proxy::RealPaysFee` (`max_values`: None, `max_size`: Some(80), added: 2555, mode: `MaxEncodedLen`)
+	/// The range of component `p` is `[1, 19]`.
+	fn set_real_pays_fee(p: u32, ) -> Weight {
+		// Proof Size summary in bytes:
+		//  Measured:  `119 + p * (37 ±0)`
+		//  Estimated: `4254`
+		// Minimum execution time: 13_636_000 picoseconds.
+		Weight::from_parts(14_306_938, 4254)
+			// Standard Error: 2_079
+			.saturating_add(Weight::from_parts(36_366, 0).saturating_mul(p.into()))
+			.saturating_add(T::DbWeight::get().reads(1_u64))
+			.saturating_add(T::DbWeight::get().writes(1_u64))
+	}
 }
 
 // For backwards compatibility and tests.
@@ -461,5 +479,22 @@ impl WeightInfo for () {
 		Weight::from_parts(47_972_000, 5698)
 			.saturating_add(RocksDbWeight::get().reads(3_u64))
 			.saturating_add(RocksDbWeight::get().writes(3_u64))
+	}
+
+	/// Storage: `Proxy::Proxies` (r:1 w:0)
+	/// Proof: `Proxy::Proxies` (`max_values`: None, `max_size`: Some(789), added: 3264, mode: `MaxEncodedLen`)
+	/// Storage: `Proxy::RealPaysFee` (r:0 w:1)
+	/// Proof: `Proxy::RealPaysFee` (`max_values`: None, `max_size`: Some(80), added: 2555, mode: `MaxEncodedLen`)
+	/// The range of component `p` is `[1, 19]`.
+	fn set_real_pays_fee(p: u32, ) -> Weight {
+		// Proof Size summary in bytes:
+		//  Measured:  `119 + p * (37 ±0)`
+		//  Estimated: `4254`
+		// Minimum execution time: 13_636_000 picoseconds.
+		Weight::from_parts(14_306_938, 4254)
+			// Standard Error: 2_079
+			.saturating_add(Weight::from_parts(36_366, 0).saturating_mul(p.into()))
+			.saturating_add(RocksDbWeight::get().reads(1_u64))
+			.saturating_add(RocksDbWeight::get().writes(1_u64))
 	}
 }
