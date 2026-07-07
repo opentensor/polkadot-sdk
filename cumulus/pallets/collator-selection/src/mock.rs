@@ -140,6 +140,8 @@ impl pallet_session::Config for Test {
 	type Keys = MockSessionKeys;
 	type DisablingStrategy = ();
 	type WeightInfo = ();
+	type Currency = Balances;
+	type KeyDeposit = ();
 }
 
 ord_parameter_types! {
@@ -170,6 +172,17 @@ impl Config for Test {
 	type ValidatorIdOf = IdentityCollator;
 	type ValidatorRegistration = IsRegistered;
 	type WeightInfo = ();
+}
+
+#[cfg(feature = "runtime-benchmarks")]
+impl cumulus_pallet_session_benchmarking::Config for Test {
+	fn generate_session_keys_and_proof(owner: Self::AccountId) -> (Self::Keys, Vec<u8>) {
+		use codec::Encode;
+
+		let keys = MockSessionKeys::generate(&owner.encode(), None);
+
+		(keys.keys, keys.proof.encode())
+	}
 }
 
 pub fn new_test_ext() -> sp_io::TestExternalities {

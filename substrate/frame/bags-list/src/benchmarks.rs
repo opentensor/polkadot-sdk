@@ -37,7 +37,7 @@ benchmarks_instance_pallet! {
 		// clear any pre-existing storage.
 		List::<T, _>::unsafe_clear();
 
-		// add n nodes, half to first bag and half to second bag.
+		// add n nodes, half to the first bag and half to the second bag.
 		let bag_thresh = T::BagThresholds::get()[0];
 		let second_bag_thresh = T::BagThresholds::get()[1];
 
@@ -60,7 +60,7 @@ benchmarks_instance_pallet! {
 	}: {
 		let voters = <Pallet<T, _> as SortedListProvider<T::AccountId>>::iter();
 		let len = voters.collect::<Vec<_>>().len();
-		assert!(len as u32 == n, "len is {}, expected {}", len, n);
+		assert_eq!(len as u32, n,"len is {}, expected {}", len, n);
 	}
 
 	// iteration of any number of items should only touch that many nodes and bags.
@@ -71,7 +71,7 @@ benchmarks_instance_pallet! {
 		// clear any pre-existing storage.
 		List::<T, _>::unsafe_clear();
 
-		// add n nodes, half to first bag and half to second bag.
+		// add n nodes, half to the first bag and half to the second bag.
 		let bag_thresh = T::BagThresholds::get()[0];
 		let second_bag_thresh = T::BagThresholds::get()[1];
 
@@ -95,7 +95,7 @@ benchmarks_instance_pallet! {
 		// this should only go into one of the bags
 		let voters = <Pallet<T, _> as SortedListProvider<T::AccountId>>::iter().take(n as usize / 4 );
 		let len = voters.collect::<Vec<_>>().len();
-		assert!(len as u32 == n / 4, "len is {}, expected {}", len, n / 4);
+		assert_eq!(len as u32, n / 4,"len is {}, expected {}", len, n / 4);
 	}
 
 	#[extra]
@@ -105,7 +105,7 @@ benchmarks_instance_pallet! {
 		// clear any pre-existing storage.
 		List::<T, _>::unsafe_clear();
 
-		// add n nodes, half to first bag and half to second bag.
+		// add n nodes, half to the first bag and half to the second bag.
 		let bag_thresh = T::BagThresholds::get()[0];
 		let second_bag_thresh = T::BagThresholds::get()[1];
 
@@ -135,7 +135,7 @@ benchmarks_instance_pallet! {
 		}
 
 		let len = voters.len();
-		assert!(len as u32 == n / 4, "len is {}, expected {}", len, n / 4);
+		assert_eq!(len as u32, n / 4,"len is {}, expected {}", len, n / 4);
 	}
 
 	#[extra]
@@ -184,7 +184,7 @@ benchmarks_instance_pallet! {
 	}: {
 		let voters = <Pallet<T, _> as SortedListProvider<T::AccountId>>::iter_from(&from).unwrap();
 		let len = voters.collect::<Vec<_>>().len();
-		assert!(len as u32 == 74, "len is {}, expected {}", len, 74);
+		assert_eq!(len as u32, 74,"len is {}, expected {}", len, 74);
 	}
 
 
@@ -348,9 +348,63 @@ benchmarks_instance_pallet! {
 		)
 	}
 
+	on_idle_rebag {
+		// Worst-case cost of a single `rebag_internal` call inside `on_idle`.
+		// This measures one non-terminal rebag with a pending rebag entry, which is the
+		// most expensive per-item path. `on_idle` consumes this weight per iteration via
+		// `WeightMeter`, so the benchmark is independent of `MaxAutoRebagPerBlock`.
+
+		List::<T, I>::unsafe_clear();
+
+		let bag_thresh = T::BagThresholds::get();
+		assert!(bag_thresh.len() >= 2, "on_idle_rebag benchmark requires at least 2 bag thresholds");
+		let origin_bag_thresh = bag_thresh[0];
+		let dest_bag_thresh = bag_thresh[1];
+
+		// Seed 3 nodes in the origin bag so the target node is non-terminal (has prev + next).
+		let origin_head: T::AccountId = account("origin_head", 0, 0);
+		assert_ok!(List::<T, I>::insert(origin_head.clone(), origin_bag_thresh));
+
+		let target: T::AccountId = account("target", 0, 0);
+		assert_ok!(List::<T, I>::insert(target.clone(), origin_bag_thresh));
+
+		let origin_tail: T::AccountId = account("origin_tail", 0, 0);
+		assert_ok!(List::<T, I>::insert(origin_tail.clone(), origin_bag_thresh));
+
+		// Seed a node in the destination bag so it's not empty (requires updating dest tail).
+		let dest_head: T::AccountId = account("dest_head", 0, 0);
+		assert_ok!(List::<T, I>::insert(dest_head.clone(), dest_bag_thresh));
+
+		// Add a PendingRebag entry for the target to exercise the contains_key + remove path.
+		PendingRebag::<T, I>::insert(&target, ());
+
+		// Update score to force a rebag into the destination bag.
+		T::ScoreProvider::set_score_of(&target, dest_bag_thresh);
+
+		assert_eq!(
+			List::<T, I>::get_bags(),
+			vec![
+				(origin_bag_thresh, vec![origin_head.clone(), target.clone(), origin_tail.clone()]),
+				(dest_bag_thresh, vec![dest_head.clone()])
+			]
+		);
+	}: {
+		Pallet::<T, I>::rebag_internal(&target).unwrap();
+	}
+	verify {
+		assert_eq!(
+			List::<T, I>::get_bags(),
+			vec![
+				(origin_bag_thresh, vec![origin_head, origin_tail]),
+				(dest_bag_thresh, vec![dest_head, target])
+			]
+		);
+		assert!(!PendingRebag::<T, I>::contains_key(&account::<T::AccountId>("target", 0, 0)));
+	}
+
 	impl_benchmark_test_suite!(
 		Pallet,
-		crate::mock::ExtBuilder::default().skip_genesis_ids().build(),
-		crate::mock::Runtime
+		mock::ExtBuilder::default().skip_genesis_ids().build(),
+		mock::Runtime
 	);
 }

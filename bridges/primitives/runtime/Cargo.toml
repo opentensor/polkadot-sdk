@@ -1,7 +1,7 @@
 [package]
 name = "bp-runtime"
 description = "Primitives that may be used at (bridges) runtime level."
-version = "0.21.0"
+version = "0.28.0"
 authors.workspace = true
 edition.workspace = true
 license = "GPL-3.0-or-later WITH Classpath-exception-2.0"
@@ -12,20 +12,22 @@ workspace = true
 
 [dependencies]
 codec = { workspace = true }
-frame-support.workspace = true
-frame-system.workspace = true
 hash-db = { workspace = true }
 impl-trait-for-tuples = { workspace = true }
-log = { workspace = true }
 num-traits = { workspace = true }
 scale-info = { features = ["derive"], workspace = true }
 serde = { features = ["alloc", "derive"], workspace = true }
-sp-core.workspace = true
-sp-io.workspace = true
+tracing = { workspace = true }
+
+# Substrate Dependencies
+frame-support = { workspace = true }
+frame-system = { workspace = true }
+sp-core = { workspace = true }
+sp-io = { workspace = true }
 sp-runtime = { features = ["serde"], workspace = true }
-sp-state-machine.workspace = true
-sp-std.workspace = true
-sp-trie.workspace = true
+sp-state-machine = { workspace = true }
+sp-std = { workspace = true }
+sp-trie = { workspace = true }
 trie-db = { workspace = true }
 
 [dev-dependencies]
@@ -38,7 +40,6 @@ std = [
 	"frame-support/std",
 	"frame-system/std",
 	"hash-db/std",
-	"log/std",
 	"num-traits/std",
 	"scale-info/std",
 	"serde/std",
@@ -48,6 +49,7 @@ std = [
 	"sp-state-machine/std",
 	"sp-std/std",
 	"sp-trie/std",
+	"tracing/std",
 	"trie-db/std",
 ]
 test-helpers = []

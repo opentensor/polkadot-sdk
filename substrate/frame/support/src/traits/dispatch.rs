@@ -17,14 +17,11 @@
 
 //! Traits for dealing with dispatching calls and the origin from which they are dispatched.
 
-use crate::{
-	dispatch::{DispatchErrorWithPostInfo, DispatchResultWithPostInfo, Parameter, RawOrigin},
-	storage::{transactional::with_transaction, TransactionOutcome},
-};
+use crate::dispatch::{DispatchResultWithPostInfo, Parameter, RawOrigin};
 use codec::MaxEncodedLen;
 use core::{cmp::Ordering, marker::PhantomData};
 use sp_runtime::{
-	traits::{BadOrigin, Dispatchable, Get, Member, Morph, TryMorph},
+	traits::{BadOrigin, Get, Member, Morph, TryMorph},
 	transaction_validity::{TransactionSource, TransactionValidityError, ValidTransaction},
 	Either,
 };
@@ -49,7 +46,7 @@ pub trait EnsureOrigin<OuterOrigin> {
 		OuterOrigin: OriginTrait,
 	{
 		if o.caller().is_root() {
-			return Ok(None)
+			return Ok(None);
 		} else {
 			Self::ensure_origin(o).map(Some)
 		}
@@ -65,7 +62,7 @@ pub trait EnsureOrigin<OuterOrigin> {
 		OuterOrigin: OriginTrait,
 	{
 		if o.caller().is_root() {
-			return Ok(None)
+			return Ok(None);
 		} else {
 			Self::try_origin(o).map(Some)
 		}
@@ -146,7 +143,7 @@ where
 
 		// If this is the expected origin, it has the same privilege.
 		if o == expected_origin {
-			return Ok(())
+			return Ok(());
 		}
 
 		let cmp = PrivilegeCmp::cmp_privilege(&o, &expected_origin);
@@ -397,10 +394,6 @@ impl<
 ///
 /// Origin check will pass if `L` or `R` origin check passes. `L` is tested first.
 ///
-/// Successful origin is derived from the left side.
-#[deprecated = "Use `EitherOfDiverse` instead"]
-pub type EnsureOneOf<L, R> = EitherOfDiverse<L, R>;
-
 /// "OR gate" implementation of `EnsureOrigin`, `Success` type for both `L` and `R` must
 /// be equal.
 ///
@@ -452,88 +445,6 @@ pub trait UnfilteredDispatchable {
 
 	/// Dispatch this call but do not check the filter in origin.
 	fn dispatch_bypass_filter(self, origin: Self::RuntimeOrigin) -> DispatchResultWithPostInfo;
-}
-
-/// Orchestrates a `DispatchExtension` around the call dispatch in a single method.
-/// Pre-dispatch runs in a rolled-back storage layer. Post-dispatch always runs.
-/// Blanket-implemented for all `DispatchExtension` implementors.
-pub trait ExtendedDispatchable<Call: Dispatchable>: DispatchExtension<Call> {
-	fn dispatch_with_extension(
-		origin: Call::RuntimeOrigin,
-		call: Call,
-	) -> DispatchResultWithPostInfo;
-}
-
-impl<T, Call, Origin> ExtendedDispatchable<Call> for T
-where
-	T: DispatchExtension<Call>,
-	Origin: Into<<Call as Dispatchable>::RuntimeOrigin> + OriginTrait,
-	Call: Dispatchable<RuntimeOrigin = Origin> + UnfilteredDispatchable<RuntimeOrigin = Origin>,
-{
-	fn dispatch_with_extension(origin: Origin, call: Call) -> DispatchResultWithPostInfo {
-		// Root origin bypasses the extension.
-		if origin.caller().is_root() {
-			return UnfilteredDispatchable::dispatch_bypass_filter(call, origin);
-		}
-
-		let pre = with_transaction(|| {
-			let result = T::pre_dispatch(&origin, &call);
-			TransactionOutcome::Rollback(result)
-		})?;
-
-		let result = UnfilteredDispatchable::dispatch_bypass_filter(call, origin);
-		T::post_dispatch(pre, &result);
-
-		result
-	}
-}
-
-/// A `DispatchExtension` is executed around the `Call` dispatch. It provides:
-/// - `pre_dispatch`: runs in a rolled-back storage layer (no writes persist), can gate the call and
-///   capture state for `post_dispatch`.
-/// - `post_dispatch`: runs after dispatch, can persist storage writes (e.g. rate limiting), cannot
-///   fail.
-///
-/// The trait is implemented for all tuples of up to 30 elements.
-pub trait DispatchExtension<Call: Dispatchable> {
-	/// Data produced by `pre_dispatch` and passed to `post_dispatch`.
-	type Pre;
-
-	/// Worst-case weight consumed by this extension.
-	fn weight(call: &Call) -> Weight;
-
-	/// Called before dispatch. Runs in a rolled-back storage layer (no writes persist).
-	/// Can gate the call or capture state for `post_dispatch`.
-	fn pre_dispatch(
-		origin: &Call::RuntimeOrigin,
-		call: &Call,
-	) -> Result<Self::Pre, DispatchErrorWithPostInfo>;
-
-	/// Called after dispatch. Cannot fail. Storage writes persist.
-	/// Receives the pre-dispatch data and the dispatch result.
-	fn post_dispatch(_pre: Self::Pre, _result: &DispatchResultWithPostInfo) {}
-}
-
-#[impl_trait_for_tuples::impl_for_tuples(30)]
-impl<Call: Dispatchable> DispatchExtension<Call> for Tuple {
-	for_tuples!( type Pre = ( #( Tuple::Pre ),* ); );
-
-	fn weight(call: &Call) -> Weight {
-		let mut weight = Weight::zero();
-		for_tuples!( #( weight = weight.saturating_add(Tuple::weight(call)); )* );
-		weight
-	}
-
-	fn pre_dispatch(
-		origin: &Call::RuntimeOrigin,
-		call: &Call,
-	) -> Result<Self::Pre, DispatchErrorWithPostInfo> {
-		Ok(for_tuples!( ( #( Tuple::pre_dispatch(origin, call)? ),* ) ))
-	}
-
-	fn post_dispatch(pre: Self::Pre, result: &DispatchResultWithPostInfo) {
-		for_tuples!( #( Tuple::post_dispatch(pre.Tuple, result); )* );
-	}
 }
 
 /// The trait implemented by the overarching enumeration of the different pallets' origins.

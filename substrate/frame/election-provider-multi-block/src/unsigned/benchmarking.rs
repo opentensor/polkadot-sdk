@@ -45,7 +45,9 @@ mod benchmarks {
 
 		#[block]
 		{
-			assert_ok!(Pallet::<T>::validate_unsigned(TransactionSource::Local, &call));
+			#[allow(deprecated)]
+			let result = Pallet::<T>::validate_unsigned(TransactionSource::Local, &call);
+			assert_ok!(result);
 		}
 
 		Ok(())
@@ -74,6 +76,26 @@ mod benchmarks {
 
 		// something is queued
 		assert!(T::Verifier::queued_score().is_some());
+		Ok(())
+	}
+
+	/// NOTE: make sure this benchmark is being run with the correct `type Solver` in `MinerConfig`.
+	#[benchmark(extra, pov_mode = Measured)]
+	fn mine_solution(p: Linear<1, { T::Pages::get() }>) -> Result<(), BenchmarkError> {
+		#[cfg(test)]
+		crate::mock::ElectionStart::set(sp_runtime::traits::Bounded::max_value());
+		crate::Pallet::<T>::start().unwrap();
+
+		// roll to unsigned phase open
+		crate::Pallet::<T>::roll_until_matches(|| {
+			matches!(CurrentPhase::<T>::get(), Phase::Unsigned(_))
+		});
+
+		#[block]
+		{
+			OffchainWorkerMiner::<T>::mine_solution(p, true).unwrap();
+		}
+
 		Ok(())
 	}
 

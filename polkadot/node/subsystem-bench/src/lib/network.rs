@@ -16,7 +16,7 @@
 //! Implements network emulation and interfaces to control and specialize
 //! network peer behaviour.
 
-//	     [TestEnvironment]
+// 	     [TestEnvironment]
 // 	  [NetworkEmulatorHandle]
 // 			    ||
 //   +-------+--||--+-------+
@@ -136,7 +136,7 @@ impl RateLimit {
 		self.credits -= amount as isize;
 
 		if self.credits >= 0 {
-			return
+			return;
 		}
 
 		while self.credits < 0 {
@@ -149,13 +149,14 @@ impl RateLimit {
 
 /// A wrapper for both gossip and request/response protocols along with the destination
 /// peer(`AuthorityDiscoveryId``).
+#[derive(Debug)]
 pub enum NetworkMessage {
 	/// A gossip message from peer to node.
 	MessageFromPeer(PeerId, VersionedValidationProtocol),
 	/// A gossip message from node to a peer.
 	MessageFromNode(AuthorityDiscoveryId, VersionedValidationProtocol),
 	/// A request originating from our node
-	RequestFromNode(AuthorityDiscoveryId, Requests),
+	RequestFromNode(AuthorityDiscoveryId, Box<Requests>),
 	/// A request originating from an emulated peer
 	RequestFromPeer(IncomingRequest),
 }
@@ -164,10 +165,12 @@ impl NetworkMessage {
 	/// Returns the size of the encoded message or request
 	pub fn size(&self) -> usize {
 		match &self {
-			NetworkMessage::MessageFromPeer(_, ValidationProtocols::V3(message)) =>
-				message.encoded_size(),
-			NetworkMessage::MessageFromNode(_peer_id, ValidationProtocols::V3(message)) =>
-				message.encoded_size(),
+			NetworkMessage::MessageFromPeer(_, ValidationProtocols::V3(message)) => {
+				message.encoded_size()
+			},
+			NetworkMessage::MessageFromNode(_peer_id, ValidationProtocols::V3(message)) => {
+				message.encoded_size()
+			},
 			NetworkMessage::RequestFromNode(_peer_id, incoming) => incoming.size(),
 			NetworkMessage::RequestFromPeer(request) => request.payload.encoded_size(),
 		}
@@ -344,14 +347,15 @@ impl NetworkInterface {
 					task_tx_limiter.lock().await.reap(size).await;
 
 					match peer_message {
-						NetworkMessage::MessageFromNode(peer, message) =>
-							tx_network.send_message_to_peer(&peer, message),
+						NetworkMessage::MessageFromNode(peer, message) => {
+							tx_network.send_message_to_peer(&peer, message)
+						},
 						NetworkMessage::RequestFromNode(peer, request) => {
 							// Send request through a proxy so we can account and limit bandwidth
 							// usage for the node.
 							let send_task = Self::proxy_send_request(
 								peer.clone(),
-								request,
+								*request,
 								tx_network.clone(),
 								task_rx_limiter.clone(),
 							)
@@ -367,7 +371,7 @@ impl NetworkInterface {
 					tx_network.inc_sent(size);
 				} else {
 					gum::info!(target: LOG_TARGET, "Downlink channel closed, network interface task exiting");
-					break
+					break;
 				}
 			}
 		}
@@ -784,7 +788,7 @@ pub fn new_network(
 	handlers: Vec<Arc<dyn HandleNetworkMessage + Sync + Send>>,
 ) -> (NetworkEmulatorHandle, NetworkInterface, NetworkInterfaceReceiver) {
 	let n_peers = config.n_validators;
-	gum::info!(target: LOG_TARGET, "{}",format!("Initializing emulation for a {} peer network.", n_peers).bright_blue());
+	gum::info!(target: LOG_TARGET, "{}",format!("Initializing emulation for a {n_peers} peer network.").bright_blue());
 	gum::info!(target: LOG_TARGET, "{}",format!("connectivity {}%, latency {:?}", config.connectivity, config.latency).bright_black());
 
 	let metrics =
@@ -828,7 +832,7 @@ pub fn new_network(
 		peers[*peer].disconnect();
 	}
 
-	gum::info!(target: LOG_TARGET, "{}",format!("Network created, connected validator count {}", connected_count).bright_black());
+	gum::info!(target: LOG_TARGET, "{}",format!("Network created, connected validator count {connected_count}").bright_black());
 
 	let handle = NetworkEmulatorHandle {
 		peers,
@@ -876,7 +880,8 @@ impl NetworkEmulatorHandle {
 	pub fn send_request_to_peer(&self, peer_id: &AuthorityDiscoveryId, request: Requests) {
 		let peer = self.peer(peer_id);
 		assert!(peer.is_connected(), "forward request only for connected peers.");
-		peer.handle().receive(NetworkMessage::RequestFromNode(peer_id.clone(), request));
+		peer.handle()
+			.receive(NetworkMessage::RequestFromNode(peer_id.clone(), Box::new(request)));
 	}
 
 	/// Send a message from a peer to the node.
@@ -889,7 +894,7 @@ impl NetworkEmulatorHandle {
 
 		if !dst_peer.is_connected() {
 			gum::warn!(target: LOG_TARGET, "Attempted to send message from a peer not connected to our node, operation ignored");
-			return Err(EmulatedPeerError::NotConnected)
+			return Err(EmulatedPeerError::NotConnected);
 		}
 
 		dst_peer.handle().send_message(message);
@@ -906,7 +911,7 @@ impl NetworkEmulatorHandle {
 
 		if !dst_peer.is_connected() {
 			gum::warn!(target: LOG_TARGET, "Attempted to send request from a peer not connected to our node, operation ignored");
-			return Err(EmulatedPeerError::NotConnected)
+			return Err(EmulatedPeerError::NotConnected);
 		}
 
 		dst_peer.handle().send_request(request);
@@ -982,14 +987,14 @@ impl Metrics {
 	/// Increment total sent for a peer.
 	pub fn on_peer_sent(&self, peer_index: usize, bytes: usize) {
 		self.peer_total_sent
-			.with_label_values(vec![format!("node{}", peer_index).as_str()].as_slice())
+			.with_label_values(vec![format!("node{peer_index}").as_str()].as_slice())
 			.inc_by(bytes as u64);
 	}
 
 	/// Increment total received for a peer.
 	pub fn on_peer_received(&self, peer_index: usize, bytes: usize) {
 		self.peer_total_received
-			.with_label_values(vec![format!("node{}", peer_index).as_str()].as_slice())
+			.with_label_values(vec![format!("node{peer_index}").as_str()].as_slice())
 			.inc_by(bytes as u64);
 	}
 }
@@ -1027,6 +1032,13 @@ impl RequestExt for Requests {
 			},
 			// Requested by PeerId
 			Requests::AttestedCandidateV2(_) => None,
+			Requests::DisputeSendingV1(request) => {
+				if let Recipient::Authority(authority_id) = &request.peer {
+					Some(authority_id)
+				} else {
+					None
+				}
+			},
 			request => {
 				unimplemented!("RequestAuthority not implemented for {:?}", request)
 			},
@@ -1048,8 +1060,10 @@ impl RequestExt for Requests {
 	fn into_response_sender(self) -> ResponseSender {
 		match self {
 			Requests::ChunkFetching(outgoing_request) => outgoing_request.pending_response,
-			Requests::AvailableDataFetchingV1(outgoing_request) =>
-				outgoing_request.pending_response,
+			Requests::AvailableDataFetchingV1(outgoing_request) => {
+				outgoing_request.pending_response
+			},
+			Requests::DisputeSendingV1(outgoing_request) => outgoing_request.pending_response,
 			_ => unimplemented!("unsupported request type"),
 		}
 	}
@@ -1057,12 +1071,18 @@ impl RequestExt for Requests {
 	/// Swaps the `ResponseSender` and returns the previous value.
 	fn swap_response_sender(&mut self, new_sender: ResponseSender) -> ResponseSender {
 		match self {
-			Requests::ChunkFetching(outgoing_request) =>
-				std::mem::replace(&mut outgoing_request.pending_response, new_sender),
-			Requests::AvailableDataFetchingV1(outgoing_request) =>
-				std::mem::replace(&mut outgoing_request.pending_response, new_sender),
-			Requests::AttestedCandidateV2(outgoing_request) =>
-				std::mem::replace(&mut outgoing_request.pending_response, new_sender),
+			Requests::ChunkFetching(outgoing_request) => {
+				std::mem::replace(&mut outgoing_request.pending_response, new_sender)
+			},
+			Requests::AvailableDataFetchingV1(outgoing_request) => {
+				std::mem::replace(&mut outgoing_request.pending_response, new_sender)
+			},
+			Requests::AttestedCandidateV2(outgoing_request) => {
+				std::mem::replace(&mut outgoing_request.pending_response, new_sender)
+			},
+			Requests::DisputeSendingV1(outgoing_request) => {
+				std::mem::replace(&mut outgoing_request.pending_response, new_sender)
+			},
 			_ => unimplemented!("unsupported request type"),
 		}
 	}
@@ -1071,10 +1091,13 @@ impl RequestExt for Requests {
 	fn size(&self) -> usize {
 		match self {
 			Requests::ChunkFetching(outgoing_request) => outgoing_request.payload.encoded_size(),
-			Requests::AvailableDataFetchingV1(outgoing_request) =>
-				outgoing_request.payload.encoded_size(),
-			Requests::AttestedCandidateV2(outgoing_request) =>
-				outgoing_request.payload.encoded_size(),
+			Requests::AvailableDataFetchingV1(outgoing_request) => {
+				outgoing_request.payload.encoded_size()
+			},
+			Requests::AttestedCandidateV2(outgoing_request) => {
+				outgoing_request.payload.encoded_size()
+			},
+			Requests::DisputeSendingV1(outgoing_request) => outgoing_request.payload.encoded_size(),
 			_ => unimplemented!("received an unexpected request"),
 		}
 	}

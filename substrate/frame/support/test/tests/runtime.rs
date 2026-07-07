@@ -33,7 +33,7 @@ use scale_info::TypeInfo;
 use sp_core::sr25519;
 use sp_runtime::{
 	generic,
-	traits::{BlakeTwo256, ValidateUnsigned, Verify},
+	traits::{BlakeTwo256, Verify},
 	DispatchError, ModuleError,
 };
 use sp_version::RuntimeVersion;
@@ -66,15 +66,7 @@ mod module1 {
 
 	#[pallet::origin]
 	#[derive(
-		Clone,
-		PartialEq,
-		Eq,
-		RuntimeDebug,
-		Encode,
-		Decode,
-		DecodeWithMemTracking,
-		MaxEncodedLen,
-		TypeInfo,
+		Clone, PartialEq, Eq, Debug, Encode, Decode, DecodeWithMemTracking, MaxEncodedLen, TypeInfo,
 	)]
 	#[scale_info(skip_type_params(I))]
 	pub struct Origin<T, I = ()>(pub PhantomData<(T, I)>);
@@ -121,15 +113,7 @@ mod module2 {
 
 	#[pallet::origin]
 	#[derive(
-		Clone,
-		PartialEq,
-		Eq,
-		RuntimeDebug,
-		Encode,
-		Decode,
-		DecodeWithMemTracking,
-		MaxEncodedLen,
-		TypeInfo,
+		Clone, PartialEq, Eq, Debug, Encode, Decode, DecodeWithMemTracking, MaxEncodedLen, TypeInfo,
 	)]
 	pub struct Origin;
 
@@ -182,7 +166,7 @@ mod nested {
 			Clone,
 			PartialEq,
 			Eq,
-			RuntimeDebug,
+			Debug,
 			Encode,
 			Decode,
 			DecodeWithMemTracking,
@@ -213,6 +197,7 @@ mod nested {
 			fn build(&self) {}
 		}
 
+		#[allow(deprecated)]
 		#[pallet::validate_unsigned]
 		impl<T: Config> ValidateUnsigned for Pallet<T> {
 			type Call = Call<T>;
@@ -272,15 +257,7 @@ pub mod module3 {
 
 	#[pallet::origin]
 	#[derive(
-		Clone,
-		PartialEq,
-		Eq,
-		RuntimeDebug,
-		Encode,
-		Decode,
-		DecodeWithMemTracking,
-		MaxEncodedLen,
-		TypeInfo,
+		Clone, PartialEq, Eq, Debug, Encode, Decode, DecodeWithMemTracking, MaxEncodedLen, TypeInfo,
 	)]
 	pub struct Origin<T>(pub PhantomData<T>);
 
@@ -309,6 +286,7 @@ pub mod module3 {
 	#[pallet::storage]
 	pub type Storage<T> = StorageValue<_, u32>;
 
+	#[allow(deprecated)]
 	#[pallet::validate_unsigned]
 	impl<T: Config> ValidateUnsigned for Pallet<T> {
 		type Call = Call<T>;
@@ -719,47 +697,24 @@ fn get_call_names() {
 }
 
 #[test]
-fn get_module_names_and_indices() {
+fn get_module_names() {
 	use frame_support::traits::GetCallMetadata;
 	let module_names = RuntimeCall::get_module_names();
-	let module_indices = RuntimeCall::get_module_indices();
 	assert_eq!(
-		vec![
-			("Module1_6", 1),
-			("Module1_7", 2),
-			("Module1_4", 3),
-			("Module1_8", 12),
-			("Module1_9", 13),
-			("System", 30),
-			("Module1_1", 31),
-			("Module2", 32),
-			("Module1_2", 33),
-			("NestedModule3", 34),
-			("Module3", 35),
+		[
+			"Module1_6",
+			"Module1_7",
+			"Module1_4",
+			"Module1_8",
+			"Module1_9",
+			"System",
+			"Module1_1",
+			"Module2",
+			"Module1_2",
+			"NestedModule3",
+			"Module3",
 		],
 		module_names
-			.iter()
-			.copied()
-			.zip(module_indices.iter().copied())
-			.collect::<Vec<_>>()
-	);
-}
-
-#[test]
-fn get_call_names_and_indices() {
-	use frame_support::traits::GetCallMetadata;
-	let call_names = RuntimeCall::get_call_names("Module3");
-	let call_indices = RuntimeCall::get_call_indices("Module3");
-	assert_eq!(
-		vec![
-			("fail", 0),
-			("aux_1", 1),
-			("aux_2", 2),
-			("aux_3", 3),
-			("aux_4", 4),
-			("operational", 5),
-		],
-		call_names.iter().copied().zip(call_indices.iter().copied()).collect::<Vec<_>>()
 	);
 }
 
@@ -1058,10 +1013,12 @@ fn test_validate_unsigned() {
 	use frame_support::pallet_prelude::*;
 
 	let call = RuntimeCall::NestedModule3(nested::module3::Call::fail {});
+	#[allow(deprecated)]
 	let validity = Runtime::validate_unsigned(TransactionSource::Local, &call).unwrap_err();
 	assert_eq!(validity, TransactionValidityError::Invalid(InvalidTransaction::Call));
 
 	let call = RuntimeCall::Module3(module3::Call::fail {});
+	#[allow(deprecated)]
 	let validity = Runtime::validate_unsigned(TransactionSource::Local, &call).unwrap_err();
 	assert_eq!(
 		validity,

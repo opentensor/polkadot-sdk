@@ -17,12 +17,13 @@
 mod imports {
 	pub(crate) use xcm::{latest::WESTEND_GENESIS_HASH, prelude::*};
 
+	pub(crate) use frame_support::assert_ok;
+
 	pub(crate) use emulated_integration_tests_common::{
 		accounts::ALICE,
 		test_parachain_is_trusted_teleporter,
 		xcm_emulator::{assert_expected_events, bx, Chain, Parachain, TestExt},
 	};
-	pub(crate) use frame_support::assert_ok;
 	pub(crate) use westend_system_emulated_network::{
 		asset_hub_westend_emulated_chain::{
 			asset_hub_westend_runtime::xcm_config::LocationToAccountId as AssetHubLocationToAccountId,
@@ -34,6 +35,7 @@ mod imports {
 			collectives_westend_runtime::{
 				fellowship as collectives_fellowship,
 				xcm_config::XcmConfig as CollectivesWestendXcmConfig,
+				ExistentialDeposit as CollectivesWestendExistentialDeposit,
 			},
 			genesis::ED as COLLECTIVES_WESTEND_ED,
 			CollectivesWestendParaPallet as CollectivesWestendPallet,
@@ -41,13 +43,7 @@ mod imports {
 		coretime_westend_emulated_chain::CoretimeWestendParaPallet as CoretimeWestendPallet,
 		penpal_emulated_chain::{PenpalAssetOwner, PenpalBParaPallet as PenpalBPallet},
 		people_westend_emulated_chain::PeopleWestendParaPallet as PeopleWestendPallet,
-		westend_emulated_chain::{
-			genesis::ED as WESTEND_ED,
-			westend_runtime::{
-				governance as westend_governance, OriginCaller as WestendOriginCaller,
-			},
-			WestendRelayPallet as WestendPallet,
-		},
+		westend_emulated_chain::{genesis::ED as WESTEND_ED, WestendRelayPallet as WestendPallet},
 		AssetHubWestendPara as AssetHubWestend,
 		AssetHubWestendParaReceiver as AssetHubWestendReceiver,
 		AssetHubWestendParaSender as AssetHubWestendSender,

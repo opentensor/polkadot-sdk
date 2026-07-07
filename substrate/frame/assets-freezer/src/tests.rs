@@ -76,10 +76,7 @@ mod impl_frozen_balance {
 	}
 
 	#[test]
-	#[cfg_attr(
-		debug_assertions,
-		should_panic = "The list of Freezes should be empty before allowing an account to die"
-	)]
+	#[should_panic = "The list of Freezes should be empty before allowing an account to die"]
 	fn died_fails_if_freezes_exist() {
 		new_test_ext(|| {
 			test_set_freeze(DummyFreezeReason::Governance, 1);

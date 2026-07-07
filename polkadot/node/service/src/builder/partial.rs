@@ -19,16 +19,19 @@
 #![cfg(feature = "full-node")]
 
 use crate::{
-	fake_runtime_api::RuntimeApi, grandpa_support, relay_chain_selection, Error, FullBackend,
-	FullClient, IdentifyVariant, GRANDPA_JUSTIFICATION_PERIOD,
+	grandpa_support, relay_chain_selection, Error, FullBackend, FullClient, IdentifyVariant,
+	GRANDPA_JUSTIFICATION_PERIOD,
 };
 use polkadot_primitives::Block;
-use sc_consensus_grandpa::FinalityProofProvider as GrandpaFinalityProofProvider;
+use sc_consensus_grandpa::{
+	FinalityProofProvider as GrandpaFinalityProofProvider, GrandpaPruningFilter,
+};
 use sc_executor::{HeapAllocStrategy, WasmExecutor, DEFAULT_HEAP_ALLOC_STRATEGY};
 use sc_service::{Configuration, Error as SubstrateServiceError, KeystoreContainer, TaskManager};
 use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sp_consensus::SelectChain;
+use sp_consensus_babe::inherents::BabeCreateInherentDataProviders;
 use sp_consensus_beefy::ecdsa_crypto;
 use std::sync::Arc;
 
@@ -64,6 +67,8 @@ pub(crate) type PolkadotPartialComponents<ChainSelection> = sc_service::PartialC
 					FullGrandpaBlockImport<ChainSelection>,
 					ecdsa_crypto::AuthorityId,
 				>,
+				BabeCreateInherentDataProviders<Block>,
+				ChainSelection,
 			>,
 			sc_consensus_grandpa::LinkHalf<Block, FullClient, ChainSelection>,
 			sc_consensus_babe::BabeLink<Block>,
@@ -117,12 +122,14 @@ pub(crate) fn new_partial_basics(
 		.with_runtime_cache_size(config.executor.runtime_cache_size)
 		.build();
 
-	let (client, backend, keystore_container, task_manager) =
-		sc_service::new_full_parts::<Block, RuntimeApi, _>(
-			&config,
-			telemetry.as_ref().map(|(_, telemetry)| telemetry.handle()),
-			executor,
-		)?;
+	// Use GrandpaPruningFilter to preserve blocks with GRANDPA justifications during
+	// pruning. This is required for warp sync to work on pruned nodes.
+	let (client, backend, keystore_container, task_manager) = sc_service::new_full_parts(
+		&config,
+		telemetry.as_ref().map(|(_, telemetry)| telemetry.handle()),
+		executor,
+		vec![Arc::new(GrandpaPruningFilter)],
+	)?;
 	let client = Arc::new(client);
 
 	let telemetry = telemetry.map(|(worker, telemetry)| {
@@ -185,32 +192,33 @@ where
 		);
 
 	let babe_config = sc_consensus_babe::configuration(&*client)?;
-	let (block_import, babe_link) =
-		sc_consensus_babe::block_import(babe_config.clone(), beefy_block_import, client.clone())?;
+	let slot_duration = babe_config.slot_duration();
+	let (block_import, babe_link) = sc_consensus_babe::block_import(
+		babe_config.clone(),
+		beefy_block_import,
+		client.clone(),
+		Arc::new(move |_, _| async move {
+			let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
+			let slot = sp_consensus_babe::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
+				*timestamp,
+				slot_duration,
+			);
+			Ok((slot, timestamp))
+		}) as BabeCreateInherentDataProviders<Block>,
+		select_chain.clone(),
+		OffchainTransactionPoolFactory::new(transaction_pool.clone()),
+	)?;
 
-	let slot_duration = babe_link.config().slot_duration();
 	let (import_queue, babe_worker_handle) =
 		sc_consensus_babe::import_queue(sc_consensus_babe::ImportQueueParams {
 			link: babe_link.clone(),
 			block_import: block_import.clone(),
 			justification_import: Some(Box::new(justification_import)),
 			client: client.clone(),
-			select_chain: select_chain.clone(),
-			create_inherent_data_providers: move |_, ()| async move {
-				let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
-
-				let slot =
-				sp_consensus_babe::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
-					*timestamp,
-					slot_duration,
-				);
-
-				Ok((slot, timestamp))
-			},
+			slot_duration,
 			spawner: &task_manager.spawn_essential_handle(),
 			registry: config.prometheus_registry(),
 			telemetry: telemetry.as_ref().map(|x| x.handle()),
-			offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(transaction_pool.clone()),
 		})?;
 
 	let justification_stream = grandpa_link.justification_stream();

@@ -65,7 +65,7 @@
 
 use std::{
 	collections::{hash_map, HashMap},
-	fmt::{self, Debug},
+	fmt::{self},
 	pin::Pin,
 	sync::Arc,
 	time::Duration,
@@ -549,6 +549,7 @@ pub struct Overseer<SupportsParachains> {
 		CandidateBackingMessage,
 		DisputeCoordinatorMessage,
 		ProspectiveParachainsMessage,
+		ChainApiMessage,
 	])]
 	provisioner: Provisioner,
 
@@ -564,7 +565,6 @@ pub struct Overseer<SupportsParachains> {
 	#[subsystem(blocking, NetworkBridgeRxMessage, sends: [
 		BitfieldDistributionMessage,
 		StatementDistributionMessage,
-		ApprovalDistributionMessage,
 		ApprovalVotingParallelMessage,
 		GossipSupportMessage,
 		DisputeDistributionMessage,
@@ -619,8 +619,6 @@ pub struct Overseer<SupportsParachains> {
 		DisputeCoordinatorMessage,
 		RuntimeApiMessage,
 		NetworkBridgeTxMessage,
-		ApprovalVotingMessage,
-		ApprovalDistributionMessage,
 		ApprovalVotingParallelMessage,
 	], can_receive_priority_messages)]
 	approval_voting_parallel: ApprovalVotingParallel,
@@ -638,7 +636,6 @@ pub struct Overseer<SupportsParachains> {
 		ChainApiMessage,
 		DisputeDistributionMessage,
 		CandidateValidationMessage,
-		ApprovalVotingMessage,
 		AvailabilityStoreMessage,
 		AvailabilityRecoveryMessage,
 		ChainSelectionMessage,
@@ -701,7 +698,7 @@ where
 	#[cfg(any(target_os = "linux", feature = "jemalloc-allocator"))]
 	let collect_memory_stats: Box<dyn Fn(&OverseerMetrics) + Send> =
 		match memory_stats::MemoryAllocationTracker::new() {
-			Ok(memory_stats) =>
+			Ok(memory_stats) => {
 				Box::new(move |metrics: &OverseerMetrics| match memory_stats.snapshot() {
 					Ok(memory_stats_snapshot) => {
 						gum::trace!(
@@ -711,9 +708,11 @@ where
 						);
 						metrics.memory_stats_snapshot(memory_stats_snapshot);
 					},
-					Err(e) =>
-						gum::debug!(target: LOG_TARGET, "Failed to obtain memory stats: {:?}", e),
-				}),
+					Err(e) => {
+						gum::debug!(target: LOG_TARGET, "Failed to obtain memory stats: {:?}", e)
+					},
+				})
+			},
 			Err(_) => {
 				gum::debug!(
 					target: LOG_TARGET,
@@ -831,7 +830,7 @@ where
 			hash_map::Entry::Vacant(entry) => entry.insert(block.number),
 			hash_map::Entry::Occupied(entry) => {
 				debug_assert_eq!(*entry.get(), block.number);
-				return Ok(())
+				return Ok(());
 			},
 		};
 
@@ -894,7 +893,7 @@ where
 	/// this returns `None`.
 	async fn on_head_activated(&mut self, hash: &Hash, _parent_hash: Option<Hash>) -> Option<()> {
 		if !self.supports_parachains.head_supports_parachains(hash).await {
-			return None
+			return None;
 		}
 
 		self.metrics.on_head_activated();

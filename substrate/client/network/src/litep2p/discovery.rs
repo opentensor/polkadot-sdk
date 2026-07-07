@@ -19,7 +19,10 @@
 //! libp2p-related discovery code for litep2p backend.
 
 use crate::{
-	config::{NetworkConfiguration, ProtocolId},
+	config::{
+		NetworkConfiguration, ProtocolId, KADEMLIA_MAX_PROVIDER_KEYS, KADEMLIA_PROVIDER_RECORD_TTL,
+		KADEMLIA_PROVIDER_REPUBLISH_INTERVAL,
+	},
 	peer_store::PeerStoreProvider,
 };
 
@@ -76,6 +79,16 @@ const MAX_EXTERNAL_ADDRESSES: u32 = 32;
 /// Number of times observed address is received from different peers before it is confirmed as
 /// external.
 const MIN_ADDRESS_CONFIRMATIONS: usize = 3;
+
+/// Quorum threshold to interpret `PUT_VALUE` & `ADD_PROVIDER` as successful.
+///
+/// As opposed to libp2p, litep2p does not finish the query as soon as the required number of
+/// peers have reached. Instead, it tries to put the record to all target peers (typically 20) and
+/// uses the quorum setting only to determine the success of the query.
+///
+/// We set the threshold to 50% of the target peers to account for unreachable peers. The actual
+/// number of stored records may be higher.
+const QUORUM_THRESHOLD: NonZeroUsize = NonZeroUsize::new(10).expect("10 > 0; qed");
 
 /// Discovery events.
 #[derive(Debug)]
@@ -169,6 +182,14 @@ pub enum DiscoveryEvent {
 		query_id: QueryId,
 		/// Found providers sorted by distance to provided key.
 		providers: Vec<ContentProvider>,
+	},
+
+	/// Provider was successfully published.
+	AddProviderSuccess {
+		/// Query ID.
+		query_id: QueryId,
+		/// Provided key.
+		provided_key: RecordKey,
 	},
 
 	/// Query failed.
@@ -299,6 +320,9 @@ impl Discovery {
 				.with_known_peers(known_peers)
 				.with_protocol_names(protocol_names)
 				.with_incoming_records_validation_mode(IncomingRecordValidationMode::Manual)
+				.with_provider_record_ttl(KADEMLIA_PROVIDER_RECORD_TTL)
+				.with_provider_refresh_interval(KADEMLIA_PROVIDER_REPUBLISH_INTERVAL)
+				.with_max_provider_keys(KADEMLIA_MAX_PROVIDER_KEYS)
 				.build()
 		};
 
@@ -350,7 +374,7 @@ impl Discovery {
 				"Ignoring self-reported address of peer {peer} as remote node is not part of the \
 				 Kademlia DHT supported by the local node.",
 			);
-			return
+			return;
 		}
 
 		let addresses = addresses
@@ -362,7 +386,7 @@ impl Discovery {
 						"ignoring self-reported non-global address {address} from {peer}."
 					);
 
-					return None
+					return None;
 				}
 
 				Some(address)
@@ -395,7 +419,10 @@ impl Discovery {
 	/// Publish value on the DHT using Kademlia `PUT_VALUE`.
 	pub async fn put_value(&mut self, key: KademliaKey, value: Vec<u8>) -> QueryId {
 		self.kademlia_handle
-			.put_record(Record::new(RecordKey::new(&key.to_vec()), value))
+			.put_record(
+				Record::new(RecordKey::new(&key.to_vec()), value),
+				Quorum::N(QUORUM_THRESHOLD),
+			)
 			.await
 	}
 
@@ -411,6 +438,9 @@ impl Discovery {
 				record,
 				peers.into_iter().map(|peer| peer.into()).collect(),
 				update_local_storage,
+				// These are the peers that just returned the record to us in authority-discovery,
+				// so we assume they are all reachable.
+				Quorum::All,
 			)
 			.await
 	}
@@ -440,8 +470,10 @@ impl Discovery {
 	}
 
 	/// Start providing `key`.
-	pub async fn start_providing(&mut self, key: KademliaKey) {
-		self.kademlia_handle.start_providing(key.into()).await;
+	pub async fn start_providing(&mut self, key: KademliaKey) -> QueryId {
+		self.kademlia_handle
+			.start_providing(key.into(), Quorum::N(QUORUM_THRESHOLD))
+			.await
 	}
 
 	/// Stop providing `key`.
@@ -475,8 +507,9 @@ impl Discovery {
 		let ip = match address.iter().next() {
 			Some(Protocol::Ip4(ip)) => IpNetwork::from(ip),
 			Some(Protocol::Ip6(ip)) => IpNetwork::from(ip),
-			Some(Protocol::Dns(_)) | Some(Protocol::Dns4(_)) | Some(Protocol::Dns6(_)) =>
-				return true,
+			Some(Protocol::Dns(_)) | Some(Protocol::Dns4(_)) | Some(Protocol::Dns6(_)) => {
+				return true
+			},
 			_ => return false,
 		};
 
@@ -510,7 +543,7 @@ impl Discovery {
 			.chain(self.public_addresses.iter())
 			.any(|known_address| Discovery::is_known_address(&known_address, &address))
 		{
-			return (true, None)
+			return (true, None);
 		}
 
 		match self.address_confirmations.get(address) {
@@ -518,7 +551,7 @@ impl Discovery {
 				confirmations.insert(peer);
 
 				if confirmations.len() >= MIN_ADDRESS_CONFIRMATIONS {
-					return (true, None)
+					return (true, None);
 				}
 			},
 			None => {
@@ -527,7 +560,7 @@ impl Discovery {
 					.then(|| {
 						self.address_confirmations.pop_oldest().map(|(address, peers)| {
 							if peers.len() >= MIN_ADDRESS_CONFIRMATIONS {
-								return Some(address)
+								return Some(address);
 							} else {
 								None
 							}
@@ -538,7 +571,7 @@ impl Discovery {
 
 				self.address_confirmations.insert(address.clone(), iter::once(peer).collect());
 
-				return (false, oldest)
+				return (false, oldest);
 			},
 		}
 
@@ -553,7 +586,7 @@ impl Stream for Discovery {
 		let this = Pin::into_inner(self);
 
 		if let Some(event) = this.pending_events.pop_front() {
-			return Poll::Ready(Some(event))
+			return Poll::Ready(Some(event));
 		}
 
 		if let Some(mut delay) = this.next_kad_query.take() {
@@ -569,7 +602,7 @@ impl Stream for Discovery {
 					match this.kademlia_handle.try_find_node(peer) {
 						Ok(query_id) => {
 							this.random_walk_query_id = Some(query_id);
-							return Poll::Ready(Some(DiscoveryEvent::RandomKademliaStarted))
+							return Poll::Ready(Some(DiscoveryEvent::RandomKademliaStarted));
 						},
 						Err(()) => {
 							this.duration_to_next_find_query = cmp::min(
@@ -599,7 +632,7 @@ impl Stream for Discovery {
 
 				return Poll::Ready(Some(DiscoveryEvent::RoutingTableUpdate {
 					peers: peers.into_iter().map(|(peer, _)| peer).collect(),
-				}))
+				}));
 			},
 			Poll::Ready(Some(KademliaEvent::FindNodeSuccess { query_id, target, peers })) => {
 				log::trace!(target: LOG_TARGET, "find node query yielded {} peers", peers.len());
@@ -608,14 +641,14 @@ impl Stream for Discovery {
 					query_id,
 					target,
 					peers,
-				}))
+				}));
 			},
 			Poll::Ready(Some(KademliaEvent::RoutingTableUpdate { peers })) => {
 				log::trace!(target: LOG_TARGET, "routing table update, discovered {} peers", peers.len());
 
 				return Poll::Ready(Some(DiscoveryEvent::RoutingTableUpdate {
 					peers: peers.into_iter().collect(),
-				}))
+				}));
 			},
 			Poll::Ready(Some(KademliaEvent::GetRecordSuccess { query_id })) => {
 				log::trace!(
@@ -636,8 +669,9 @@ impl Stream for Discovery {
 					record,
 				}));
 			},
-			Poll::Ready(Some(KademliaEvent::PutRecordSuccess { query_id, key: _ })) =>
-				return Poll::Ready(Some(DiscoveryEvent::PutRecordSuccess { query_id })),
+			Poll::Ready(Some(KademliaEvent::PutRecordSuccess { query_id, key: _ })) => {
+				return Poll::Ready(Some(DiscoveryEvent::PutRecordSuccess { query_id }))
+			},
 			Poll::Ready(Some(KademliaEvent::QueryFailed { query_id })) => {
 				match this.random_walk_query_id == Some(query_id) {
 					true => {
@@ -657,7 +691,7 @@ impl Stream for Discovery {
 					record.publisher,
 				);
 
-				return Poll::Ready(Some(DiscoveryEvent::IncomingRecord { record }))
+				return Poll::Ready(Some(DiscoveryEvent::IncomingRecord { record }));
 			},
 			Poll::Ready(Some(KademliaEvent::GetProvidersSuccess {
 				provided_key,
@@ -672,7 +706,18 @@ impl Stream for Discovery {
 				return Poll::Ready(Some(DiscoveryEvent::GetProvidersSuccess {
 					query_id,
 					providers,
-				}))
+				}));
+			},
+			Poll::Ready(Some(KademliaEvent::AddProviderSuccess { query_id, provided_key })) => {
+				log::trace!(
+					target: LOG_TARGET,
+					"`ADD_PROVIDER` for {query_id:?} with {provided_key:?} succeeded",
+				);
+
+				return Poll::Ready(Some(DiscoveryEvent::AddProviderSuccess {
+					query_id,
+					provided_key,
+				}));
 			},
 			// We do not validate incoming providers.
 			Poll::Ready(Some(KademliaEvent::IncomingProvider { .. })) => {},
@@ -690,7 +735,7 @@ impl Stream for Discovery {
 			})) => {
 				let observed_address =
 					if let Some(Protocol::P2p(peer_id)) = observed_address.iter().last() {
-						if peer_id != *this.local_peer_id.as_ref() {
+						if peer_id != this.local_peer_id.into() {
 							log::warn!(
 								target: LOG_TARGET,
 								"Discovered external address for a peer that is not us: {observed_address}",
@@ -738,16 +783,18 @@ impl Stream for Discovery {
 		match Pin::new(&mut this.ping_event_stream).poll_next(cx) {
 			Poll::Pending => {},
 			Poll::Ready(None) => return Poll::Ready(None),
-			Poll::Ready(Some(PingEvent::Ping { peer, ping })) =>
-				return Poll::Ready(Some(DiscoveryEvent::Ping { peer, rtt: ping })),
+			Poll::Ready(Some(PingEvent::Ping { peer, ping })) => {
+				return Poll::Ready(Some(DiscoveryEvent::Ping { peer, rtt: ping }))
+			},
 		}
 
 		if let Some(ref mut mdns_event_stream) = &mut this.mdns_event_stream {
 			match Pin::new(mdns_event_stream).poll_next(cx) {
 				Poll::Pending => {},
 				Poll::Ready(None) => return Poll::Ready(None),
-				Poll::Ready(Some(MdnsEvent::Discovered(addresses))) =>
-					return Poll::Ready(Some(DiscoveryEvent::Discovered { addresses })),
+				Poll::Ready(Some(MdnsEvent::Discovered(addresses))) => {
+					return Poll::Ready(Some(DiscoveryEvent::Discovered { addresses }))
+				},
 			}
 		}
 
@@ -873,7 +920,7 @@ mod tests {
 					// We need to keep the network alive until all peers are discovered.
 					if num_finished.load(std::sync::atomic::Ordering::Relaxed) == total_peers {
 						log::info!(target: LOG_TARGET, "{peer_id:?} all peers discovered");
-						break
+						break;
 					}
 
 					tokio::select! {

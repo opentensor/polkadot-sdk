@@ -174,6 +174,10 @@ async fn setup_api() -> (
 	);
 	assert_matches!(
 		get_next_event::<FollowEvent<String>>(&mut sub).await,
+		FollowEvent::BestBlockChanged(_)
+	);
+	assert_matches!(
+		get_next_event::<FollowEvent<String>>(&mut sub).await,
 		FollowEvent::NewBlock(_)
 	);
 	assert_matches!(
@@ -273,6 +277,13 @@ async fn follow_subscription_produces_blocks() {
 	});
 	assert_eq!(event, expected);
 
+	// Then the best block
+	let event: FollowEvent<String> = get_next_event(&mut sub).await;
+	let expected = FollowEvent::BestBlockChanged(BestBlockChanged {
+		best_block_hash: format!("{:?}", finalized_hash),
+	});
+	assert_eq!(event, expected);
+
 	let block = BlockBuilderBuilder::new(&*client)
 		.on_parent_block(client.chain_info().genesis_hash)
 		.with_parent_block_number(0)
@@ -342,9 +353,8 @@ async fn follow_with_runtime() {
 		\"specVersion\":2,\"implVersion\":2,\"apis\":[[\"0xdf6acb689907609b\",5],\
 		[\"0x37e397fc7c91f5e4\",2],[\"0xd2bc9897eed08f15\",3],[\"0x40fe3ad401f8959a\",6],\
 		[\"0xbc9d89904f5b923f\",1],[\"0xc6e9a76309f39b09\",2],[\"0xdd718d5cc53262d4\",1],\
-		[\"0xcbca25e39f142387\",2],[\"0xf78b278be53f454c\",2],[\"0xab3c0572291feb8b\",1],\
-		[\"0xed99c5acb25eedf5\",3],[\"0xfbc577b9d747efd6\",1],\
-		[\"0x1c4585bd5c707202\",1]],\"transactionVersion\":1,\"systemVersion\":1}";
+		[\"0xcbca25e39f142387\",2],[\"0xf78b278be53f454c\",2],[\"0xab3c0572291feb8b\",2],\
+		[\"0xed99c5acb25eedf5\",3],[\"0xfbc577b9d747efd6\",1]],\"transactionVersion\":1,\"systemVersion\":1}";
 
 	let runtime: RuntimeVersion = serde_json::from_str(runtime_str).unwrap();
 
@@ -355,6 +365,13 @@ async fn follow_with_runtime() {
 		finalized_block_hashes: vec![format!("{:?}", finalized_hash)],
 		finalized_block_runtime,
 		with_runtime: false,
+	});
+	pretty_assertions::assert_eq!(event, expected);
+
+	// Then the best block
+	let event: FollowEvent<String> = get_next_event(&mut sub).await;
+	let expected = FollowEvent::BestBlockChanged(BestBlockChanged {
+		best_block_hash: format!("{:?}", finalized_hash),
 	});
 	pretty_assertions::assert_eq!(event, expected);
 
@@ -408,7 +425,7 @@ async fn follow_with_runtime() {
 	let mut runtime = runtime;
 	runtime.spec_version += 1;
 	let embedded = sp_version::embed::embed_runtime_version(&wasm, runtime.clone()).unwrap();
-	let wasm = sp_maybe_compressed_blob::compress(
+	let wasm = sp_maybe_compressed_blob::compress_strongly(
 		&embedded,
 		sp_maybe_compressed_blob::CODE_BLOB_BOMB_LIMIT,
 	)
@@ -663,6 +680,10 @@ async fn call_runtime_without_flag() {
 	);
 	assert_matches!(
 		get_next_event::<FollowEvent<String>>(&mut sub).await,
+		FollowEvent::BestBlockChanged(_)
+	);
+	assert_matches!(
+		get_next_event::<FollowEvent<String>>(&mut sub).await,
 		FollowEvent::NewBlock(_)
 	);
 	assert_matches!(
@@ -700,7 +721,11 @@ async fn get_storage_hash() {
 			rpc_params![
 				"invalid_sub_id",
 				&invalid_hash,
-				vec![StorageQuery { key: key.clone(), query_type: StorageQueryType::Hash }]
+				vec![StorageQuery {
+					key: key.clone(),
+					query_type: StorageQueryType::Hash,
+					pagination_start_key: None
+				}]
 			],
 		)
 		.await
@@ -714,7 +739,11 @@ async fn get_storage_hash() {
 			rpc_params![
 				&sub_id,
 				&invalid_hash,
-				vec![StorageQuery { key: key.clone(), query_type: StorageQueryType::Hash }]
+				vec![StorageQuery {
+					key: key.clone(),
+					query_type: StorageQueryType::Hash,
+					pagination_start_key: None
+				}]
 			],
 		)
 		.await
@@ -730,7 +759,11 @@ async fn get_storage_hash() {
 			rpc_params![
 				&sub_id,
 				&block_hash,
-				vec![StorageQuery { key: key.clone(), query_type: StorageQueryType::Hash }]
+				vec![StorageQuery {
+					key: key.clone(),
+					query_type: StorageQueryType::Hash,
+					pagination_start_key: None
+				}]
 			],
 		)
 		.await
@@ -773,7 +806,11 @@ async fn get_storage_hash() {
 			rpc_params![
 				&sub_id,
 				&block_hash,
-				vec![StorageQuery { key: key.clone(), query_type: StorageQueryType::Hash }]
+				vec![StorageQuery {
+					key: key.clone(),
+					query_type: StorageQueryType::Hash,
+					pagination_start_key: None
+				}]
 			],
 		)
 		.await
@@ -806,7 +843,11 @@ async fn get_storage_hash() {
 			rpc_params![
 				&sub_id,
 				&genesis_hash,
-				vec![StorageQuery { key: key.clone(), query_type: StorageQueryType::Hash }],
+				vec![StorageQuery {
+					key: key.clone(),
+					query_type: StorageQueryType::Hash,
+					pagination_start_key: None
+				}],
 				&child_info
 			],
 		)
@@ -866,11 +907,13 @@ async fn get_storage_multi_query_iter() {
 				vec![
 					StorageQuery {
 						key: key.clone(),
-						query_type: StorageQueryType::DescendantsHashes
+						query_type: StorageQueryType::DescendantsHashes,
+						pagination_start_key: None
 					},
 					StorageQuery {
 						key: key.clone(),
-						query_type: StorageQueryType::DescendantsValues
+						query_type: StorageQueryType::DescendantsValues,
+						pagination_start_key: None
 					}
 				]
 			],
@@ -917,11 +960,13 @@ async fn get_storage_multi_query_iter() {
 				vec![
 					StorageQuery {
 						key: key.clone(),
-						query_type: StorageQueryType::DescendantsHashes
+						query_type: StorageQueryType::DescendantsHashes,
+						pagination_start_key: None
 					},
 					StorageQuery {
 						key: key.clone(),
-						query_type: StorageQueryType::DescendantsValues
+						query_type: StorageQueryType::DescendantsValues,
+						pagination_start_key: None
 					}
 				],
 				&child_info
@@ -968,7 +1013,11 @@ async fn get_storage_value() {
 			rpc_params![
 				"invalid_sub_id",
 				&invalid_hash,
-				vec![StorageQuery { key: key.clone(), query_type: StorageQueryType::Value }]
+				vec![StorageQuery {
+					key: key.clone(),
+					query_type: StorageQueryType::Value,
+					pagination_start_key: None
+				}]
 			],
 		)
 		.await
@@ -982,7 +1031,11 @@ async fn get_storage_value() {
 			rpc_params![
 				&sub_id,
 				&invalid_hash,
-				vec![StorageQuery { key: key.clone(), query_type: StorageQueryType::Value }]
+				vec![StorageQuery {
+					key: key.clone(),
+					query_type: StorageQueryType::Value,
+					pagination_start_key: None
+				}]
 			],
 		)
 		.await
@@ -998,7 +1051,11 @@ async fn get_storage_value() {
 			rpc_params![
 				&sub_id,
 				&block_hash,
-				vec![StorageQuery { key: key.clone(), query_type: StorageQueryType::Value }]
+				vec![StorageQuery {
+					key: key.clone(),
+					query_type: StorageQueryType::Value,
+					pagination_start_key: None
+				}]
 			],
 		)
 		.await
@@ -1041,7 +1098,11 @@ async fn get_storage_value() {
 			rpc_params![
 				&sub_id,
 				&block_hash,
-				vec![StorageQuery { key: key.clone(), query_type: StorageQueryType::Value }]
+				vec![StorageQuery {
+					key: key.clone(),
+					query_type: StorageQueryType::Value,
+					pagination_start_key: None
+				}]
 			],
 		)
 		.await
@@ -1073,7 +1134,11 @@ async fn get_storage_value() {
 			rpc_params![
 				&sub_id,
 				&genesis_hash,
-				vec![StorageQuery { key: key.clone(), query_type: StorageQueryType::Value }],
+				vec![StorageQuery {
+					key: key.clone(),
+					query_type: StorageQueryType::Value,
+					pagination_start_key: None
+				}],
 				&child_info
 			],
 		)
@@ -1115,7 +1180,11 @@ async fn get_storage_non_queryable_key() {
 			rpc_params![
 				&sub_id,
 				&block_hash,
-				vec![StorageQuery { key: prefixed_key, query_type: StorageQueryType::Value }]
+				vec![StorageQuery {
+					key: prefixed_key,
+					query_type: StorageQueryType::Value,
+					pagination_start_key: None
+				}]
 			],
 		)
 		.await
@@ -1140,7 +1209,11 @@ async fn get_storage_non_queryable_key() {
 			rpc_params![
 				&sub_id,
 				&block_hash,
-				vec![StorageQuery { key: prefixed_key, query_type: StorageQueryType::Value }]
+				vec![StorageQuery {
+					key: prefixed_key,
+					query_type: StorageQueryType::Value,
+					pagination_start_key: None
+				}]
 			],
 		)
 		.await
@@ -1165,7 +1238,11 @@ async fn get_storage_non_queryable_key() {
 			rpc_params![
 				&sub_id,
 				&block_hash,
-				vec![StorageQuery { key: key.clone(), query_type: StorageQueryType::Value }],
+				vec![StorageQuery {
+					key: key.clone(),
+					query_type: StorageQueryType::Value,
+					pagination_start_key: None
+				}],
 				&prefixed_key
 			],
 		)
@@ -1191,7 +1268,11 @@ async fn get_storage_non_queryable_key() {
 			rpc_params![
 				&sub_id,
 				&block_hash,
-				vec![StorageQuery { key, query_type: StorageQueryType::Value }],
+				vec![StorageQuery {
+					key,
+					query_type: StorageQueryType::Value,
+					pagination_start_key: None
+				}],
 				&prefixed_key
 			],
 		)
@@ -1239,7 +1320,11 @@ async fn unique_operation_ids() {
 				rpc_params![
 					&sub_id,
 					&block_hash,
-					vec![StorageQuery { key: key.clone(), query_type: StorageQueryType::Value }]
+					vec![StorageQuery {
+						key: key.clone(),
+						query_type: StorageQueryType::Value,
+						pagination_start_key: None
+					}]
 				],
 			)
 			.await
@@ -1328,6 +1413,10 @@ async fn separate_operation_ids_for_subscriptions() {
 	);
 	assert_matches!(
 		get_next_event::<FollowEvent<String>>(&mut sub_first).await,
+		FollowEvent::BestBlockChanged(_)
+	);
+	assert_matches!(
+		get_next_event::<FollowEvent<String>>(&mut sub_first).await,
 		FollowEvent::NewBlock(_)
 	);
 	assert_matches!(
@@ -1338,6 +1427,10 @@ async fn separate_operation_ids_for_subscriptions() {
 	assert_matches!(
 		get_next_event::<FollowEvent<String>>(&mut sub_second).await,
 		FollowEvent::Initialized(_)
+	);
+	assert_matches!(
+		get_next_event::<FollowEvent<String>>(&mut sub_second).await,
+		FollowEvent::BestBlockChanged(_)
 	);
 	assert_matches!(
 		get_next_event::<FollowEvent<String>>(&mut sub_second).await,
@@ -1565,6 +1658,10 @@ async fn follow_exceeding_pinned_blocks() {
 	);
 	assert_matches!(
 		get_next_event::<FollowEvent<String>>(&mut sub).await,
+		FollowEvent::BestBlockChanged(_)
+	);
+	assert_matches!(
+		get_next_event::<FollowEvent<String>>(&mut sub).await,
 		FollowEvent::NewBlock(_)
 	);
 	assert_matches!(
@@ -1642,6 +1739,10 @@ async fn follow_with_unpin() {
 	assert_matches!(
 		get_next_event::<FollowEvent<String>>(&mut sub).await,
 		FollowEvent::Initialized(_)
+	);
+	assert_matches!(
+		get_next_event::<FollowEvent<String>>(&mut sub).await,
+		FollowEvent::BestBlockChanged(_)
 	);
 	assert_matches!(
 		get_next_event::<FollowEvent<String>>(&mut sub).await,
@@ -1749,6 +1850,10 @@ async fn unpin_duplicate_hashes() {
 	assert_matches!(
 		get_next_event::<FollowEvent<String>>(&mut sub).await,
 		FollowEvent::Initialized(_)
+	);
+	assert_matches!(
+		get_next_event::<FollowEvent<String>>(&mut sub).await,
+		FollowEvent::BestBlockChanged(_)
 	);
 	assert_matches!(
 		get_next_event::<FollowEvent<String>>(&mut sub).await,
@@ -1879,6 +1984,10 @@ async fn follow_with_multiple_unpin_hashes() {
 	);
 	assert_matches!(
 		get_next_event::<FollowEvent<String>>(&mut sub).await,
+		FollowEvent::BestBlockChanged(_)
+	);
+	assert_matches!(
+		get_next_event::<FollowEvent<String>>(&mut sub).await,
 		FollowEvent::NewBlock(_)
 	);
 	assert_matches!(
@@ -1989,6 +2098,13 @@ async fn follow_prune_best_block() {
 		finalized_block_hashes: vec![format!("{:?}", finalized_hash)],
 		finalized_block_runtime: None,
 		with_runtime: false,
+	});
+	assert_eq!(event, expected);
+
+	// Then the best block
+	let event: FollowEvent<String> = get_next_event(&mut sub).await;
+	let expected = FollowEvent::BestBlockChanged(BestBlockChanged {
+		best_block_hash: format!("{:?}", finalized_hash),
 	});
 	assert_eq!(event, expected);
 
@@ -2262,6 +2378,12 @@ async fn follow_forks_pruned_block() {
 	});
 	assert_eq!(event, expected);
 
+	let event: FollowEvent<String> = get_next_event(&mut sub).await;
+	let expected = FollowEvent::BestBlockChanged(BestBlockChanged {
+		best_block_hash: format!("{:?}", block_3_hash),
+	});
+	assert_eq!(event, expected);
+
 	// Block tree:
 	//
 	// finalized -> block 1 -> block 2 -> block 3 -> block 4
@@ -2477,13 +2599,19 @@ async fn follow_report_multiple_pruned_block() {
 	// Finalizing block 3 directly will also result in block 1 and 2 being finalized.
 	// It will also mark block 2 and block 3 from the fork as pruned.
 	let event: FollowEvent<String> = get_next_event(&mut sub).await;
+
+	// Sort the hashes to prevent flaky tests.
+	let mut pruned_block_hashes =
+		vec![format!("{:?}", block_2_f_hash), format!("{:?}", block_3_f_hash)];
+	pruned_block_hashes.sort();
+
 	let expected = FollowEvent::Finalized(Finalized {
 		finalized_block_hashes: vec![
 			format!("{:?}", block_1_hash),
 			format!("{:?}", block_2_hash),
 			format!("{:?}", block_3_hash),
 		],
-		pruned_block_hashes: vec![format!("{:?}", block_2_f_hash), format!("{:?}", block_3_f_hash)],
+		pruned_block_hashes,
 	});
 	assert_eq!(event, expected);
 
@@ -2612,6 +2740,10 @@ async fn pin_block_references() {
 	assert_matches!(
 		get_next_event::<FollowEvent<String>>(&mut sub).await,
 		FollowEvent::Initialized(_)
+	);
+	assert_matches!(
+		get_next_event::<FollowEvent<String>>(&mut sub).await,
+		FollowEvent::BestBlockChanged(_)
 	);
 	assert_matches!(
 		get_next_event::<FollowEvent<String>>(&mut sub).await,
@@ -2811,7 +2943,8 @@ async fn ensure_operation_limits_works() {
 	let backend = builder.backend();
 	let client = Arc::new(builder.build());
 
-	// Configure the chainHead with maximum 1 ongoing operations.
+	// Configure the chainHead with maximum 4 ongoing operations to tolerate brief overlaps during
+	// cleanup.
 	let api = ChainHead::new(
 		client.clone(),
 		backend,
@@ -2819,7 +2952,7 @@ async fn ensure_operation_limits_works() {
 		ChainHeadConfig {
 			global_max_pinned_blocks: MAX_PINNED_BLOCKS,
 			subscription_max_pinned_duration: Duration::from_secs(MAX_PINNED_SECS),
-			subscription_max_ongoing_operations: 1,
+			subscription_max_ongoing_operations: 4,
 			max_lagging_distance: MAX_LAGGING_DISTANCE,
 			max_follow_subscriptions_per_connection: MAX_FOLLOW_SUBSCRIPTIONS_PER_CONNECTION,
 			subscription_buffer_cap: MAX_PINNED_BLOCKS,
@@ -2848,6 +2981,10 @@ async fn ensure_operation_limits_works() {
 	);
 	assert_matches!(
 		get_next_event::<FollowEvent<String>>(&mut sub).await,
+		FollowEvent::BestBlockChanged(_)
+	);
+	assert_matches!(
+		get_next_event::<FollowEvent<String>>(&mut sub).await,
 		FollowEvent::NewBlock(_)
 	);
 	assert_matches!(
@@ -2859,10 +2996,26 @@ async fn ensure_operation_limits_works() {
 	let key = hex_string(&KEY);
 
 	let items = vec![
-		StorageQuery { key: key.clone(), query_type: StorageQueryType::DescendantsHashes },
-		StorageQuery { key: key.clone(), query_type: StorageQueryType::DescendantsHashes },
-		StorageQuery { key: key.clone(), query_type: StorageQueryType::DescendantsValues },
-		StorageQuery { key: key.clone(), query_type: StorageQueryType::DescendantsValues },
+		StorageQuery {
+			key: key.clone(),
+			query_type: StorageQueryType::DescendantsHashes,
+			pagination_start_key: None,
+		},
+		StorageQuery {
+			key: key.clone(),
+			query_type: StorageQueryType::DescendantsHashes,
+			pagination_start_key: None,
+		},
+		StorageQuery {
+			key: key.clone(),
+			query_type: StorageQueryType::DescendantsValues,
+			pagination_start_key: None,
+		},
+		StorageQuery {
+			key: key.clone(),
+			query_type: StorageQueryType::DescendantsValues,
+			pagination_start_key: None,
+		},
 	];
 
 	let response: MethodResponse = api
@@ -2959,6 +3112,10 @@ async fn storage_is_backpressured() {
 	);
 	assert_matches!(
 		get_next_event::<FollowEvent<String>>(&mut sub).await,
+		FollowEvent::BestBlockChanged(_)
+	);
+	assert_matches!(
+		get_next_event::<FollowEvent<String>>(&mut sub).await,
 		FollowEvent::NewBlock(_)
 	);
 	assert_matches!(
@@ -2986,7 +3143,8 @@ async fn storage_is_backpressured() {
 				&block_hash,
 				vec![StorageQuery {
 					key: hex_string(b":m"),
-					query_type: StorageQueryType::DescendantsValues
+					query_type: StorageQueryType::DescendantsValues,
+					pagination_start_key: None
 				}]
 			],
 		)
@@ -3094,6 +3252,10 @@ async fn stop_storage_operation() {
 	);
 	assert_matches!(
 		get_next_event::<FollowEvent<String>>(&mut sub).await,
+		FollowEvent::BestBlockChanged(_)
+	);
+	assert_matches!(
+		get_next_event::<FollowEvent<String>>(&mut sub).await,
 		FollowEvent::NewBlock(_)
 	);
 	assert_matches!(
@@ -3121,7 +3283,8 @@ async fn stop_storage_operation() {
 				&block_hash,
 				vec![StorageQuery {
 					key: hex_string(b":m"),
-					query_type: StorageQueryType::DescendantsValues
+					query_type: StorageQueryType::DescendantsValues,
+					pagination_start_key: None
 				}]
 			],
 		)
@@ -3189,39 +3352,47 @@ async fn storage_closest_merkle_value() {
 					vec![
 						StorageQuery {
 							key: hex_string(b":AAAA"),
-							query_type: StorageQueryType::ClosestDescendantMerkleValue
+							query_type: StorageQueryType::ClosestDescendantMerkleValue,
+							pagination_start_key: None
 						},
 						StorageQuery {
 							key: hex_string(b":AAAB"),
-							query_type: StorageQueryType::ClosestDescendantMerkleValue
+							query_type: StorageQueryType::ClosestDescendantMerkleValue,
+							pagination_start_key: None
 						},
 						// Key with descendant.
 						StorageQuery {
 							key: hex_string(b":A"),
-							query_type: StorageQueryType::ClosestDescendantMerkleValue
+							query_type: StorageQueryType::ClosestDescendantMerkleValue,
+							pagination_start_key: None
 						},
 						StorageQuery {
 							key: hex_string(b":AA"),
-							query_type: StorageQueryType::ClosestDescendantMerkleValue
+							query_type: StorageQueryType::ClosestDescendantMerkleValue,
+							pagination_start_key: None
 						},
 						// Keys below this comment do not produce a result.
 						// Key that exceed the keyspace of the trie.
 						StorageQuery {
 							key: hex_string(b":AAAAX"),
-							query_type: StorageQueryType::ClosestDescendantMerkleValue
+							query_type: StorageQueryType::ClosestDescendantMerkleValue,
+							pagination_start_key: None
 						},
 						StorageQuery {
 							key: hex_string(b":AAABX"),
-							query_type: StorageQueryType::ClosestDescendantMerkleValue
+							query_type: StorageQueryType::ClosestDescendantMerkleValue,
+							pagination_start_key: None
 						},
 						// Key that are not part of the trie.
 						StorageQuery {
 							key: hex_string(b":AAX"),
-							query_type: StorageQueryType::ClosestDescendantMerkleValue
+							query_type: StorageQueryType::ClosestDescendantMerkleValue,
+							pagination_start_key: None
 						},
 						StorageQuery {
 							key: hex_string(b":AAAX"),
-							query_type: StorageQueryType::ClosestDescendantMerkleValue
+							query_type: StorageQueryType::ClosestDescendantMerkleValue,
+							pagination_start_key: None
 						},
 					]
 				],
@@ -3240,16 +3411,18 @@ async fn storage_closest_merkle_value() {
 
 		loop {
 			match get_next_event::<FollowEvent<String>>(&mut sub).await {
-				FollowEvent::OperationStorageItems(res) if res.operation_id == operation_id =>
+				FollowEvent::OperationStorageItems(res) if res.operation_id == operation_id => {
 					for res in res.items {
 						let value = match res.result {
 							StorageResultType::ClosestDescendantMerkleValue(value) => value,
 							_ => panic!("Unexpected StorageResultType"),
 						};
 						merkle_values.insert(res.key, value);
-					},
-				FollowEvent::OperationStorageDone(done) if done.operation_id == operation_id =>
-					break,
+					}
+				},
+				FollowEvent::OperationStorageDone(done) if done.operation_id == operation_id => {
+					break
+				},
 				_ => panic!("Unexpected event"),
 			}
 		}
@@ -3378,6 +3551,10 @@ async fn chain_head_stop_all_subscriptions() {
 	assert_matches!(
 		get_next_event::<FollowEvent<String>>(&mut sub).await,
 		FollowEvent::Initialized(_)
+	);
+	assert_matches!(
+		get_next_event::<FollowEvent<String>>(&mut sub).await,
+		FollowEvent::BestBlockChanged(_)
 	);
 
 	// Import 6 blocks in total to trigger the suspension distance.
@@ -3520,7 +3697,11 @@ async fn chain_head_single_connection_context() {
 		&client,
 		first_sub_id.clone(),
 		finalized_hash.clone(),
-		vec![StorageQuery { key: key.clone(), query_type: StorageQueryType::Hash }],
+		vec![StorageQuery {
+			key: key.clone(),
+			query_type: StorageQueryType::Hash,
+			pagination_start_key: None,
+		}],
 		None,
 	)
 	.await
@@ -3531,7 +3712,11 @@ async fn chain_head_single_connection_context() {
 		&second_client,
 		first_sub_id.clone(),
 		finalized_hash.clone(),
-		vec![StorageQuery { key: key.clone(), query_type: StorageQueryType::Hash }],
+		vec![StorageQuery {
+			key: key.clone(),
+			query_type: StorageQueryType::Hash,
+			pagination_start_key: None,
+		}],
 		None,
 	)
 	.await
@@ -3636,6 +3821,13 @@ async fn follow_unique_pruned_blocks() {
 		finalized_block_hashes: vec![format!("{:?}", finalized_hash)],
 		finalized_block_runtime: None,
 		with_runtime: false,
+	});
+	assert_eq!(event, expected);
+
+	// Then the best block
+	let event: FollowEvent<String> = get_next_event(&mut sub).await;
+	let expected = FollowEvent::BestBlockChanged(BestBlockChanged {
+		best_block_hash: format!("{:?}", finalized_hash),
 	});
 	assert_eq!(event, expected);
 
@@ -3805,6 +3997,13 @@ async fn follow_report_best_block_of_a_known_block() {
 		finalized_block_hashes: vec![format!("{:?}", finalized_hash)],
 		finalized_block_runtime: None,
 		with_runtime: false,
+	});
+	assert_eq!(event, expected);
+
+	// Then the best block
+	let event: FollowEvent<String> = get_next_event(&mut sub).await;
+	let expected = FollowEvent::BestBlockChanged(BestBlockChanged {
+		best_block_hash: format!("{:?}", finalized_hash),
 	});
 	assert_eq!(event, expected);
 
@@ -4024,6 +4223,13 @@ async fn follow_event_with_unknown_parent() {
 		finalized_block_hashes: vec![format!("{:?}", finalized_hash)],
 		finalized_block_runtime: None,
 		with_runtime: false,
+	});
+	assert_eq!(event, expected);
+
+	// Then the best block
+	let event: FollowEvent<String> = get_next_event(&mut sub).await;
+	let expected = FollowEvent::BestBlockChanged(BestBlockChanged {
+		best_block_hash: format!("{:?}", finalized_hash),
 	});
 	assert_eq!(event, expected);
 

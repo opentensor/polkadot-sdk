@@ -298,13 +298,15 @@ mod benchmarks {
 			0,
 		);
 
-		let pure_account = Pallet::<T>::pure_account(&caller, &T::ProxyType::default(), 0, None)?;
+		let pure_account = Pallet::<T>::pure_account(&caller, &T::ProxyType::default(), 0, None);
 		assert_last_event::<T>(
 			Event::PureCreated {
 				pure: pure_account,
 				who: caller,
 				proxy_type: T::ProxyType::default(),
 				disambiguation_index: 0,
+				at: <T as Config>::BlockNumberProvider::current_block_number(),
+				extrinsic_index: frame_system::Pallet::<T>::extrinsic_index().unwrap_or_default(),
 			}
 			.into(),
 		);
@@ -325,7 +327,7 @@ mod benchmarks {
 		)?;
 		let height = T::BlockNumberProvider::current_block_number();
 		let ext_index = frame_system::Pallet::<T>::extrinsic_index().unwrap_or(0);
-		let pure_account = Pallet::<T>::pure_account(&caller, &T::ProxyType::default(), 0, None)?;
+		let pure_account = Pallet::<T>::pure_account(&caller, &T::ProxyType::default(), 0, None);
 
 		add_proxies::<T>(p, Some(pure_account.clone()))?;
 		ensure!(Proxies::<T>::contains_key(&pure_account), "pure proxy not created");
@@ -453,21 +455,6 @@ mod benchmarks {
 			}
 			.into(),
 		);
-
-		Ok(())
-	}
-
-	#[benchmark]
-	fn set_real_pays_fee(p: Linear<1, { T::MaxProxies::get() - 1 }>) -> Result<(), BenchmarkError> {
-		add_proxies::<T>(p, None)?;
-		let real: T::AccountId = whitelisted_caller();
-		let delegate: T::AccountId = account("target", p - 1, SEED);
-		let delegate_lookup = T::Lookup::unlookup(delegate.clone());
-
-		#[extrinsic_call]
-		_(RawOrigin::Signed(real.clone()), delegate_lookup, true);
-
-		assert_has_event::<T>(Event::RealPaysFeeSet { real, delegate, pays_fee: true }.into());
 
 		Ok(())
 	}

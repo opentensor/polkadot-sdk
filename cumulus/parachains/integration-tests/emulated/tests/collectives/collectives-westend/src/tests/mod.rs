@@ -14,7 +14,7 @@
 // limitations under the License.
 
 mod aliases;
-mod fellowship;
-mod fellowship_salary;
+mod claim_assets;
+mod collectives_salary;
 mod fellowship_treasury;
 mod teleport;

@@ -37,17 +37,16 @@ use polkadot_node_network_protocol::{
 		CollationVersion, PeerSet, PeerSetProtocolNames, PerPeerSet, ProtocolVersion,
 		ValidationVersion,
 	},
-	v1 as protocol_v1, v2 as protocol_v2, v3 as protocol_v3, ObservedRole, OurView, PeerId,
-	UnifiedReputationChange as Rep, View,
+	v1 as protocol_v1, v2 as protocol_v2, v3 as protocol_v3, v3_collation, ObservedRole, OurView,
+	PeerId, UnifiedReputationChange as Rep, View,
 };
 
 use polkadot_node_subsystem::{
 	errors::SubsystemError,
 	messages::{
-		network_bridge_event::NewGossipTopology, ApprovalDistributionMessage,
-		ApprovalVotingParallelMessage, BitfieldDistributionMessage, CollatorProtocolMessage,
-		GossipSupportMessage, NetworkBridgeEvent, NetworkBridgeRxMessage,
-		StatementDistributionMessage,
+		network_bridge_event::NewGossipTopology, ApprovalVotingParallelMessage,
+		BitfieldDistributionMessage, CollatorProtocolMessage, GossipSupportMessage,
+		NetworkBridgeEvent, NetworkBridgeRxMessage, StatementDistributionMessage,
 	},
 	overseer, ActivatedLeaf, ActiveLeavesUpdate, FromOrchestra, OverseerSignal, SpawnedSubsystem,
 };
@@ -66,7 +65,8 @@ use super::validator_discovery;
 ///
 /// Defines the `Network` trait with an implementation for an `Arc<NetworkService>`.
 use crate::network::{
-	send_collation_message_v1, send_collation_message_v2, send_validation_message_v3, Network,
+	send_collation_message_v1, send_collation_message_v2, send_collation_message_v3,
+	send_validation_message_v3, Network,
 };
 use crate::{network::get_peer_id_by_authority_id, WireMessage};
 
@@ -90,7 +90,6 @@ pub struct NetworkBridgeRx<N, AD> {
 	validation_service: Box<dyn NotificationService>,
 	collation_service: Box<dyn NotificationService>,
 	notification_sinks: Arc<Mutex<HashMap<(PeerSet, PeerId), Box<dyn MessageSink>>>>,
-	approval_voting_parallel_enabled: bool,
 }
 
 impl<N, AD> NetworkBridgeRx<N, AD> {
@@ -107,7 +106,6 @@ impl<N, AD> NetworkBridgeRx<N, AD> {
 		peerset_protocol_names: PeerSetProtocolNames,
 		mut notification_services: HashMap<PeerSet, Box<dyn NotificationService>>,
 		notification_sinks: Arc<Mutex<HashMap<(PeerSet, PeerId), Box<dyn MessageSink>>>>,
-		approval_voting_parallel_enabled: bool,
 	) -> Self {
 		let shared = Shared::default();
 
@@ -128,7 +126,6 @@ impl<N, AD> NetworkBridgeRx<N, AD> {
 			validation_service,
 			collation_service,
 			notification_sinks,
-			approval_voting_parallel_enabled,
 		}
 	}
 }
@@ -160,7 +157,6 @@ async fn handle_validation_message<AD>(
 	peerset_protocol_names: &PeerSetProtocolNames,
 	notification_service: &mut Box<dyn NotificationService>,
 	notification_sinks: &mut Arc<Mutex<HashMap<(PeerSet, PeerId), Box<dyn MessageSink>>>>,
-	approval_voting_parallel_enabled: bool,
 ) where
 	AD: validator_discovery::AuthorityDiscovery + Send,
 {
@@ -186,7 +182,7 @@ async fn handle_validation_message<AD>(
 						?peer,
 						"Failed to determine peer role for validation protocol",
 					);
-					return
+					return;
 				},
 			};
 
@@ -205,7 +201,7 @@ async fn handle_validation_message<AD>(
 								"Unknown fallback",
 							);
 
-							return
+							return;
 						},
 						Some((p2, v2)) => {
 							if p2 != peer_set {
@@ -217,7 +213,7 @@ async fn handle_validation_message<AD>(
 									"Fallback mismatched peer-set",
 								);
 
-								return
+								return;
 							}
 
 							(p2, v2)
@@ -242,7 +238,7 @@ async fn handle_validation_message<AD>(
 						?role,
 						"Message sink not available for peer",
 					);
-					return
+					return;
 				},
 			}
 
@@ -281,7 +277,6 @@ async fn handle_validation_message<AD>(
 				],
 				sender,
 				&metrics,
-				approval_voting_parallel_enabled,
 			)
 			.await;
 
@@ -323,7 +318,6 @@ async fn handle_validation_message<AD>(
 					NetworkBridgeEvent::PeerDisconnected(peer),
 					sender,
 					&metrics,
-					approval_voting_parallel_enabled,
 				)
 				.await;
 			}
@@ -374,13 +368,7 @@ async fn handle_validation_message<AD>(
 				network_service.report_peer(peer, report.into());
 			}
 
-			dispatch_validation_events_to_all(
-				events,
-				sender,
-				&metrics,
-				approval_voting_parallel_enabled,
-			)
-			.await;
+			dispatch_validation_events_to_all(events, sender, &metrics).await;
 		},
 	}
 }
@@ -421,7 +409,7 @@ async fn handle_collation_message<AD>(
 						?peer,
 						"Failed to determine peer role for validation protocol",
 					);
-					return
+					return;
 				},
 			};
 
@@ -440,7 +428,7 @@ async fn handle_collation_message<AD>(
 								"Unknown fallback",
 							);
 
-							return
+							return;
 						},
 						Some((p2, v2)) => {
 							if p2 != peer_set {
@@ -452,7 +440,7 @@ async fn handle_collation_message<AD>(
 									"Fallback mismatched peer-set",
 								);
 
-								return
+								return;
 							}
 
 							(p2, v2)
@@ -478,7 +466,7 @@ async fn handle_collation_message<AD>(
 						role = ?role,
 						"Message sink not available for peer",
 					);
-					return
+					return;
 				},
 			}
 
@@ -534,6 +522,12 @@ async fn handle_collation_message<AD>(
 					metrics,
 					notification_sinks,
 				),
+				CollationVersion::V3 => send_collation_message_v3(
+					vec![peer],
+					WireMessage::<v3_collation::CollationProtocol>::ViewUpdate(local_view),
+					metrics,
+					notification_sinks,
+				),
 			}
 		},
 		NotificationEvent::NotificationStreamClosed { peer } => {
@@ -583,37 +577,45 @@ async fn handle_collation_message<AD>(
 				?peer,
 			);
 
-			let (events, reports) =
-				if expected_versions[PeerSet::Collation] == Some(CollationVersion::V1.into()) {
-					handle_peer_messages::<protocol_v1::CollationProtocol, _>(
-						peer,
-						PeerSet::Collation,
-						&mut shared.0.lock().collation_peers,
-						vec![notification.into()],
-						metrics,
-					)
-				} else if expected_versions[PeerSet::Collation] == Some(CollationVersion::V2.into())
-				{
-					handle_peer_messages::<protocol_v2::CollationProtocol, _>(
-						peer,
-						PeerSet::Collation,
-						&mut shared.0.lock().collation_peers,
-						vec![notification.into()],
-						metrics,
-					)
-				} else {
-					gum::warn!(
-						target: LOG_TARGET,
-						version = ?expected_versions[PeerSet::Collation],
-						"Major logic bug. Peer somehow has unsupported collation protocol version."
-					);
+			let (events, reports) = if expected_versions[PeerSet::Collation] ==
+				Some(CollationVersion::V1.into())
+			{
+				handle_peer_messages::<protocol_v1::CollationProtocol, _>(
+					peer,
+					PeerSet::Collation,
+					&mut shared.0.lock().collation_peers,
+					vec![notification.into()],
+					metrics,
+				)
+			} else if expected_versions[PeerSet::Collation] == Some(CollationVersion::V2.into()) {
+				handle_peer_messages::<protocol_v2::CollationProtocol, _>(
+					peer,
+					PeerSet::Collation,
+					&mut shared.0.lock().collation_peers,
+					vec![notification.into()],
+					metrics,
+				)
+			} else if expected_versions[PeerSet::Collation] == Some(CollationVersion::V3.into()) {
+				handle_peer_messages::<v3_collation::CollationProtocol, _>(
+					peer,
+					PeerSet::Collation,
+					&mut shared.0.lock().collation_peers,
+					vec![notification.into()],
+					metrics,
+				)
+			} else {
+				gum::warn!(
+					target: LOG_TARGET,
+					version = ?expected_versions[PeerSet::Collation],
+					"Major logic bug. Peer somehow has unsupported collation protocol version."
+				);
 
-					never!("Only versions 1 and 2 are supported; peer set connection checked above; qed");
+				never!("Only versions 1, 2 and 3 are supported; peer set connection checked above; qed");
 
-					// If a peer somehow triggers this, we'll disconnect them
-					// eventually.
-					(Vec::new(), vec![UNCONNECTED_PEERSET_COST])
-				};
+				// If a peer somehow triggers this, we'll disconnect them
+				// eventually.
+				(Vec::new(), vec![UNCONNECTED_PEERSET_COST])
+			};
 
 			for report in reports {
 				network_service.report_peer(peer, report.into());
@@ -634,7 +636,6 @@ async fn handle_network_messages<AD>(
 	mut validation_service: Box<dyn NotificationService>,
 	mut collation_service: Box<dyn NotificationService>,
 	mut notification_sinks: Arc<Mutex<HashMap<(PeerSet, PeerId), Box<dyn MessageSink>>>>,
-	approval_voting_parallel_enabled: bool,
 ) -> Result<(), Error>
 where
 	AD: validator_discovery::AuthorityDiscovery + Send,
@@ -652,7 +653,6 @@ where
 					&peerset_protocol_names,
 					&mut validation_service,
 					&mut notification_sinks,
-					approval_voting_parallel_enabled,
 				).await,
 				None => return Err(Error::EventStreamConcluded),
 			},
@@ -711,7 +711,6 @@ async fn run_incoming_orchestra_signals<Context, AD>(
 	sync_oracle: Box<dyn SyncOracle + Send>,
 	metrics: Metrics,
 	notification_sinks: Arc<Mutex<HashMap<(PeerSet, PeerId), Box<dyn MessageSink>>>>,
-	approval_voting_parallel_enabled: bool,
 ) -> Result<(), Error>
 where
 	AD: validator_discovery::AuthorityDiscovery + Clone,
@@ -752,7 +751,6 @@ where
 							local_index,
 						}),
 						ctx.sender(),
-						approval_voting_parallel_enabled,
 					);
 				} else {
 					dispatch_validation_event_to_approval_unbounded(
@@ -762,7 +760,6 @@ where
 							local_index,
 						}),
 						ctx.sender(),
-						approval_voting_parallel_enabled,
 					);
 				}
 
@@ -787,7 +784,6 @@ where
 				dispatch_validation_event_to_all_unbounded(
 					NetworkBridgeEvent::UpdatedAuthorityIds(peer_id, authority_ids),
 					ctx.sender(),
-					approval_voting_parallel_enabled,
 				);
 			},
 			FromOrchestra::Signal(OverseerSignal::Conclude) => return Ok(()),
@@ -827,7 +823,6 @@ where
 							finalized_number,
 							&metrics,
 							&notification_sinks,
-							approval_voting_parallel_enabled,
 						);
 						note_peers_count(&metrics, &shared);
 					}
@@ -877,7 +872,6 @@ where
 		validation_service,
 		collation_service,
 		notification_sinks,
-		approval_voting_parallel_enabled,
 	} = bridge;
 
 	let (task, network_event_handler) = handle_network_messages(
@@ -890,7 +884,6 @@ where
 		validation_service,
 		collation_service,
 		notification_sinks.clone(),
-		approval_voting_parallel_enabled,
 	)
 	.remote_handle();
 
@@ -904,7 +897,6 @@ where
 		sync_oracle,
 		metrics,
 		notification_sinks,
-		approval_voting_parallel_enabled,
 	);
 
 	futures::pin_mut!(orchestra_signal_handler);
@@ -931,7 +923,6 @@ fn update_our_view<Context>(
 	finalized_number: BlockNumber,
 	metrics: &Metrics,
 	notification_sinks: &Arc<Mutex<HashMap<(PeerSet, PeerId), Box<dyn MessageSink>>>>,
-	approval_voting_parallel_enabled: bool,
 ) {
 	let new_view = construct_view(live_heads.iter().map(|v| v.hash), finalized_number);
 
@@ -947,7 +938,7 @@ fn update_our_view<Context>(
 			Some(ref v) if v.check_heads_eq(&new_view) => return,
 			None if live_heads.is_empty() => {
 				shared.local_view = Some(new_view);
-				return
+				return;
 			},
 			_ => {
 				shared.local_view = Some(new_view.clone());
@@ -983,7 +974,6 @@ fn update_our_view<Context>(
 	dispatch_validation_event_to_all_unbounded(
 		NetworkBridgeEvent::OurViewChange(our_view.clone()),
 		ctx.sender(),
-		approval_voting_parallel_enabled,
 	);
 
 	dispatch_collation_event_to_all_unbounded(
@@ -994,6 +984,8 @@ fn update_our_view<Context>(
 	let v1_collation_peers = filter_by_peer_version(&collation_peers, CollationVersion::V1.into());
 
 	let v2_collation_peers = filter_by_peer_version(&collation_peers, CollationVersion::V2.into());
+
+	let v3_collation_peers = filter_by_peer_version(&collation_peers, CollationVersion::V3.into());
 
 	let v3_validation_peers =
 		filter_by_peer_version(&validation_peers, ValidationVersion::V3.into());
@@ -1007,6 +999,13 @@ fn update_our_view<Context>(
 
 	send_collation_message_v2(
 		v2_collation_peers,
+		WireMessage::ViewUpdate(new_view.clone()),
+		metrics,
+		notification_sinks,
+	);
+
+	send_collation_message_v3(
+		v3_collation_peers,
 		WireMessage::ViewUpdate(new_view.clone()),
 		metrics,
 		notification_sinks,
@@ -1042,7 +1041,7 @@ fn handle_peer_messages<RawMessage: Decode, OutMessage: From<RawMessage>>(
 		let message = match WireMessage::<RawMessage>::decode_all(&mut message.as_ref()) {
 			Err(_) => {
 				reports.push(MALFORMED_MESSAGE_COST);
-				continue
+				continue;
 			},
 			Ok(m) => m,
 		};
@@ -1053,20 +1052,21 @@ fn handle_peer_messages<RawMessage: Decode, OutMessage: From<RawMessage>>(
 					new_view.finalized_number < peer_data.view.finalized_number
 				{
 					reports.push(MALFORMED_VIEW_COST);
-					continue
+					continue;
 				} else if new_view.is_empty() {
 					reports.push(EMPTY_VIEW_COST);
-					continue
+					continue;
 				} else if new_view == peer_data.view {
-					continue
+					continue;
 				} else {
 					peer_data.view = new_view;
 
 					NetworkBridgeEvent::PeerViewChange(peer, peer_data.view.clone())
 				}
 			},
-			WireMessage::ProtocolMessage(message) =>
-				NetworkBridgeEvent::PeerMessage(peer, message.into()),
+			WireMessage::ProtocolMessage(message) => {
+				NetworkBridgeEvent::PeerMessage(peer, message.into())
+			},
 		})
 	}
 
@@ -1077,15 +1077,8 @@ async fn dispatch_validation_event_to_all(
 	event: NetworkBridgeEvent<net_protocol::VersionedValidationProtocol>,
 	ctx: &mut impl overseer::NetworkBridgeRxSenderTrait,
 	metrics: &Metrics,
-	approval_voting_parallel_enabled: bool,
 ) {
-	dispatch_validation_events_to_all(
-		std::iter::once(event),
-		ctx,
-		metrics,
-		approval_voting_parallel_enabled,
-	)
-	.await
+	dispatch_validation_events_to_all(std::iter::once(event), ctx, metrics).await
 }
 
 async fn dispatch_collation_event_to_all(
@@ -1098,27 +1091,17 @@ async fn dispatch_collation_event_to_all(
 fn dispatch_validation_event_to_approval_unbounded(
 	event: &NetworkBridgeEvent<net_protocol::VersionedValidationProtocol>,
 	sender: &mut impl overseer::NetworkBridgeRxSenderTrait,
-	approval_voting_parallel_enabled: bool,
 ) {
-	if approval_voting_parallel_enabled {
-		event
-			.focus()
-			.ok()
-			.map(ApprovalVotingParallelMessage::from)
-			.and_then(|msg| Some(sender.send_unbounded_message(msg)));
-	} else {
-		event
-			.focus()
-			.ok()
-			.map(ApprovalDistributionMessage::from)
-			.and_then(|msg| Some(sender.send_unbounded_message(msg)));
-	}
+	event
+		.focus()
+		.ok()
+		.map(ApprovalVotingParallelMessage::from)
+		.and_then(|msg| Some(sender.send_unbounded_message(msg)));
 }
 
 fn dispatch_validation_event_to_all_unbounded(
 	event: NetworkBridgeEvent<net_protocol::VersionedValidationProtocol>,
 	sender: &mut impl overseer::NetworkBridgeRxSenderTrait,
-	approval_voting_parallel_enabled: bool,
 ) {
 	event
 		.focus()
@@ -1131,11 +1114,7 @@ fn dispatch_validation_event_to_all_unbounded(
 		.map(BitfieldDistributionMessage::from)
 		.and_then(|msg| Some(sender.send_unbounded_message(msg)));
 
-	dispatch_validation_event_to_approval_unbounded(
-		&event,
-		sender,
-		approval_voting_parallel_enabled,
-	);
+	dispatch_validation_event_to_approval_unbounded(&event, sender);
 
 	event
 		.focus()
@@ -1157,7 +1136,6 @@ async fn dispatch_validation_events_to_all<I>(
 	events: I,
 	sender: &mut impl overseer::NetworkBridgeRxSenderTrait,
 	_metrics: &Metrics,
-	approval_voting_parallel_enabled: bool,
 ) where
 	I: IntoIterator<Item = NetworkBridgeEvent<net_protocol::VersionedValidationProtocol>>,
 	I::IntoIter: Send,
@@ -1187,11 +1165,7 @@ async fn dispatch_validation_events_to_all<I>(
 	for event in events {
 		send_message!(event, StatementDistributionMessage);
 		send_message!(event, BitfieldDistributionMessage);
-		if approval_voting_parallel_enabled {
-			send_message!(event, ApprovalVotingParallelMessage);
-		} else {
-			send_message!(event, ApprovalDistributionMessage);
-		}
+		send_message!(event, ApprovalVotingParallelMessage);
 		send_message!(event, GossipSupportMessage);
 	}
 }

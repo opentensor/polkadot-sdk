@@ -451,7 +451,7 @@ impl<Hash: hash::Hash + Member + Serialize, Ex> ReadyTransactions<Hash, Ex> {
 
 			// bail - the transaction has too low priority to replace the old ones
 			if old_priority >= tx.priority {
-				return Err(error::Error::TooLowPriority { old: old_priority, new: tx.priority })
+				return Err(error::Error::TooLowPriority { old: old_priority, new: tx.priority });
 			}
 
 			// construct a list of unlocked transactions
@@ -552,7 +552,7 @@ impl<Hash: hash::Hash + Member, Ex> Iterator for BestIterator<Hash, Ex> {
 					?tx_hash,
 					"Skipping invalid child transaction while iterating."
 				);
-				continue
+				continue;
 			}
 
 			let ready = match self.all.get(tx_hash).cloned() {
@@ -578,7 +578,7 @@ impl<Hash: hash::Hash + Member, Ex> Iterator for BestIterator<Hash, Ex> {
 				}
 			}
 
-			return Some(best.transaction)
+			return Some(best.transaction);
 		}
 	}
 }
@@ -597,7 +597,6 @@ fn is_tx_replacement_allowed() -> bool {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::mock::EnvGuard;
 	use assert_matches::assert_matches;
 
 	fn tx(id: u8) -> Transaction<u64, Vec<u8>> {
@@ -624,7 +623,6 @@ mod tests {
 
 	#[test]
 	fn should_replace_transaction_that_provides_the_same_tag() {
-		let _guard = EnvGuard::allow_tx_replacement();
 		// given
 		let mut ready = ReadyTransactions::default();
 		let mut tx1 = tx(1);
@@ -653,7 +651,6 @@ mod tests {
 
 	#[test]
 	fn should_replace_multiple_transactions_correctly() {
-		let _guard = EnvGuard::allow_tx_replacement();
 		// given
 		let mut ready = ReadyTransactions::default();
 		let mut tx0 = tx(0);
@@ -691,6 +688,8 @@ mod tests {
 
 	#[test]
 	fn should_ban_transaction_replacement_if_not_allowed() {
+		std::env::remove_var("SUBSTRATE_ALLOW_TX_REPLACEMENT");
+
 		// given
 		let mut ready = ReadyTransactions::default();
 		let mut tx1 = tx(1);
@@ -705,6 +704,8 @@ mod tests {
 		// but we cannot replace it without being banned
 		let res = import(&mut ready, tx2);
 		assert_matches!(res.unwrap_err(), error::Error::TemporarilyBanned);
+
+		std::env::set_var("SUBSTRATE_ALLOW_TX_REPLACEMENT", "1");
 	}
 
 	/// Populate the pool, with a graph that looks like so:

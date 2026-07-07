@@ -133,6 +133,7 @@
 //! mod generic_election_provider {
 //!     use super::*;
 //!     use sp_runtime::traits::Zero;
+//! 	use frame_support::pallet_prelude::Weight;
 //!
 //!     pub struct GenericElectionProvider<T: Config>(std::marker::PhantomData<T>);
 //!
@@ -148,6 +149,7 @@
 //!         type BlockNumber = BlockNumber;
 //!         type Error = &'static str;
 //!         type MaxBackersPerWinner = T::MaxBackersPerWinner;
+//! 		type MaxBackersPerWinnerFinal = T::MaxBackersPerWinner;
 //!         type MaxWinnersPerPage = T::MaxWinnersPerPage;
 //!         type Pages = T::Pages;
 //!         type DataProvider = T::DataProvider;
@@ -160,7 +162,7 @@
 //!             unimplemented!()
 //!         }
 //!
-//!         fn status() -> Result<bool, ()> {
+//!         fn status() -> Result<Option<Weight>, ()> {
 //!             unimplemented!()
 //!         }
 //!     }
@@ -207,10 +209,7 @@ use alloc::{boxed::Box, vec::Vec};
 use core::fmt::Debug;
 use frame_support::traits::{Defensive, DefensiveResult};
 use sp_core::ConstU32;
-use sp_runtime::{
-	traits::{Bounded, Saturating, Zero},
-	RuntimeDebug,
-};
+use sp_runtime::traits::{Bounded, Saturating, Zero};
 
 pub use bounds::DataProviderBounds;
 pub use codec::{Decode, DecodeWithMemTracking, Encode, MaxEncodedLen};
@@ -273,7 +272,7 @@ pub type PageIndex = u32;
 /// The voter and target identifiers have already been replaced with appropriate indices,
 /// making it fast to repeatedly encode into a `SolutionOf<T>`. This property turns out
 /// to be important when trimming for solution length.
-#[derive(RuntimeDebug, Clone, Default)]
+#[derive(Debug, Clone, Default)]
 #[cfg_attr(feature = "std", derive(PartialEq, Eq, Encode, Decode))]
 pub struct IndexAssignment<VoterIndex, TargetIndex, P: PerThing> {
 	/// Index of the voter among the voters list.
@@ -374,7 +373,7 @@ pub trait ElectionDataProvider {
 	/// appropriate weight at the end of execution with the system pallet directly.
 	///
 	/// A sensible implementation should use the minimum between this value and
-	/// [`Self::targets().len()`], since desiring a winner set larger than candidates is not
+	/// `Self::targets().len()`, since desiring a winner set larger than candidates is not
 	/// feasible.
 	///
 	/// This is documented further in issue: <https://github.com/paritytech/substrate/issues/9478>
@@ -457,6 +456,13 @@ pub trait ElectionProvider {
 	/// election result.
 	type MaxBackersPerWinner: Get<u32>;
 
+	/// Same as [`Self::MaxBackersPerWinner`], but across all pages.
+	///
+	/// If [`Self::Pages`] is set to 0, a reasonable value is [`Self::MaxBackersPerWinner`]. For
+	/// multi-page elections, a reasonable value is the range of [`Self::MaxBackersPerWinner`] to
+	/// [`Self::Pages`] * [`Self::MaxBackersPerWinner`].
+	type MaxBackersPerWinnerFinal: Get<u32>;
+
 	/// The number of pages that this election provider supports.
 	type Pages: Get<PageIndex>;
 
@@ -515,14 +521,17 @@ pub trait ElectionProvider {
 
 	/// Indicate whether this election provider is currently ongoing an asynchronous election.
 	///
-	/// `Err(())` should signal that we are not doing anything, and `elect` should def. not be
-	/// called. `Ok(false)` means we are doing something, but work is still ongoing. `elect` should
-	/// not be called. `Ok(true)` means we are done and ready for a call to `elect`.
-	fn status() -> Result<bool, ()>;
+	/// * `Err(())` should signal that we are not doing anything, and `elect` should definitely not
+	///   be called.
+	/// * `Ok(None)` means we are doing something, but we are not done. `elect` should
+	/// not be called.
+	/// * `Ok(Some(Weight))` means we are done and ready for a call to `elect`, which should consume
+	///   at most the given weight when called.
+	fn status() -> Result<Option<Weight>, ()>;
 
 	/// Signal the election provider that we are about to call `elect` asap, and it should prepare
 	/// itself.
-	#[cfg(feature = "runtime-benchmarks")]
+	#[cfg(any(feature = "runtime-benchmarks", feature = "std"))]
 	fn asap() {}
 }
 
@@ -563,6 +572,7 @@ where
 	type DataProvider = DataProvider;
 	type MaxWinnersPerPage = MaxWinnersPerPage;
 	type MaxBackersPerWinner = MaxBackersPerWinner;
+	type MaxBackersPerWinnerFinal = MaxBackersPerWinner;
 
 	fn elect(_page: PageIndex) -> Result<BoundedSupportsOf<Self>, Self::Error> {
 		Err("`NoElection` cannot do anything.")
@@ -576,7 +586,7 @@ where
 		Zero::zero()
 	}
 
-	fn status() -> Result<bool, ()> {
+	fn status() -> Result<Option<Weight>, ()> {
 		Err(())
 	}
 }
@@ -781,7 +791,9 @@ pub trait NposSolver {
 /// Then it iterates over the voters and assigns them to the winners.
 ///
 /// It is only meant to be used in benchmarking.
+#[cfg(feature = "runtime-benchmarks")]
 pub struct QuickDirtySolver<AccountId, Accuracy>(core::marker::PhantomData<(AccountId, Accuracy)>);
+#[cfg(feature = "runtime-benchmarks")]
 impl<AccountId: IdentifierT, Accuracy: PerThing128> NposSolver
 	for QuickDirtySolver<AccountId, Accuracy>
 {
@@ -810,11 +822,13 @@ impl<AccountId: IdentifierT, Accuracy: PerThing128> NposSolver
 		let mut final_winners = BTreeMap::<Self::AccountId, u128>::new();
 
 		for (voter, weight, votes) in voters {
+			// any of the `n` winners that we have voted for..
 			let our_winners = winners
 				.iter()
 				.filter(|w| votes.clone().into_iter().any(|v| v == **w))
 				.collect::<Vec<_>>();
 			let our_winners_len = our_winners.len();
+			// will get `1/n` of our stake/weight.
 			let distribution = our_winners
 				.into_iter()
 				.map(|w| {
@@ -957,7 +971,7 @@ impl<AccountId: Clone, Bound: Get<u32>> BoundedSupport<AccountId, Bound> {
 	pub fn sorted_truncate_from(mut support: sp_npos_elections::Support<AccountId>) -> (Self, u32) {
 		// If bounds meet, then short circuit.
 		if let Ok(bounded) = support.clone().try_into() {
-			return (bounded, 0)
+			return (bounded, 0);
 		}
 
 		let pre_len = support.voters.len();
@@ -969,7 +983,7 @@ impl<AccountId: Clone, Bound: Get<u32>> BoundedSupport<AccountId, Bound> {
 		let mut bounded = Self { voters: Default::default(), total: 0 };
 		while let Some((voter, weight)) = support.voters.pop() {
 			if let Err(_) = bounded.voters.try_push((voter, weight)) {
-				break
+				break;
 			}
 			bounded.total += weight;
 		}
@@ -1043,7 +1057,7 @@ impl<AccountId: Clone, BOuter: Get<u32>, BInner: Get<u32>>
 	pub fn sorted_truncate_from(supports: Supports<AccountId>) -> (Self, u32, u32) {
 		// if bounds, meet, short circuit
 		if let Ok(bounded) = supports.clone().try_into() {
-			return (bounded, 0, 0)
+			return (bounded, 0, 0);
 		}
 
 		let pre_winners = supports.len();

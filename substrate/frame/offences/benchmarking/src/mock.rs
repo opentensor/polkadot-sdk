@@ -17,6 +17,7 @@
 
 //! Mock file for offences benchmarking.
 
+use codec::Encode;
 use frame_election_provider_support::{
 	bounds::{ElectionBounds, ElectionBoundsBuilder},
 	onchain, SequentialPhragmen,
@@ -97,6 +98,16 @@ impl pallet_session::Config for Test {
 	type ValidatorIdOf = sp_runtime::traits::ConvertInto;
 	type DisablingStrategy = ();
 	type WeightInfo = ();
+	type Currency = Balances;
+	type KeyDeposit = ();
+}
+
+impl pallet_session_benchmarking::Config for Test {
+	fn generate_session_keys_and_proof(owner: Self::AccountId) -> (Self::Keys, Vec<u8>) {
+		let keys = SessionKeys::generate(&owner.encode(), None);
+
+		(keys.keys, keys.proof.encode())
+	}
 }
 
 pallet_staking_reward_curve::build! {

@@ -22,14 +22,9 @@
 use frame_benchmarking::v2::*;
 use frame_support::{traits::UnfilteredDispatchable, WeakBoundedVec};
 use frame_system::RawOrigin;
-use sp_runtime::{
-	traits::{ValidateUnsigned, Zero},
-	transaction_validity::TransactionSource,
-};
+use sp_runtime::{traits::Zero, transaction_validity::TransactionSource};
 
 use crate::*;
-
-const MAX_KEYS: u32 = 1000;
 
 pub fn create_heartbeat<T: Config>(
 	k: u32,
@@ -67,7 +62,7 @@ mod benchmarks {
 	use super::*;
 
 	#[benchmark(extra)]
-	fn heartbeat(k: Linear<1, MAX_KEYS>) -> Result<(), BenchmarkError> {
+	fn heartbeat(k: Linear<1, { <T as Config>::MaxKeys::get() }>) -> Result<(), BenchmarkError> {
 		let (input_heartbeat, signature) = create_heartbeat::<T>(k)?;
 
 		#[extrinsic_call]
@@ -77,12 +72,15 @@ mod benchmarks {
 	}
 
 	#[benchmark(extra)]
-	fn validate_unsigned(k: Linear<1, MAX_KEYS>) -> Result<(), BenchmarkError> {
+	fn validate_unsigned(
+		k: Linear<1, { <T as Config>::MaxKeys::get() }>,
+	) -> Result<(), BenchmarkError> {
 		let (input_heartbeat, signature) = create_heartbeat::<T>(k)?;
 		let call = Call::heartbeat { heartbeat: input_heartbeat, signature };
 
 		#[block]
 		{
+			#[allow(deprecated)]
 			Pallet::<T>::validate_unsigned(TransactionSource::InBlock, &call)
 				.map_err(<&str>::from)?;
 		}
@@ -91,13 +89,16 @@ mod benchmarks {
 	}
 
 	#[benchmark]
-	fn validate_unsigned_and_then_heartbeat(k: Linear<1, MAX_KEYS>) -> Result<(), BenchmarkError> {
+	fn validate_unsigned_and_then_heartbeat(
+		k: Linear<1, { <T as Config>::MaxKeys::get() }>,
+	) -> Result<(), BenchmarkError> {
 		let (input_heartbeat, signature) = create_heartbeat::<T>(k)?;
 		let call = Call::heartbeat { heartbeat: input_heartbeat, signature };
 		let call_enc = call.encode();
 
 		#[block]
 		{
+			#[allow(deprecated)]
 			Pallet::<T>::validate_unsigned(TransactionSource::InBlock, &call)
 				.map_err(<&str>::from)?;
 			<Call<T> as Decode>::decode(&mut &*call_enc)

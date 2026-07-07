@@ -28,7 +28,10 @@ pub(crate) mod statement_store;
 pub mod types;
 
 use crate::cli::AuthoringPolicy;
-use cumulus_primitives_core::{CollectCollationInfo, GetCoreSelectorApi, RelayParentOffsetApi};
+
+use cumulus_primitives_core::{
+	CollectCollationInfo, GetParachainInfo, RelayParentOffsetApi, SchedulingV3EnabledApi,
+};
 use sc_client_db::DbHash;
 use sc_offchain::OffchainWorkerApi;
 use serde::de::DeserializeOwned;
@@ -39,10 +42,9 @@ use sp_runtime::{
 	OpaqueExtrinsic,
 };
 use sp_session::SessionKeys;
-use sp_statement_store::runtime_api::ValidateStatement;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
+use sp_transaction_storage_proof::runtime_api::TransactionStorageApi;
 use std::{fmt::Debug, path::PathBuf, str::FromStr};
-use stp_shield::runtime_api::ShieldApi;
 
 pub trait NodeBlock:
 	BlockT<Extrinsic = OpaqueExtrinsic, Header = Self::BoundedHeader, Hash = DbHash> + DeserializeOwned
@@ -72,10 +74,10 @@ pub trait NodeRuntimeApi<Block: BlockT>:
 	+ TaggedTransactionQueue<Block>
 	+ OffchainWorkerApi<Block>
 	+ CollectCollationInfo<Block>
-	+ GetCoreSelectorApi<Block>
-	+ ValidateStatement<Block>
+	+ GetParachainInfo<Block>
+	+ TransactionStorageApi<Block>
 	+ RelayParentOffsetApi<Block>
-	+ ShieldApi<Block>
+	+ SchedulingV3EnabledApi<Block>
 	+ Sized
 {
 }
@@ -87,11 +89,11 @@ impl<T, Block: BlockT> NodeRuntimeApi<Block> for T where
 		+ BlockBuilder<Block>
 		+ TaggedTransactionQueue<Block>
 		+ OffchainWorkerApi<Block>
-		+ GetCoreSelectorApi<Block>
 		+ RelayParentOffsetApi<Block>
 		+ CollectCollationInfo<Block>
-		+ ValidateStatement<Block>
-		+ ShieldApi<Block>
+		+ GetParachainInfo<Block>
+		+ TransactionStorageApi<Block>
+		+ SchedulingV3EnabledApi<Block>
 {
 }
 
@@ -126,6 +128,14 @@ pub struct NodeExtraArgs {
 	/// It will be removed once <https://github.com/paritytech/polkadot-sdk/issues/6020> is fixed.
 	pub max_pov_percentage: Option<u32>,
 
-	/// If true then the statement store will be enabled.
-	pub enable_statement_store: bool,
+	/// Statement store and network handler configuration.
+	/// `None` disables the statement store.
+	pub statement_store_config: Option<sc_statement_store::Config>,
+
+	/// Parameters for storage monitoring.
+	pub storage_monitor: sc_storage_monitor::StorageMonitorParams,
+
+	/// HOP (Hand-Off Protocol) configuration parameters.
+	/// `None` disables HOP.
+	pub hop: Option<sc_hop::HopParams>,
 }

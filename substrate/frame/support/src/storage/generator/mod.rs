@@ -63,11 +63,10 @@ mod tests {
 			type AccountId;
 			type BaseCallFilter: crate::traits::Contains<Self::RuntimeCall>;
 			type RuntimeOrigin;
-			type RuntimeCall: sp_runtime::traits::Dispatchable;
+			type RuntimeCall;
 			type RuntimeTask;
 			type PalletInfo: crate::traits::PalletInfo;
 			type DbWeight: Get<crate::weights::RuntimeDbWeight>;
-			type DispatchExtension: crate::traits::DispatchExtension<Self::RuntimeCall>;
 		}
 
 		#[pallet::origin]
@@ -81,15 +80,6 @@ mod tests {
 
 		#[pallet::call]
 		impl<T: Config> Pallet<T> {}
-
-		impl<T: Config> Pallet<T> {
-			pub fn check_dispatch_guard(
-				_origin: &T::RuntimeOrigin,
-				_call: &T::RuntimeCall,
-			) -> crate::dispatch::DispatchResultWithPostInfo {
-				Ok(().into())
-			}
-		}
 
 		#[pallet::storage]
 		pub type Value<T> = StorageValue<_, (u64, u64), ValueQuery>;
@@ -144,7 +134,6 @@ mod tests {
 		type RuntimeTask = RuntimeTask;
 		type PalletInfo = PalletInfo;
 		type DbWeight = ();
-		type DispatchExtension = ();
 	}
 
 	pub fn key_before_prefix(mut prefix: Vec<u8>) -> Vec<u8> {
@@ -200,9 +189,13 @@ mod tests {
 			);
 
 			// do translation.
-			NumberMap::translate(
-				|k: u32, v: u64| if k % 2 == 0 { Some(((k as u64) << 32) | v) } else { None },
-			);
+			NumberMap::translate(|k: u32, v: u64| {
+				if k.is_multiple_of(2) {
+					Some(((k as u64) << 32) | v)
+				} else {
+					None
+				}
+			});
 
 			assert_eq!(
 				NumberMap::iter().collect::<Vec<_>>(),

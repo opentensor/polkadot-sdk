@@ -312,15 +312,13 @@ impl<Hash: hash::Hash + Member + Serialize, Ex: std::fmt::Debug> BasePool<Hash, 
 	/// ready to be included in the block.
 	pub fn import(&mut self, tx: Transaction<Hash, Ex>) -> error::Result<Imported<Hash, Ex>> {
 		if self.is_imported(&tx.hash) {
-			return Err(error::Error::AlreadyImported(Box::new(tx.hash)))
+			return Err(error::Error::AlreadyImported(Box::new(tx.hash)));
 		}
 
 		let tx = WaitingTransaction::new(tx, self.ready.provided_tags(), &self.recently_pruned);
-		let is_evm = tx.transaction.provides.iter().any(|tag| tag.starts_with(b"evm:"));
 		trace!(
 			target: LOG_TARGET,
 			tx_hash = ?tx.transaction.hash,
-			tx_type = if is_evm { "evm" } else { "substrate" },
 			?tx,
 			set = if tx.is_ready() { "ready" } else { "future" },
 			"Importing transaction"
@@ -329,12 +327,12 @@ impl<Hash: hash::Hash + Member + Serialize, Ex: std::fmt::Debug> BasePool<Hash, 
 		// If all tags are not satisfied import to future.
 		if !tx.is_ready() {
 			if self.reject_future_transactions {
-				return Err(error::Error::RejectedFutureTransaction)
+				return Err(error::Error::RejectedFutureTransaction);
 			}
 
 			let hash = tx.transaction.hash.clone();
 			self.future.import(tx);
-			return Ok(Imported::Future { hash })
+			return Ok(Imported::Future { hash });
 		}
 
 		self.import_to_ready(tx)
@@ -384,7 +382,7 @@ impl<Hash: hash::Hash + Member + Serialize, Ex: std::fmt::Debug> BasePool<Hash, 
 						"Error importing transaction"
 					);
 					if first {
-						return Err(error)
+						return Err(error);
 					} else {
 						removed.push(current_tx);
 						promoted.retain(|hash| *hash != current_hash);
@@ -400,7 +398,7 @@ impl<Hash: hash::Hash + Member + Serialize, Ex: std::fmt::Debug> BasePool<Hash, 
 						"Error importing transaction"
 					);
 					if first {
-						return Err(error)
+						return Err(error);
 					} else {
 						failed.push(current_tx.hash.clone());
 					}
@@ -424,7 +422,7 @@ impl<Hash: hash::Hash + Member + Serialize, Ex: std::fmt::Debug> BasePool<Hash, 
 				?tx_hash,
 				"Cycle detected, bailing."
 			);
-			return Err(error::Error::CycleDetected)
+			return Err(error::Error::CycleDetected);
 		}
 
 		Ok(Imported::Ready { hash: tx_hash, promoted, failed, removed })
@@ -483,12 +481,13 @@ impl<Hash: hash::Hash + Member + Serialize, Ex: std::fmt::Debug> BasePool<Hash, 
 							match worst.transaction.priority.cmp(&transaction.transaction.priority)
 							{
 								Ordering::Less => worst,
-								Ordering::Equal =>
+								Ordering::Equal => {
 									if worst.insertion_id > transaction.insertion_id {
 										transaction.clone()
 									} else {
 										worst
-									},
+									}
+								},
 								Ordering::Greater => transaction.clone(),
 							}
 						})
@@ -498,7 +497,7 @@ impl<Hash: hash::Hash + Member + Serialize, Ex: std::fmt::Debug> BasePool<Hash, 
 			if let Some(worst) = worst {
 				removed.append(&mut self.remove_subtree(&[worst.transaction.hash.clone()]))
 			} else {
-				break
+				break;
 			}
 		}
 
@@ -516,12 +515,13 @@ impl<Hash: hash::Hash + Member + Serialize, Ex: std::fmt::Debug> BasePool<Hash, 
 								worst
 							}
 						},
-						_ =>
+						_ => {
 							if worst.imported_at > current.imported_at {
 								current.clone()
 							} else {
 								worst
-							},
+							}
+						},
 					},
 				),
 			});
@@ -529,7 +529,7 @@ impl<Hash: hash::Hash + Member + Serialize, Ex: std::fmt::Debug> BasePool<Hash, 
 			if let Some(worst) = worst {
 				removed.append(&mut self.remove_subtree(&[worst.transaction.hash.clone()]))
 			} else {
-				break
+				break;
 			}
 		}
 
@@ -635,8 +635,6 @@ impl Limit {
 #[cfg(test)]
 mod tests {
 	use super::*;
-
-	use crate::mock::EnvGuard;
 
 	type Hash = u64;
 
@@ -854,7 +852,6 @@ mod tests {
 
 	#[test]
 	fn should_remove_conflicting_future() {
-		let _guard = EnvGuard::allow_tx_replacement();
 		let mut pool = pool();
 		pool.import(Transaction {
 			data: vec![3u8].into(),
@@ -907,7 +904,6 @@ mod tests {
 
 	#[test]
 	fn should_handle_a_cycle() {
-		let _guard = EnvGuard::allow_tx_replacement();
 		// given
 		let mut pool = pool();
 		pool.import(Transaction {
@@ -975,7 +971,6 @@ mod tests {
 
 	#[test]
 	fn should_handle_a_cycle_with_low_priority() {
-		let _guard = EnvGuard::allow_tx_replacement();
 		// given
 		let mut pool = pool();
 		pool.import(Transaction {
@@ -1176,7 +1171,7 @@ mod tests {
 			),
 			"Transaction { \
 hash: 4, priority: 1000, valid_till: 64, bytes: 1, propagate: true, \
-source: TimedTransactionSource { source: TransactionSource::External, timestamp: None }, requires: [03, 02], provides: [04], data: [4]}"
+source: TimedTransactionSource { source: External, timestamp: None }, requires: [03, 02], provides: [04], data: [4]}"
 				.to_owned()
 		);
 	}

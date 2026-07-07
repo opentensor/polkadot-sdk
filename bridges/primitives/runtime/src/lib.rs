@@ -29,14 +29,14 @@ use serde::{Deserialize, Serialize};
 use sp_core::storage::StorageKey;
 use sp_runtime::{
 	traits::{BadOrigin, Header as HeaderT, UniqueSaturatedInto},
-	RuntimeDebug,
+	Debug,
 };
-use sp_std::{fmt::Debug, ops::RangeInclusive, vec, vec::Vec};
+use sp_std::{ops::RangeInclusive, vec, vec::Vec};
 
 pub use chain::{
-	__private, AccountIdOf, AccountPublicOf, BalanceOf, BlockNumberOf, Chain, EncodedOrDecodedCall,
-	HashOf, HasherOf, HeaderOf, NonceOf, Parachain, ParachainIdOf, SignatureOf, TransactionEraOf,
-	UnderlyingChainOf, UnderlyingChainProvider,
+	AccountIdOf, AccountPublicOf, BalanceOf, BlockNumberOf, Chain, EncodedOrDecodedCall, HashOf,
+	HasherOf, HeaderOf, NonceOf, Parachain, ParachainIdOf, SignatureOf, TransactionEraOf,
+	UnderlyingChainOf, UnderlyingChainProvider, __private,
 };
 pub use frame_support::storage::storage_prefix as storage_value_final_key;
 use num_traits::{CheckedAdd, CheckedSub, One, SaturatingAdd, Zero};
@@ -76,7 +76,7 @@ pub const NO_INSTANCE_ID: ChainId = [0, 0, 0, 0];
 
 /// Generic header Id.
 #[derive(
-	RuntimeDebug,
+	Debug,
 	Default,
 	Clone,
 	Encode,
@@ -165,7 +165,7 @@ impl Size for PreComputedSize {
 }
 
 /// Era of specific transaction.
-#[derive(RuntimeDebug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TransactionEra<BlockNumber, BlockHash> {
 	/// Transaction is immortal.
 	Immortal,
@@ -205,8 +205,9 @@ impl<BlockNumber: Copy + UniqueSaturatedInto<u64>, BlockHash: Copy>
 			TransactionEra::Immortal => sp_runtime::generic::Era::immortal(),
 			// `unique_saturated_into` is fine here - mortality `u64::MAX` is not something we
 			// expect to see on any chain
-			TransactionEra::Mortal(header_id, period) =>
-				sp_runtime::generic::Era::mortal(period as _, header_id.0.unique_saturated_into()),
+			TransactionEra::Mortal(header_id, period) => {
+				sp_runtime::generic::Era::mortal(period as _, header_id.0.unique_saturated_into())
+			},
 		}
 	}
 
@@ -346,7 +347,7 @@ pub trait OperatingMode: Send + Copy + Debug + FullCodec {
 	Copy,
 	PartialEq,
 	Eq,
-	RuntimeDebug,
+	Debug,
 	TypeInfo,
 	MaxEncodedLen,
 	Serialize,
@@ -371,6 +372,8 @@ impl OperatingMode for BasicOperatingMode {
 	}
 }
 
+const COMMON_LOG_TARGET: &'static str = "runtime::bridge-module";
+
 /// Bridge module that has owner and operating mode
 pub trait OwnedBridgeModule<T: frame_system::Config> {
 	/// The target that will be used when publishing logs related to this module.
@@ -394,7 +397,9 @@ pub trait OwnedBridgeModule<T: frame_system::Config> {
 			Ok(RawOrigin::Root) => Ok(()),
 			Ok(RawOrigin::Signed(ref signer))
 				if Self::OwnerStorage::get().as_ref() == Some(signer) =>
-				Ok(()),
+			{
+				Ok(())
+			},
 			_ => Err(BadOrigin),
 		}
 	}
@@ -413,11 +418,11 @@ pub trait OwnedBridgeModule<T: frame_system::Config> {
 		match maybe_owner {
 			Some(owner) => {
 				Self::OwnerStorage::put(&owner);
-				log::info!(target: Self::LOG_TARGET, "Setting pallet Owner to: {:?}", owner);
+				tracing::info!(target: COMMON_LOG_TARGET, module=%Self::LOG_TARGET, ?owner, "Setting pallet.");
 			},
 			None => {
 				Self::OwnerStorage::kill();
-				log::info!(target: Self::LOG_TARGET, "Removed Owner of pallet.");
+				tracing::info!(target: COMMON_LOG_TARGET, module=%Self::LOG_TARGET, "Removed Owner of pallet.");
 			},
 		}
 
@@ -431,7 +436,7 @@ pub trait OwnedBridgeModule<T: frame_system::Config> {
 	) -> DispatchResult {
 		Self::ensure_owner_or_root(origin)?;
 		Self::OperatingModeStorage::put(operating_mode);
-		log::info!(target: Self::LOG_TARGET, "Setting operating mode to {:?}.", operating_mode);
+		tracing::info!(target: COMMON_LOG_TARGET, module=%Self::LOG_TARGET, ?operating_mode, "Setting operating mode.");
 		Ok(())
 	}
 

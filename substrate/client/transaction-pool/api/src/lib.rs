@@ -311,7 +311,7 @@ pub trait TransactionPool: Send + Sync {
 	/// occurred.
 	///
 	/// Function returns the transactions actually removed from the pool.
-	fn report_invalid(
+	async fn report_invalid(
 		&self,
 		at: Option<<Self::Block as BlockT>::Hash>,
 		invalid_tx_errors: TxInvalidityReportMap<TxHash<Self>>,
@@ -526,7 +526,7 @@ impl<Block: BlockT> sp_core::offchain::TransactionPool for OffchainTransactionPo
 					"Failed to decode extrinsic in `OffchainTransactionPool::submit_transaction`: {e:?}"
 				);
 
-				return Err(())
+				return Err(());
 			},
 		};
 

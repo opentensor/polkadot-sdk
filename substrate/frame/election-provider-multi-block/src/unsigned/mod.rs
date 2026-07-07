@@ -107,14 +107,19 @@ mod pallet {
 	pub trait Config: crate::Config + CreateBare<Call<Self>> {
 		/// The repeat threshold of the offchain worker.
 		///
-		/// For example, if it is 5, that means that at least 5 blocks will elapse between attempts
-		/// to submit the worker's solution.
+		/// For example, if it is `5`, that means that at least 5 blocks will elapse between
+		/// attempts to submit the worker's solution.
 		type OffchainRepeat: Get<BlockNumberFor<Self>>;
 
 		/// The solver used in hte offchain worker miner
 		type OffchainSolver: frame_election_provider_support::NposSolver<
 			AccountId = Self::AccountId,
 		>;
+
+		/// Whether the offchain worker miner would attempt to store the solutions in a local
+		/// database and reuse then. If set to `false`, it will try and re-mine solutions every
+		/// time.
+		type OffchainStorage: Get<bool>;
 
 		/// The priority of the unsigned transaction submitted in the unsigned-phase
 		type MinerTxPriority: Get<TransactionPriority>;
@@ -171,12 +176,11 @@ mod pallet {
 			)
 			.expect(error_message);
 
-			sublog!(info, "unsigned", "queued an unsigned solution with score {:?}", claimed_score);
-
 			Ok(None.into())
 		}
 	}
 
+	#[allow(deprecated)]
 	#[pallet::validate_unsigned]
 	impl<T: Config> ValidateUnsigned for Pallet<T> {
 		type Call = Call<T>;
@@ -266,7 +270,7 @@ mod pallet {
 				},
 				Err(deadline) => {
 					sublog!(
-						debug,
+						trace,
 						"unsigned",
 						"offchain worker lock not released, deadline is {:?}",
 						deadline
@@ -281,7 +285,6 @@ mod pallet {
 		/// acquired with success.
 		fn do_synchronized_offchain_worker(now: BlockNumberFor<T>) {
 			use miner::OffchainWorkerMiner;
-
 			let current_phase = crate::Pallet::<T>::current_phase();
 			sublog!(
 				trace,
@@ -289,25 +292,37 @@ mod pallet {
 				"lock for offchain worker acquired. Phase = {:?}",
 				current_phase
 			);
+
+			// do the repeat frequency check just one, if we are in unsigned phase.
+			if current_phase.is_unsigned() {
+				if let Err(reason) = OffchainWorkerMiner::<T>::ensure_offchain_repeat_frequency(now)
+				{
+					sublog!(
+						debug,
+						"unsigned",
+						"offchain worker repeat frequency check failed: {:?}",
+						reason
+					);
+					return;
+				}
+			}
+
 			if current_phase.is_unsigned_opened_now() {
-				// Mine a new solution, cache it, and attempt to submit it
-				let initial_output =
-					OffchainWorkerMiner::<T>::ensure_offchain_repeat_frequency(now)
-						.and_then(|_| OffchainWorkerMiner::<T>::mine_check_save_submit());
+				// Mine a new solution, (maybe) cache it, and attempt to submit it
+				let initial_output = if T::OffchainStorage::get() {
+					OffchainWorkerMiner::<T>::mine_check_maybe_save_submit(true)
+				} else {
+					OffchainWorkerMiner::<T>::mine_check_maybe_save_submit(false)
+				};
 				sublog!(debug, "unsigned", "initial offchain worker output: {:?}", initial_output);
 			} else if current_phase.is_unsigned() {
-				// Try and resubmit the cached solution, and recompute ONLY if it is not
-				// feasible.
-				let resubmit_output = OffchainWorkerMiner::<T>::ensure_offchain_repeat_frequency(
-					now,
-				)
-				.and_then(|_| OffchainWorkerMiner::<T>::restore_or_compute_then_maybe_submit());
-				sublog!(
-					debug,
-					"unsigned",
-					"resubmit offchain worker output: {:?}",
-					resubmit_output
-				);
+				// Maybe resubmit the cached solution, else re-compute.
+				let resubmit_output = if T::OffchainStorage::get() {
+					OffchainWorkerMiner::<T>::restore_or_compute_then_maybe_submit()
+				} else {
+					OffchainWorkerMiner::<T>::mine_check_maybe_save_submit(false)
+				};
+				sublog!(debug, "unsigned", "later offchain worker output: {:?}", resubmit_output);
 			};
 		}
 
@@ -356,6 +371,7 @@ mod pallet {
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod validate_unsigned {
 	use frame_election_provider_support::Support;
 	use frame_support::{
@@ -367,69 +383,69 @@ mod validate_unsigned {
 	use crate::{mock::*, types::*, verifier::Verifier};
 
 	#[test]
-	fn retracts_weak_score_accepts_threshold_better() {
-		ExtBuilder::unsigned()
-			.solution_improvement_threshold(sp_runtime::Perbill::from_percent(10))
-			.build_and_execute(|| {
-				roll_to_snapshot_created();
+	fn retracts_weak_score_accepts_better() {
+		ExtBuilder::mock_signed().build_and_execute(|| {
+			roll_to_snapshot_created();
 
-				let solution = mine_full_solution().unwrap();
-				load_mock_signed_and_start(solution.clone());
-				roll_to_full_verification();
+			let base_minimal_stake = 55;
+			let solution = mine_full_solution().unwrap();
+			load_mock_signed_and_start(solution.clone());
+			roll_to_full_verification();
 
-				// Some good solution is queued now.
-				assert_eq!(
-					<VerifierPallet as Verifier>::queued_score(),
-					Some(ElectionScore {
-						minimal_stake: 55,
-						sum_stake: 130,
-						sum_stake_squared: 8650
-					})
-				);
+			// Some good solution is queued now.
+			assert_eq!(
+				<VerifierPallet as Verifier>::queued_score(),
+				Some(ElectionScore {
+					minimal_stake: base_minimal_stake,
+					sum_stake: 130,
+					sum_stake_squared: 8650
+				})
+			);
 
-				roll_to_unsigned_open();
+			roll_to_unsigned_open();
 
-				// this is just worse
-				let attempt =
-					fake_solution(ElectionScore { minimal_stake: 20, ..Default::default() });
-				let call = Call::submit_unsigned { paged_solution: Box::new(attempt) };
-				assert_eq!(
-					UnsignedPallet::validate_unsigned(TransactionSource::Local, &call).unwrap_err(),
-					TransactionValidityError::Invalid(InvalidTransaction::Custom(2)),
-				);
+			// This is just worse.
+			let attempt = fake_solution(ElectionScore {
+				minimal_stake: base_minimal_stake - 1,
+				..Default::default()
+			});
+			let call = Call::submit_unsigned { paged_solution: Box::new(attempt) };
+			assert_eq!(
+				UnsignedPallet::validate_unsigned(TransactionSource::Local, &call).unwrap_err(),
+				TransactionValidityError::Invalid(InvalidTransaction::Custom(2)),
+			);
 
-				// this is better, but not enough better.
-				let insufficient_improvement = 55 * 105 / 100;
-				let attempt = fake_solution(ElectionScore {
-					minimal_stake: insufficient_improvement,
-					..Default::default()
-				});
-				let call = Call::submit_unsigned { paged_solution: Box::new(attempt) };
-				assert_eq!(
-					UnsignedPallet::validate_unsigned(TransactionSource::Local, &call).unwrap_err(),
-					TransactionValidityError::Invalid(InvalidTransaction::Custom(2)),
-				);
+			// This is better, but the number of winners is incorrect.
+			let attempt = fake_solution(ElectionScore {
+				minimal_stake: base_minimal_stake + 1,
+				..Default::default()
+			});
+			let call = Call::submit_unsigned { paged_solution: Box::new(attempt) };
+			assert_eq!(
+				UnsignedPallet::validate_unsigned(TransactionSource::Local, &call).unwrap_err(),
+				TransactionValidityError::Invalid(InvalidTransaction::Custom(4)),
+			);
 
-				// note that we now have to use a solution with 2 winners, just to pass all of the
-				// snapshot independent checks.
-				let mut paged = raw_paged_from_supports(
-					vec![vec![
-						(40, Support { total: 10, voters: vec![(3, 5)] }),
-						(30, Support { total: 10, voters: vec![(3, 5)] }),
-					]],
-					0,
-				);
-				let sufficient_improvement = 55 * 115 / 100;
-				paged.score =
-					ElectionScore { minimal_stake: sufficient_improvement, ..Default::default() };
-				let call = Call::submit_unsigned { paged_solution: Box::new(paged) };
-				assert!(UnsignedPallet::validate_unsigned(TransactionSource::Local, &call).is_ok());
-			})
+			// Note that we now have to use a solution with 2 winners, just to pass all of the
+			// snapshot independent checks.
+			let mut paged = raw_paged_from_supports(
+				vec![vec![
+					(40, Support { total: 10, voters: vec![(3, 5)] }),
+					(30, Support { total: 10, voters: vec![(3, 5)] }),
+				]],
+				0,
+			);
+
+			paged.score =
+				ElectionScore { minimal_stake: base_minimal_stake + 1, ..Default::default() };
+			let call = Call::submit_unsigned { paged_solution: Box::new(paged) };
+			assert!(UnsignedPallet::validate_unsigned(TransactionSource::Local, &call).is_ok());
+		})
 	}
 
 	#[test]
 	fn retracts_wrong_round() {
-		ExtBuilder::unsigned().build_and_execute(|| {
+		ExtBuilder::mock_signed().build_and_execute(|| {
 			roll_to_unsigned_open();
 
 			let mut attempt =
@@ -447,7 +463,7 @@ mod validate_unsigned {
 
 	#[test]
 	fn retracts_too_many_pages_unsigned() {
-		ExtBuilder::unsigned().build_and_execute(|| {
+		ExtBuilder::mock_signed().build_and_execute(|| {
 			// NOTE: unsigned solutions should have just 1 page, regardless of the configured
 			// page count.
 			roll_to_unsigned_open();
@@ -477,7 +493,7 @@ mod validate_unsigned {
 
 	#[test]
 	fn retracts_wrong_winner_count() {
-		ExtBuilder::unsigned().desired_targets(2).build_and_execute(|| {
+		ExtBuilder::mock_signed().desired_targets(2).build_and_execute(|| {
 			roll_to_unsigned_open();
 
 			let paged = raw_paged_from_supports(
@@ -497,7 +513,7 @@ mod validate_unsigned {
 
 	#[test]
 	fn retracts_wrong_phase() {
-		ExtBuilder::unsigned().signed_phase(5, 0).build_and_execute(|| {
+		ExtBuilder::mock_signed().signed_phase(5, 6).build_and_execute(|| {
 			let solution = raw_paged_solution_low_score();
 			let call = Call::submit_unsigned { paged_solution: Box::new(solution.clone()) };
 
@@ -534,7 +550,7 @@ mod validate_unsigned {
 			));
 
 			// unsigned
-			roll_to(25);
+			roll_to_unsigned_open();
 			assert!(MultiBlock::current_phase().is_unsigned());
 
 			assert_ok!(<UnsignedPallet as ValidateUnsigned>::validate_unsigned(
@@ -547,7 +563,7 @@ mod validate_unsigned {
 
 	#[test]
 	fn priority_is_set() {
-		ExtBuilder::unsigned()
+		ExtBuilder::mock_signed()
 			.miner_tx_priority(20)
 			.desired_targets(0)
 			.build_and_execute(|| {
@@ -577,7 +593,7 @@ mod call {
 
 	#[test]
 	fn unsigned_submission_e2e() {
-		let (mut ext, pool) = ExtBuilder::unsigned().build_offchainify();
+		let (mut ext, pool) = ExtBuilder::mock_signed().build_offchainify();
 		ext.execute_with_sanity_checks(|| {
 			roll_to_unsigned_open();
 
@@ -605,7 +621,7 @@ mod call {
 		expected = "Invalid unsigned submission must produce invalid block and deprive validator from their authoring reward."
 	)]
 	fn unfeasible_solution_panics() {
-		let (mut ext, pool) = ExtBuilder::unsigned().build_offchainify();
+		let (mut ext, pool) = ExtBuilder::mock_signed().build_offchainify();
 		ext.execute_with_sanity_checks(|| {
 			roll_to_unsigned_open();
 

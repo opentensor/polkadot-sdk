@@ -29,9 +29,6 @@ mod graph;
 mod single_state_txpool;
 mod transaction_pool_wrapper;
 
-#[doc(hidden)]
-pub mod mock;
-
 use common::{api, enactment_state};
 use std::sync::Arc;
 

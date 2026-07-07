@@ -124,6 +124,8 @@ pub enum OffchainMinerError<T: Config> {
 	SolutionCallInvalid,
 	/// Failed to store a solution.
 	FailedToStoreSolution,
+	/// Cannot mine a solution with zero pages.
+	ZeroPages,
 }
 
 impl<T: Config> From<MinerError<T::MinerConfig>> for OffchainMinerError<T> {
@@ -189,9 +191,7 @@ pub trait MinerConfig {
 	///
 	/// Should equal to the onchain value set in `Verifier::Config`.
 	type MaxBackersPerWinnerFinal: Get<u32>;
-	/// Maximum number of backers, per winner, per page.
-
-	/// Maximum number of pages that we may compute.
+	/// **Maximum** number of pages that we may compute.
 	///
 	/// Must be the same as configured in the [`crate::Config`].
 	type Pages: Get<u32>;
@@ -221,6 +221,15 @@ pub type PageSupportsOfMiner<T> = frame_election_provider_support::BoundedSuppor
 	<T as MinerConfig>::MaxBackersPerWinner,
 >;
 
+/// Helper type that computes the maximum total winners across all pages.
+pub struct MaxWinnersFinal<T: MinerConfig>(core::marker::PhantomData<T>);
+
+impl<T: MinerConfig> frame_support::traits::Get<u32> for MaxWinnersFinal<T> {
+	fn get() -> u32 {
+		T::Pages::get().saturating_mul(T::MaxWinnersPerPage::get())
+	}
+}
+
 /// The full version of [`PageSupportsOfMiner`].
 ///
 /// This should be used on a support instance that is encapsulating the full solution.
@@ -228,7 +237,7 @@ pub type PageSupportsOfMiner<T> = frame_election_provider_support::BoundedSuppor
 /// Another way to look at it, this is never wrapped in a `Vec<_>`
 pub type FullSupportsOfMiner<T> = frame_election_provider_support::BoundedSupports<
 	<T as MinerConfig>::AccountId,
-	<T as MinerConfig>::MaxWinnersPerPage,
+	MaxWinnersFinal<T>,
 	<T as MinerConfig>::MaxBackersPerWinnerFinal,
 >;
 
@@ -418,7 +427,7 @@ impl<T: MinerConfig> BaseMiner<T> {
 		paged.score = score;
 
 		miner_log!(
-			info,
+			debug,
 			"mined a solution with {} pages, score {:?}, {} winners, {} voters, {} edges, and {} bytes",
 			pages,
 			score,
@@ -646,7 +655,7 @@ impl<T: MinerConfig> BaseMiner<T> {
 						"no more pages to trim from at page {}, already trimmed",
 						current_trimming_page
 					);
-					break
+					break;
 				}
 			}
 		}
@@ -710,10 +719,13 @@ impl<T: Config> OffchainWorkerMiner<T> {
 		Ok((voter_pages, all_targets, desired_targets))
 	}
 
-	pub(crate) fn mine_solution(
+	pub fn mine_solution(
 		pages: PageIndex,
 		do_reduce: bool,
 	) -> Result<PagedRawSolution<T::MinerConfig>, OffchainMinerError<T>> {
+		if pages.is_zero() {
+			return Err(OffchainMinerError::<T>::ZeroPages);
+		}
 		let (voter_pages, all_targets, desired_targets) = Self::fetch_snapshot(pages)?;
 		let round = crate::Pallet::<T>::round();
 		BaseMiner::<T::MinerConfig>::mine_solution(MineInput {
@@ -746,12 +758,14 @@ impl<T: Config> OffchainWorkerMiner<T> {
 		Ok(call)
 	}
 
-	/// Mine a new checked solution, cache it, and submit it back to the chain as an unsigned
+	/// Mine a new checked solution, maybe cache it, and submit it back to the chain as an unsigned
 	/// transaction.
-	pub fn mine_check_save_submit() -> Result<(), OffchainMinerError<T>> {
+	pub(crate) fn mine_check_maybe_save_submit(save: bool) -> Result<(), OffchainMinerError<T>> {
 		sublog!(debug, "unsigned::ocw-miner", "miner attempting to compute an unsigned solution.");
 		let call = Self::mine_checked_call()?;
-		Self::save_solution(&call, crate::Snapshot::<T>::fingerprint())?;
+		if save {
+			Self::save_solution(&call, crate::Snapshot::<T>::fingerprint())?;
+		}
 		Self::submit_call(call)
 	}
 
@@ -762,7 +776,7 @@ impl<T: Config> OffchainWorkerMiner<T> {
 	/// 	1. optionally feasibility check.
 	/// 	2. snapshot-independent checks.
 	/// 		1. optionally, snapshot fingerprint.
-	pub fn check_solution(
+	pub(crate) fn check_solution(
 		paged_solution: &PagedRawSolution<T::MinerConfig>,
 		maybe_snapshot_fingerprint: Option<T::Hash>,
 		do_feasibility: bool,
@@ -773,11 +787,6 @@ impl<T: Config> OffchainWorkerMiner<T> {
 	}
 
 	fn submit_call(call: Call<T>) -> Result<(), OffchainMinerError<T>> {
-		sublog!(
-			debug,
-			"unsigned::ocw-miner",
-			"miner submitting a solution as an unsigned transaction"
-		);
 		let xt = T::create_bare(call.into());
 		frame_system::offchain::SubmitTransaction::<T, Call<T>>::submit_transaction(xt)
 			.map(|_| {
@@ -829,7 +838,7 @@ impl<T: Config> OffchainWorkerMiner<T> {
 
 	/// Attempt to restore a solution from cache. Otherwise, compute it fresh. Either way,
 	/// submit if our call's score is greater than that of the cached solution.
-	pub fn restore_or_compute_then_maybe_submit() -> Result<(), OffchainMinerError<T>> {
+	pub(crate) fn restore_or_compute_then_maybe_submit() -> Result<(), OffchainMinerError<T>> {
 		sublog!(
 			debug,
 			"unsigned::ocw-miner",
@@ -916,8 +925,9 @@ impl<T: Config> OffchainWorkerMiner<T> {
 			|maybe_head: Result<Option<BlockNumberFor<T>>, _>| {
 				match maybe_head {
 					Ok(Some(head)) if now < head => Err("fork."),
-					Ok(Some(head)) if now >= head && now <= head + threshold =>
-						Err("recently executed."),
+					Ok(Some(head)) if now >= head && now <= head + threshold => {
+						Err("recently executed.")
+					},
 					Ok(Some(head)) if now > head + threshold => {
 						// we can run again now. Write the new head.
 						Ok(now)
@@ -952,8 +962,9 @@ impl<T: Config> OffchainWorkerMiner<T> {
 		let storage = StorageValueRef::persistent(&Self::OFFCHAIN_CACHED_CALL);
 		match storage.mutate::<_, (), _>(|_| Ok((call.clone(), snapshot_fingerprint))) {
 			Ok(_) => Ok(()),
-			Err(MutateStorageError::ConcurrentModification(_)) =>
-				Err(OffchainMinerError::FailedToStoreSolution),
+			Err(MutateStorageError::ConcurrentModification(_)) => {
+				Err(OffchainMinerError::FailedToStoreSolution)
+			},
 			Err(MutateStorageError::ValueFunctionFailed(_)) => {
 				// this branch should be unreachable according to the definition of
 				// `StorageValueRef::mutate`: that function should only ever `Err` if the closure we
@@ -998,7 +1009,7 @@ mod trimming {
 
 	#[test]
 	fn solution_without_any_trimming() {
-		ExtBuilder::unsigned().build_and_execute(|| {
+		ExtBuilder::mock_signed().build_and_execute(|| {
 			// adjust the voters a bit, such that they are all different backings
 			let mut current_voters = Voters::get();
 			current_voters.iter_mut().for_each(|(who, stake, ..)| *stake = *who);
@@ -1014,7 +1025,6 @@ mod trimming {
 			);
 
 			assert_eq!(solution.solution_pages.encoded_size(), 105);
-
 			load_mock_signed_and_start(solution);
 			let supports = roll_to_full_verification();
 
@@ -1042,7 +1052,7 @@ mod trimming {
 
 	#[test]
 	fn trim_length() {
-		ExtBuilder::unsigned().miner_max_length(104).build_and_execute(|| {
+		ExtBuilder::mock_signed().miner_max_length(104).build_and_execute(|| {
 			// adjust the voters a bit, such that they are all different backings
 			let mut current_voters = Voters::get();
 			current_voters.iter_mut().for_each(|(who, stake, ..)| *stake = *who);
@@ -1086,7 +1096,7 @@ mod trimming {
 
 	#[test]
 	fn trim_length_2() {
-		ExtBuilder::unsigned().miner_max_length(98).build_and_execute(|| {
+		ExtBuilder::mock_signed().miner_max_length(98).build_and_execute(|| {
 			// adjust the voters a bit, such that they are all different backings
 			let mut current_voters = Voters::get();
 			current_voters.iter_mut().for_each(|(who, stake, ..)| *stake = *who);
@@ -1128,7 +1138,7 @@ mod trimming {
 
 	#[test]
 	fn trim_length_3() {
-		ExtBuilder::unsigned().miner_max_length(92).build_and_execute(|| {
+		ExtBuilder::mock_signed().miner_max_length(92).build_and_execute(|| {
 			// adjust the voters a bit, such that they are all different backings
 			let mut current_voters = Voters::get();
 			current_voters.iter_mut().for_each(|(who, stake, ..)| *stake = *who);
@@ -1170,7 +1180,7 @@ mod trimming {
 
 	#[test]
 	fn trim_backers_per_page_works() {
-		ExtBuilder::unsigned().max_backers_per_winner(2).build_and_execute(|| {
+		ExtBuilder::mock_signed().max_backers_per_winner(2).build_and_execute(|| {
 			// adjust the voters a bit, such that they are all different backings
 			let mut current_voters = Voters::get();
 			current_voters.iter_mut().for_each(|(who, stake, ..)| *stake = *who);
@@ -1214,7 +1224,7 @@ mod trimming {
 	fn trim_backers_per_page_works_2() {
 		// This one is more interesting, as it also shows that as we trim backers, we re-distribute
 		// their weight elsewhere.
-		ExtBuilder::unsigned().max_backers_per_winner(1).build_and_execute(|| {
+		ExtBuilder::mock_signed().max_backers_per_winner(1).build_and_execute(|| {
 			// adjust the voters a bit, such that they are all different backings
 			let mut current_voters = Voters::get();
 			current_voters.iter_mut().for_each(|(who, stake, ..)| *stake = *who);
@@ -1253,47 +1263,50 @@ mod trimming {
 
 	#[test]
 	fn trim_backers_final_works() {
-		ExtBuilder::unsigned().max_backers_per_winner_final(4).build_and_execute(|| {
-			// adjust the voters a bit, such that they are all different backings
-			let mut current_voters = Voters::get();
-			current_voters.iter_mut().for_each(|(who, stake, ..)| *stake = *who);
-			Voters::set(current_voters);
+		ExtBuilder::mock_signed()
+			.max_backers_per_winner(4)
+			.max_backers_per_winner_final(4)
+			.build_and_execute(|| {
+				// adjust the voters a bit, such that they are all different backings
+				let mut current_voters = Voters::get();
+				current_voters.iter_mut().for_each(|(who, stake, ..)| *stake = *who);
+				Voters::set(current_voters);
 
-			roll_to_snapshot_created();
-			ensure_voters(3, 12);
+				roll_to_snapshot_created();
+				ensure_voters(3, 12);
 
-			let solution = mine_full_solution().unwrap();
+				let solution = mine_full_solution().unwrap();
 
-			load_mock_signed_and_start(solution);
-			let supports = roll_to_full_verification();
+				load_mock_signed_and_start(solution);
+				let supports = roll_to_full_verification();
 
-			// a solution is queued.
-			assert!(VerifierPallet::queued_score().is_some());
+				// a solution is queued.
+				assert!(VerifierPallet::queued_score().is_some());
 
-			// 30 has 1 + 3 = 4 backers -- all good
-			// 40 has 1 + 2 + 3 = 6 backers -- needs to lose 2
-			assert_eq!(
-				supports,
-				vec![
+				// 30 has 1 + 3 = 4 backers -- all good
+				// 40 has 1 + 2 + 3 = 6 backers -- needs to lose 2
+				assert_eq!(
+					supports,
 					vec![
-						(30, Support { total: 30, voters: vec![(30, 30)] }),
-						(40, Support { total: 40, voters: vec![(40, 40)] })
-					],
-					vec![
-						(30, Support { total: 14, voters: vec![(5, 5), (6, 2), (7, 7)] }),
-						(40, Support { total: 4, voters: vec![(6, 4)] })
-					],
-					vec![(40, Support { total: 7, voters: vec![(3, 3), (4, 4)] })]
-				]
-				.try_from_unbounded_paged()
-				.unwrap()
-			);
-		})
+						vec![
+							(30, Support { total: 30, voters: vec![(30, 30)] }),
+							(40, Support { total: 40, voters: vec![(40, 40)] })
+						],
+						vec![
+							(30, Support { total: 14, voters: vec![(5, 5), (6, 2), (7, 7)] }),
+							(40, Support { total: 4, voters: vec![(6, 4)] })
+						],
+						vec![(40, Support { total: 7, voters: vec![(3, 3), (4, 4)] })]
+					]
+					.try_from_unbounded_paged()
+					.unwrap()
+				);
+			})
 	}
 
 	#[test]
 	fn trim_backers_per_page_and_final_works() {
-		ExtBuilder::unsigned()
+		ExtBuilder::mock_signed()
 			.max_backers_per_winner_final(4)
 			.max_backers_per_winner(2)
 			.build_and_execute(|| {
@@ -1332,6 +1345,52 @@ mod trimming {
 				);
 			})
 	}
+
+	#[test]
+	fn aggressive_backer_trimming_maintains_winner_count() {
+		// Test the scenario where aggressive backer trimming is applied but the solution
+		// should still maintain the correct winner count to avoid WrongWinnerCount errors.
+		ExtBuilder::mock_signed()
+			.desired_targets(3)
+			.max_winners_per_page(2)
+			.pages(2)
+			.max_backers_per_winner_final(1) // aggressive final trimming
+			.max_backers_per_winner(1) // aggressive per-page trimming
+			.build_and_execute(|| {
+				// Use default 4 targets to stay within TargetSnapshotPerBlock limit
+
+				// Adjust the voters a bit, such that they are all different backings
+				let mut current_voters = Voters::get();
+				current_voters.iter_mut().for_each(|(who, stake, ..)| *stake = *who);
+				Voters::set(current_voters);
+
+				roll_to_snapshot_created();
+
+				let solution = mine_full_solution().unwrap();
+
+				// The solution should still be valid despite aggressive trimming
+				assert!(solution.solution_pages.len() > 0);
+
+				let winner_count = solution
+					.solution_pages
+					.iter()
+					.flat_map(|page| page.unique_targets())
+					.collect::<std::collections::HashSet<_>>()
+					.len();
+
+				// We should get 3 winners.
+				// This demonstrates that FullSupportsOfMiner can accommodate winners from multiple
+				// pages and can hold more winners than MaxWinnersPerPage.
+				assert_eq!(winner_count, 3);
+
+				// Load and verify the solution passes all checks without WrongWinnerCount error
+				load_mock_signed_and_start(solution);
+				let _supports = roll_to_full_verification();
+
+				// A solution should be successfully queued
+				assert!(VerifierPallet::queued_score().is_some());
+			})
+	}
 }
 
 #[cfg(test)]
@@ -1346,7 +1405,7 @@ mod base_miner {
 
 	#[test]
 	fn pagination_does_not_affect_score() {
-		let score_1 = ExtBuilder::unsigned()
+		let score_1 = ExtBuilder::mock_signed()
 			.pages(1)
 			.voter_per_page(12)
 			.build_unchecked()
@@ -1354,7 +1413,7 @@ mod base_miner {
 				roll_to_snapshot_created();
 				mine_full_solution().unwrap().score
 			});
-		let score_2 = ExtBuilder::unsigned()
+		let score_2 = ExtBuilder::mock_signed()
 			.pages(2)
 			.voter_per_page(6)
 			.build_unchecked()
@@ -1362,7 +1421,7 @@ mod base_miner {
 				roll_to_snapshot_created();
 				mine_full_solution().unwrap().score
 			});
-		let score_3 = ExtBuilder::unsigned()
+		let score_3 = ExtBuilder::mock_signed()
 			.pages(3)
 			.voter_per_page(4)
 			.build_unchecked()
@@ -1377,7 +1436,7 @@ mod base_miner {
 
 	#[test]
 	fn mine_solution_single_page_works() {
-		ExtBuilder::unsigned().pages(1).voter_per_page(8).build_and_execute(|| {
+		ExtBuilder::mock_signed().pages(1).voter_per_page(8).build_and_execute(|| {
 			roll_to_snapshot_created();
 
 			ensure_voters(1, 8);
@@ -1429,7 +1488,7 @@ mod base_miner {
 
 	#[test]
 	fn mine_solution_double_page_works() {
-		ExtBuilder::unsigned().pages(2).voter_per_page(4).build_and_execute(|| {
+		ExtBuilder::mock_signed().pages(2).voter_per_page(4).build_and_execute(|| {
 			roll_to_snapshot_created();
 
 			// 2 pages of 8 voters
@@ -1515,7 +1574,7 @@ mod base_miner {
 
 	#[test]
 	fn mine_solution_triple_page_works() {
-		ExtBuilder::unsigned().pages(3).voter_per_page(4).build_and_execute(|| {
+		ExtBuilder::mock_signed().pages(3).voter_per_page(4).build_and_execute(|| {
 			roll_to_snapshot_created();
 
 			ensure_voters(3, 12);
@@ -1606,7 +1665,7 @@ mod base_miner {
 
 	#[test]
 	fn mine_solution_choses_most_significant_pages() {
-		ExtBuilder::unsigned().pages(2).voter_per_page(4).build_and_execute(|| {
+		ExtBuilder::mock_signed().pages(2).voter_per_page(4).build_and_execute(|| {
 			roll_to_snapshot_created();
 
 			ensure_voters(2, 8);
@@ -1677,7 +1736,7 @@ mod base_miner {
 
 	#[test]
 	fn mine_solution_2_out_of_3_pages() {
-		ExtBuilder::unsigned().pages(3).voter_per_page(4).build_and_execute(|| {
+		ExtBuilder::mock_signed().pages(3).voter_per_page(4).build_and_execute(|| {
 			roll_to_snapshot_created();
 
 			ensure_voters(3, 12);
@@ -1776,7 +1835,7 @@ mod base_miner {
 
 	#[test]
 	fn can_reduce_solution() {
-		ExtBuilder::unsigned().build_and_execute(|| {
+		ExtBuilder::mock_signed().build_and_execute(|| {
 			roll_to_snapshot_created();
 			let full_edges = OffchainWorkerMiner::<Runtime>::mine_solution(Pages::get(), false)
 				.unwrap()
@@ -1805,7 +1864,7 @@ mod offchain_worker_miner {
 
 	#[test]
 	fn lock_prevents_frequent_execution() {
-		let (mut ext, _) = ExtBuilder::unsigned().build_offchainify();
+		let (mut ext, _) = ExtBuilder::mock_signed().build_offchainify();
 		ext.execute_with_sanity_checks(|| {
 			let offchain_repeat = <Runtime as crate::unsigned::Config>::OffchainRepeat::get();
 
@@ -1843,7 +1902,7 @@ mod offchain_worker_miner {
 	#[test]
 	fn lock_released_after_successful_execution() {
 		// first, ensure that a successful execution releases the lock
-		let (mut ext, pool) = ExtBuilder::unsigned().build_offchainify();
+		let (mut ext, pool) = ExtBuilder::mock_signed().build_offchainify();
 		ext.execute_with_sanity_checks(|| {
 			let guard = StorageValueRef::persistent(&OffchainWorkerMiner::<Runtime>::OFFCHAIN_LOCK);
 			let last_block =
@@ -1867,7 +1926,7 @@ mod offchain_worker_miner {
 	#[test]
 	fn lock_prevents_overlapping_execution() {
 		// ensure that if the guard is in hold, a new execution is not allowed.
-		let (mut ext, pool) = ExtBuilder::unsigned().build_offchainify();
+		let (mut ext, pool) = ExtBuilder::mock_signed().build_offchainify();
 		ext.execute_with_sanity_checks(|| {
 			roll_to_unsigned_open();
 
@@ -1894,7 +1953,7 @@ mod offchain_worker_miner {
 
 	#[test]
 	fn initial_ocw_runs_and_saves_new_cache() {
-		let (mut ext, pool) = ExtBuilder::unsigned().build_offchainify();
+		let (mut ext, pool) = ExtBuilder::mock_signed().build_offchainify();
 		ext.execute_with_sanity_checks(|| {
 			roll_to_unsigned_open();
 
@@ -1917,7 +1976,7 @@ mod offchain_worker_miner {
 
 	#[test]
 	fn ocw_pool_submission_works() {
-		let (mut ext, pool) = ExtBuilder::unsigned().build_offchainify();
+		let (mut ext, pool) = ExtBuilder::mock_signed().build_offchainify();
 		ext.execute_with_sanity_checks(|| {
 			roll_to_unsigned_open();
 
@@ -1938,7 +1997,7 @@ mod offchain_worker_miner {
 
 	#[test]
 	fn resubmits_after_offchain_repeat() {
-		let (mut ext, pool) = ExtBuilder::unsigned().build_offchainify();
+		let (mut ext, pool) = ExtBuilder::mock_signed().build_offchainify();
 		ext.execute_with_sanity_checks(|| {
 			let offchain_repeat = <Runtime as crate::unsigned::Config>::OffchainRepeat::get();
 			roll_to_unsigned_open();
@@ -1963,7 +2022,7 @@ mod offchain_worker_miner {
 
 	#[test]
 	fn regenerates_and_resubmits_after_offchain_repeat_if_no_cache() {
-		let (mut ext, pool) = ExtBuilder::unsigned().build_offchainify();
+		let (mut ext, pool) = ExtBuilder::mock_signed().build_offchainify();
 		ext.execute_with_sanity_checks(|| {
 			let offchain_repeat = <Runtime as crate::unsigned::Config>::OffchainRepeat::get();
 			roll_to_unsigned_open();
@@ -1997,7 +2056,7 @@ mod offchain_worker_miner {
 	#[test]
 	fn altering_snapshot_invalidates_solution_cache() {
 		// by infeasible, we mean here that if the snapshot fingerprint has changed.
-		let (mut ext, pool) = ExtBuilder::unsigned().unsigned_phase(999).build_offchainify();
+		let (mut ext, pool) = ExtBuilder::mock_signed().unsigned_phase(999).build_offchainify();
 		ext.execute_with_sanity_checks(|| {
 			let offchain_repeat = <Runtime as crate::unsigned::Config>::OffchainRepeat::get();
 			roll_to_unsigned_open();
@@ -2040,7 +2099,7 @@ mod offchain_worker_miner {
 	fn wont_resubmit_if_weak_score() {
 		// common case, if the score is weak, don't bother with anything, ideally check from the
 		// logs that we don't run feasibility in this call path. Score check must come before.
-		let (mut ext, pool) = ExtBuilder::unsigned().unsigned_phase(999).build_offchainify();
+		let (mut ext, pool) = ExtBuilder::mock_signed().unsigned_phase(999).build_offchainify();
 		ext.execute_with_sanity_checks(|| {
 			let offchain_repeat = <Runtime as crate::unsigned::Config>::OffchainRepeat::get();
 			// unfortunately there's no pretty way to run the ocw code such that it generates a
@@ -2077,7 +2136,7 @@ mod offchain_worker_miner {
 
 	#[test]
 	fn ocw_submission_e2e_works() {
-		let (mut ext, pool) = ExtBuilder::unsigned().build_offchainify();
+		let (mut ext, pool) = ExtBuilder::mock_signed().build_offchainify();
 		ext.execute_with_sanity_checks(|| {
 			assert!(VerifierPallet::queued_score().is_none());
 			roll_to_with_ocw(25 + 1, Some(pool.clone()));
@@ -2095,7 +2154,7 @@ mod offchain_worker_miner {
 
 	#[test]
 	fn ocw_e2e_submits_and_queued_msp_only() {
-		let (mut ext, pool) = ExtBuilder::unsigned().build_offchainify();
+		let (mut ext, pool) = ExtBuilder::mock_signed().build_offchainify();
 		ext.execute_with_sanity_checks(|| {
 			// roll to mine
 			roll_to_unsigned_open_with_ocw(None);
@@ -2134,7 +2193,7 @@ mod offchain_worker_miner {
 
 	#[test]
 	fn multi_page_ocw_e2e_submits_and_queued_msp_only() {
-		let (mut ext, pool) = ExtBuilder::unsigned().miner_pages(2).build_offchainify();
+		let (mut ext, pool) = ExtBuilder::mock_signed().miner_pages(2).build_offchainify();
 		ext.execute_with_sanity_checks(|| {
 			// roll to mine
 			roll_to_unsigned_open_with_ocw(None);
@@ -2174,7 +2233,7 @@ mod offchain_worker_miner {
 
 	#[test]
 	fn full_multi_page_ocw_e2e_submits_and_queued_msp_only() {
-		let (mut ext, pool) = ExtBuilder::unsigned().miner_pages(3).build_offchainify();
+		let (mut ext, pool) = ExtBuilder::mock_signed().miner_pages(3).build_offchainify();
 		ext.execute_with_sanity_checks(|| {
 			// roll to mine
 			roll_to_unsigned_open_with_ocw(None);
@@ -2220,7 +2279,7 @@ mod offchain_worker_miner {
 	#[test]
 	fn will_not_mine_if_not_enough_winners() {
 		// also see `trim_weight_too_much_makes_solution_invalid`.
-		let (mut ext, _) = ExtBuilder::unsigned().desired_targets(77).build_offchainify();
+		let (mut ext, _) = ExtBuilder::mock_signed().desired_targets(77).build_offchainify();
 		ext.execute_with_sanity_checks(|| {
 			roll_to_unsigned_open();
 			ensure_voters(3, 12);
@@ -2233,9 +2292,55 @@ mod offchain_worker_miner {
 		});
 	}
 
-	#[test]
-	#[ignore]
-	fn multi_page_miner_on_remote_state() {
-		todo!();
+	mod no_storage {
+		use super::*;
+		#[test]
+		fn ocw_never_uses_cache_on_initial_run_or_resubmission() {
+			// When `T::OffchainStorage` is false, the offchain worker should never use cache:
+			// - Initial run: mines and submits without caching
+			// - Resubmission: re-mines fresh solution instead of restoring from cache
+			let (mut ext, pool) =
+				ExtBuilder::mock_signed().offchain_storage(false).build_offchainify();
+			ext.execute_with_sanity_checks(|| {
+				let offchain_repeat = <Runtime as crate::unsigned::Config>::OffchainRepeat::get();
+				roll_to_unsigned_open();
+
+				let last_block = StorageValueRef::persistent(
+					&OffchainWorkerMiner::<Runtime>::OFFCHAIN_LAST_BLOCK,
+				);
+				let cache = StorageValueRef::persistent(
+					&OffchainWorkerMiner::<Runtime>::OFFCHAIN_CACHED_CALL,
+				);
+
+				// Initial state: no previous runs
+				assert_eq!(last_block.get::<BlockNumber>(), Ok(None));
+				assert_eq!(cache.get::<crate::unsigned::Call<Runtime>>(), Ok(None));
+
+				// First run: mines and submits without caching
+				UnsignedPallet::offchain_worker(25);
+				assert_eq!(pool.read().transactions.len(), 1);
+				let first_tx = pool.read().transactions[0].clone();
+
+				// Verify no cache is created or used
+				assert_eq!(last_block.get::<BlockNumber>(), Ok(Some(25)));
+				assert_eq!(cache.get::<crate::unsigned::Call<Runtime>>(), Ok(None));
+
+				// Clear the pool to simulate transaction processing
+				pool.try_write().unwrap().transactions.clear();
+
+				// Second run after repeat threshold: should re-mine instead of using cache
+				UnsignedPallet::offchain_worker(25 + 1 + offchain_repeat);
+				assert_eq!(pool.read().transactions.len(), 1);
+				let second_tx = pool.read().transactions[0].clone();
+
+				// Verify still no cache is used throughout the process
+				assert_eq!(last_block.get::<BlockNumber>(), Ok(Some(25 + 1 + offchain_repeat)));
+				assert_eq!(cache.get::<crate::unsigned::Call<Runtime>>(), Ok(None));
+
+				// Both transactions should be identical since the snapshot hasn't changed,
+				// but they were generated independently (no cache reuse)
+				assert_eq!(first_tx, second_tx);
+			})
+		}
 	}
 }

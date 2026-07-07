@@ -222,7 +222,7 @@ impl_runtime_apis! {
 			VERSION
 		}
 
-		fn execute_block(block: Block) {
+		fn execute_block(block: <Block as frame::traits::Block>::LazyBlock) {
 			RuntimeExecutive::execute_block(block)
 		}
 
@@ -258,7 +258,7 @@ impl_runtime_apis! {
 		}
 
 		fn check_inherents(
-			block: Block,
+			block: <Block as frame::traits::Block>::LazyBlock,
 			data: InherentData,
 		) -> CheckInherentsResult {
 			data.check_extrinsics(&block)
@@ -282,8 +282,8 @@ impl_runtime_apis! {
 	}
 
 	impl apis::SessionKeys<Block> for Runtime {
-		fn generate_session_keys(_seed: Option<Vec<u8>>) -> Vec<u8> {
-			Default::default()
+		fn generate_session_keys(_owner: Vec<u8>, _seed: Option<Vec<u8>>) -> apis::OpaqueGeneratedSessionKeys {
+			apis::OpaqueGeneratedSessionKeys { keys: Default::default(), proof: Default::default() }
 		}
 
 		fn decode_session_keys(
@@ -328,20 +328,6 @@ impl_runtime_apis! {
 
 		fn preset_names() -> Vec<PresetId> {
 			self::genesis_config_presets::preset_names()
-		}
-	}
-
-	impl stp_shield::runtime_api::ShieldApi<Block> for Runtime {
-		fn try_decode_shielded_tx(_uxt: <Block as polkadot_sdk::sp_runtime::traits::Block>::Extrinsic) -> Option<stp_shield::ShieldedTransaction> {
-			unimplemented!()
-		}
-
-		fn is_shielded_using_current_key(_key_hash: &[u8; 16]) -> bool {
-			unimplemented!()
-		}
-
-		fn try_unshield_tx(_dec_key_bytes: Vec<u8>, _shielded_tx: stp_shield::ShieldedTransaction) -> Option<<Block as polkadot_sdk::sp_runtime::traits::Block>::Extrinsic> {
-			unimplemented!()
 		}
 	}
 }

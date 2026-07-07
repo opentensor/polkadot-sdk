@@ -486,7 +486,7 @@ pub mod pallet {
 				(proposal.lookup_hash().and_then(|h| T::Preimages::len(&h)), proposal.lookup_len())
 			{
 				if preimage_len != proposal_len {
-					return Err(Error::<T, I>::PreimageStoredWithDifferentLength.into())
+					return Err(Error::<T, I>::PreimageStoredWithDifferentLength.into());
 				}
 			}
 
@@ -594,7 +594,9 @@ pub mod pallet {
 			if let Some((_, last_alarm)) = status.alarm {
 				let _ = T::Scheduler::cancel(last_alarm);
 			}
-			Self::note_one_fewer_deciding(status.track);
+			if status.deciding.is_some() {
+				Self::note_one_fewer_deciding(status.track);
+			}
 			Self::deposit_event(Event::<T, I>::Cancelled { index, tally: status.tally });
 			let info = ReferendumInfo::Cancelled(
 				T::BlockNumberProvider::current_block_number(),
@@ -619,7 +621,9 @@ pub mod pallet {
 			if let Some((_, last_alarm)) = status.alarm {
 				let _ = T::Scheduler::cancel(last_alarm);
 			}
-			Self::note_one_fewer_deciding(status.track);
+			if status.deciding.is_some() {
+				Self::note_one_fewer_deciding(status.track);
+			}
 			Self::deposit_event(Event::<T, I>::Killed { index, tally: status.tally });
 			Self::slash_deposit(Some(status.submission_deposit.clone()));
 			Self::slash_deposit(status.decision_deposit.clone());
@@ -831,6 +835,7 @@ impl<T: Config<I>, I: 'static> Polling<T::Tally> for Pallet<T, I> {
 			in_queue: false,
 			alarm: None,
 		};
+
 		Self::ensure_alarm_at(&mut status, index, sp_runtime::traits::Bounded::max_value());
 		ReferendumInfoFor::<T, I>::insert(index, ReferendumInfo::Ongoing(status));
 		Ok(index)
@@ -1043,7 +1048,7 @@ impl<T: Config<I>, I: 'static> Pallet<T, I> {
 			Ok(c) => c,
 			Err(_) => {
 				debug_assert!(false, "Unable to create a bounded call from `one_fewer_deciding`??",);
-				return
+				return;
 			},
 		};
 		Self::set_alarm(call, next_block);
@@ -1070,7 +1075,7 @@ impl<T: Config<I>, I: 'static> Pallet<T, I> {
 							false,
 							"Unable to create a bounded call from `nudge_referendum`??",
 						);
-						return false
+						return false;
 					},
 				};
 			status.alarm = Self::set_alarm(call, alarm);
@@ -1172,7 +1177,7 @@ impl<T: Config<I>, I: 'static> Pallet<T, I> {
 						),
 						true,
 						ServiceBranch::TimedOut,
-					)
+					);
 				}
 			},
 			Some(deciding) => {
@@ -1204,7 +1209,7 @@ impl<T: Config<I>, I: 'static> Pallet<T, I> {
 								),
 								true,
 								ServiceBranch::Approved,
-							)
+							);
 						},
 						Some(_) => ServiceBranch::ContinueConfirming,
 						None => {
@@ -1229,7 +1234,7 @@ impl<T: Config<I>, I: 'static> Pallet<T, I> {
 							),
 							true,
 							ServiceBranch::Rejected,
-						)
+						);
 					}
 					if deciding.confirming.is_some() {
 						// Stop confirming

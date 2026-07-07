@@ -59,7 +59,6 @@ pub mod frame_system {
 			#[inject_runtime_type]
 			type RuntimeTask = ();
 			type DbWeight = ();
-			type DispatchExtension = ();
 		}
 	}
 
@@ -77,14 +76,12 @@ pub mod frame_system {
 		#[pallet::no_default_bounds]
 		type RuntimeOrigin;
 		#[pallet::no_default_bounds]
-		type RuntimeCall: sp_runtime::traits::Dispatchable;
+		type RuntimeCall;
 		#[pallet::no_default_bounds]
 		type RuntimeTask: crate::traits::tasks::Task;
 		#[pallet::no_default_bounds]
 		type PalletInfo: crate::traits::PalletInfo;
 		type DbWeight: Get<crate::weights::RuntimeDbWeight>;
-		#[pallet::no_default_bounds]
-		type DispatchExtension: crate::traits::DispatchExtension<Self::RuntimeCall>;
 	}
 
 	#[pallet::error]
@@ -108,11 +105,11 @@ pub mod frame_system {
 		#[pallet::weight(task.weight())]
 		pub fn do_task(_origin: OriginFor<T>, task: T::RuntimeTask) -> DispatchResultWithPostInfo {
 			if !task.is_valid() {
-				return Err(Error::<T>::InvalidTask.into())
+				return Err(Error::<T>::InvalidTask.into());
 			}
 
 			if let Err(_err) = task.run() {
-				return Err(Error::<T>::FailedTask.into())
+				return Err(Error::<T>::FailedTask.into());
 			}
 
 			Ok(().into())
@@ -216,15 +213,6 @@ pub mod frame_system {
 			<<T as super::Config>::Block as sp_runtime::traits::HeaderProvider>::HeaderT;
 
 		pub type BlockNumberFor<T> = <HeaderFor<T> as sp_runtime::traits::Header>::Number;
-	}
-
-	impl<T: Config> Pallet<T> {
-		pub fn check_dispatch_guard(
-			_origin: &T::RuntimeOrigin,
-			_call: &T::RuntimeCall,
-		) -> crate::dispatch::DispatchResultWithPostInfo {
-			Ok(().into())
-		}
 	}
 }
 

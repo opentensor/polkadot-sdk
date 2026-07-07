@@ -174,7 +174,10 @@ where
 	let max_level_hint = Layer::<FmtSubscriber>::max_level_hint(&env_filter);
 	let max_level = to_log_level_filter(max_level_hint);
 
-	tracing_log::LogTracer::builder().with_max_level(max_level).init()?;
+	tracing_log::LogTracer::builder()
+		.with_interest_cache(tracing_log::InterestCacheConfig::default())
+		.with_max_level(max_level)
+		.init()?;
 
 	// If we're only logging `INFO` entries then we'll use a simplified logging format.
 	let detailed_output = match max_level_hint {
@@ -483,7 +486,7 @@ mod tests {
 	#[test]
 	fn prefix_in_log_lines_entrypoint() {
 		if env::var("ENABLE_LOGGING").is_ok() {
-			let _guard = init_logger("info");
+			let _guard = init_logger("");
 			prefix_in_log_lines_process();
 		}
 	}
@@ -499,7 +502,7 @@ mod tests {
 	#[test]
 	fn do_not_write_with_colors_on_tty_entrypoint() {
 		if env::var("ENABLE_LOGGING").is_ok() {
-			let _guard = init_logger("info");
+			let _guard = init_logger("");
 			log::info!("{}", console::style(EXPECTED_LOG_MESSAGE).yellow());
 		}
 	}
@@ -606,7 +609,7 @@ mod tests {
 		let output = run_test_in_another_process(
 			"parallel_logs_from_multiple_threads_are_properly_gathered",
 			|| {
-				let builder = LoggerBuilder::new("info");
+				let builder = LoggerBuilder::new("");
 				builder.init().unwrap();
 
 				run_on_many_threads(THREAD_COUNT, |nth_thread| {
@@ -648,7 +651,7 @@ mod tests {
 
 		let output =
 			run_test_in_another_process("huge_single_line_log_is_properly_printed_out", || {
-				let builder = LoggerBuilder::new("info");
+				let builder = LoggerBuilder::new("");
 				builder.init().unwrap();
 				info!("{}", line);
 			});

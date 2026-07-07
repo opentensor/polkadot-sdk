@@ -1,6 +1,6 @@
 [package]
 name = "sp-tracing"
-version = "17.1.0"
+version = "16.0.0"
 license = "Apache-2.0"
 authors.workspace = true
 edition.workspace = true
@@ -36,9 +36,9 @@ default = ["std"]
 with-tracing = ["codec/derive", "codec/full"]
 std = [
 	"codec/std",
+	"regex",
 	"tracing-core/std",
 	"tracing-subscriber",
 	"tracing/std",
 	"with-tracing",
 ]
-test-utils = ["regex", "regex/std", "std"]

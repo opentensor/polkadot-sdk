@@ -51,7 +51,7 @@ pub(super) fn calculate_primary_threshold(
 	// configuration parameters, this is not sufficient to guarantee that `c.1` is non-zero
 	// (i.e. third party implementations are possible).
 	if c.1 == 0 || authority_index >= authorities.len() {
-		return 0
+		return 0;
 	}
 
 	let c = c.0 as f64 / c.1 as f64;
@@ -108,7 +108,7 @@ pub(super) fn secondary_slot_author(
 	randomness: Randomness,
 ) -> Option<&AuthorityId> {
 	if authorities.is_empty() {
-		return None
+		return None;
 	}
 
 	let rand =
@@ -136,7 +136,7 @@ fn claim_secondary_slot(
 	author_secondary_vrf: bool,
 ) -> Option<(PreDigest, AuthorityId)> {
 	if epoch.authorities.is_empty() {
-		return None
+		return None;
 	}
 
 	let mut epoch_index = epoch.epoch_index;
@@ -177,7 +177,7 @@ fn claim_secondary_slot(
 
 			trace!(target: LOG_TARGET, "pre_digset: {:?}", &pre_digest);
 			if let Some(pre_digest) = pre_digest {
-				return Some((pre_digest, authority_id.clone()))
+				return Some((pre_digest, authority_id.clone()));
 			}
 		}
 	}
@@ -273,7 +273,7 @@ fn claim_primary_slot(
 					vrf_signature,
 				});
 
-				return Some((pre_digest, authority_id.clone()))
+				return Some((pre_digest, authority_id.clone()));
 			}
 		}
 	}

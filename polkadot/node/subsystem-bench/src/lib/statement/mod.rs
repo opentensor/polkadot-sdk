@@ -123,8 +123,7 @@ fn build_overseer(
 		network_interface.subsystem_sender(),
 		state.test_authorities.clone(),
 	);
-	let network_bridge_rx =
-		MockNetworkBridgeRx::new(network_receiver, Some(candidate_req_cfg), false);
+	let network_bridge_rx = MockNetworkBridgeRx::new(network_receiver, Some(candidate_req_cfg));
 
 	let dummy = dummy_builder!(spawn_task_handle, overseer_metrics)
 		.replace_runtime_api(|_| mock_runtime_api)
@@ -365,7 +364,7 @@ pub async fn benchmark_statement_distribution(
 		{
 			let messages_sent_count = messages_tracker.get_mut(group_index).unwrap();
 			if *messages_sent_count == max_messages_per_candidate {
-				continue
+				continue;
 			}
 			*messages_sent_count += 1;
 
@@ -377,7 +376,7 @@ pub async fn benchmark_statement_distribution(
 				.unwrap()
 				.hash();
 			let manifest = BackedCandidateManifest {
-				relay_parent: block_info.hash,
+				scheduling_parent: block_info.hash,
 				candidate_hash,
 				group_index: GroupIndex(group_index as u32),
 				para_id: Id::new(group_index as u32 + 1),
@@ -421,7 +420,7 @@ pub async fn benchmark_statement_distribution(
 	}
 
 	let duration: u128 = test_start.elapsed().as_millis();
-	gum::info!(target: LOG_TARGET, "All blocks processed in {}", format!("{:?}ms", duration).cyan());
+	gum::info!(target: LOG_TARGET, "All blocks processed in {}", format!("{duration:?}ms").cyan());
 	gum::info!(target: LOG_TARGET,
 		"Avg block time: {}",
 		format!("{} ms", test_start.elapsed().as_millis() / env.config().num_blocks as u128).red()

@@ -77,10 +77,12 @@ mod tests;
 pub use crate::weights::traits::pallet_election_provider_multi_block_verifier::*;
 
 use frame_election_provider_support::PageIndex;
+use frame_support::weights::WeightMeter;
 use impls::SupportsOfVerifier;
 pub use impls::{feasibility_check_page_inner_with_snapshot, pallet::*, Status};
 use sp_core::Get;
 use sp_npos_elections::ElectionScore;
+use sp_runtime::Weight;
 use sp_std::{fmt::Debug, prelude::*};
 
 /// Errors that can happen in the feasibility check.
@@ -146,10 +148,12 @@ pub trait Verifier {
 	/// A reasonable value for this should be the maximum number of winners that the election user
 	/// (e.g. the staking pallet) could ever desire.
 	type MaxWinnersPerPage: Get<u32>;
+
 	/// Maximum number of backers, per winner, among all pages of an election.
 	///
 	/// This can only be checked at the very final step of verification.
 	type MaxBackersPerWinnerFinal: Get<u32>;
+
 	/// Maximum number of backers that each winner could have, per page.
 	type MaxBackersPerWinner: Get<u32>;
 
@@ -211,6 +215,12 @@ pub trait Verifier {
 		page: PageIndex,
 		score: ElectionScore,
 	);
+
+	/// Return the execution schedule of this pallet's work to be done per-block (`on_poll`,
+	/// `on_init` independent).
+	///
+	/// Returns a `(Weight, ExecFn)` tuple in-line with `per_block_exec` of the parent block.
+	fn per_block_exec() -> (Weight, Box<dyn Fn(&mut WeightMeter)>);
 }
 
 /// Simple enum to encapsulate the result of the verification of a candidate solution.
@@ -221,8 +231,6 @@ pub enum VerificationResult {
 	Queued,
 	/// Solution is rejected, for whichever of the multiple reasons that it could be.
 	Rejected,
-	/// The data needed (solution pages or the score) was unavailable. This should rarely happen.
-	DataUnavailable,
 }
 
 /// Something that can provide candidate solutions to the verifier.
@@ -235,11 +243,14 @@ pub trait SolutionDataProvider {
 
 	/// Return the `page`th page of the current best solution that the data provider has in store.
 	///
-	/// If no candidate solutions are available, then None is returned.
-	fn get_page(page: PageIndex) -> Option<Self::Solution>;
+	/// If no candidate solutions are available, an empty page is returned (i.e., a page that
+	/// contains no solutions and contributes zero to the final score).
+	fn get_page(page: PageIndex) -> Self::Solution;
 
 	/// Get the claimed score of the current best solution.
-	fn get_score() -> Option<ElectionScore>;
+	///
+	/// If no score is available, a default/zero score should be returned defensively.
+	fn get_score() -> ElectionScore;
 
 	/// Hook to report back the results of the verification of the current candidate solution that
 	/// is being exposed via [`Self::get_page`] and [`Self::get_score`].
@@ -285,13 +296,4 @@ pub trait AsynchronousVerifier: Verifier {
 	/// [`SolutionDataProvider`] must adjust its internal state such that it returns a new candidate
 	/// solution after each failure.
 	fn start() -> Result<(), &'static str>;
-
-	/// Stop the verification.
-	///
-	/// This is a force-stop operation, and should only be used in extreme cases where the
-	/// [`SolutionDataProvider`] wants to suddenly bail-out.
-	///
-	/// An implementation should make sure that no loose ends remain state-wise, and everything is
-	/// cleaned.
-	fn stop();
 }

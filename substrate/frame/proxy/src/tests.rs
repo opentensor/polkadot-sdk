@@ -65,7 +65,7 @@ impl pallet_utility::Config for Test {
 	Encode,
 	Decode,
 	DecodeWithMemTracking,
-	RuntimeDebug,
+	Debug,
 	MaxEncodedLen,
 	scale_info::TypeInfo,
 )]
@@ -333,7 +333,7 @@ fn filtering_works() {
 			ProxyEvent::ProxyExecuted { result: Err(SystemError::CallFiltered.into()) }.into(),
 		);
 
-		let derivative_id = Utility::derivative_account_id(1, 0).unwrap();
+		let derivative_id = pallet_utility::derivative_account_id(1, 0);
 		Balances::make_free_balance_be(&derivative_id, 1000);
 		let inner = Box::new(call_transfer(6, 1));
 
@@ -403,6 +403,34 @@ fn filtering_works() {
 		assert_ok!(Proxy::proxy(RuntimeOrigin::signed(2), 1, None, call.clone()));
 		expect_events(vec![
 			BalancesEvent::<Test>::Unreserved { who: 1, amount: 5 }.into(),
+			ProxyEvent::ProxyRemoved {
+				delegator: 1,
+				delegatee: 2,
+				proxy_type: ProxyType::Any,
+				delay: 0,
+			}
+			.into(),
+			ProxyEvent::ProxyRemoved {
+				delegator: 1,
+				delegatee: 3,
+				proxy_type: ProxyType::JustTransfer,
+				delay: 0,
+			}
+			.into(),
+			ProxyEvent::ProxyRemoved {
+				delegator: 1,
+				delegatee: 4,
+				proxy_type: ProxyType::JustUtility,
+				delay: 0,
+			}
+			.into(),
+			ProxyEvent::ProxyRemoved {
+				delegator: 1,
+				delegatee: 5,
+				proxy_type: ProxyType::Any,
+				delay: 0,
+			}
+			.into(),
 			ProxyEvent::ProxyExecuted { result: Ok(()) }.into(),
 		]);
 	});
@@ -539,13 +567,15 @@ fn pure_works() {
 	new_test_ext().execute_with(|| {
 		Balances::make_free_balance_be(&1, 11); // An extra one for the ED.
 		assert_ok!(Proxy::create_pure(RuntimeOrigin::signed(1), ProxyType::Any, 0, 0));
-		let anon = Proxy::pure_account(&1, &ProxyType::Any, 0, None).unwrap();
+		let anon = Proxy::pure_account(&1, &ProxyType::Any, 0, None);
 		System::assert_last_event(
 			ProxyEvent::PureCreated {
 				pure: anon,
 				who: 1,
 				proxy_type: ProxyType::Any,
 				disambiguation_index: 0,
+				at: <Test as Config>::BlockNumberProvider::current_block_number(),
+				extrinsic_index: System::extrinsic_index().unwrap(),
 			}
 			.into(),
 		);
@@ -553,7 +583,7 @@ fn pure_works() {
 		// other calls to pure allowed as long as they're not exactly the same.
 		assert_ok!(Proxy::create_pure(RuntimeOrigin::signed(1), ProxyType::JustTransfer, 0, 0));
 		assert_ok!(Proxy::create_pure(RuntimeOrigin::signed(1), ProxyType::Any, 0, 1));
-		let anon2 = Proxy::pure_account(&2, &ProxyType::Any, 0, None).unwrap();
+		let anon2 = Proxy::pure_account(&2, &ProxyType::Any, 0, None);
 		assert_ok!(Proxy::create_pure(RuntimeOrigin::signed(2), ProxyType::Any, 0, 0));
 		assert_noop!(
 			Proxy::create_pure(RuntimeOrigin::signed(1), ProxyType::Any, 0, 0),

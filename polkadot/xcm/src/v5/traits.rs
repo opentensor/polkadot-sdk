@@ -28,7 +28,18 @@ use super::*;
 /// Error codes used in XCM. The first errors codes have explicit indices and are part of the XCM
 /// format. Those trailing are merely part of the XCM implementation; there is no expectation that
 /// they will retain the same index over time.
-#[derive(Copy, Clone, Encode, Decode, DecodeWithMemTracking, Eq, PartialEq, Debug, TypeInfo)]
+#[derive(
+	Copy,
+	Clone,
+	Encode,
+	Decode,
+	DecodeWithMemTracking,
+	Eq,
+	PartialEq,
+	Debug,
+	TypeInfo,
+	MaxEncodedLen,
+)]
 #[scale_info(replace_segment("staging_xcm", "xcm"))]
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 pub enum Error {
@@ -216,19 +227,12 @@ impl TryFrom<OldError> for Error {
 	}
 }
 
-impl MaxEncodedLen for Error {
-	fn max_encoded_len() -> usize {
-		// TODO: max_encoded_len doesn't quite work here as it tries to take notice of the fields
-		// marked `codec(skip)`. We can hard-code it with the right answer for now.
-		1
-	}
-}
-
 impl From<SendError> for Error {
 	fn from(e: SendError) -> Self {
 		match e {
-			SendError::NotApplicable | SendError::Unroutable | SendError::MissingArgument =>
-				Error::Unroutable,
+			SendError::NotApplicable | SendError::Unroutable | SendError::MissingArgument => {
+				Error::Unroutable
+			},
 			SendError::Transport(s) => Error::Transport(s),
 			SendError::DestinationUnsupported => Error::DestinationUnsupported,
 			SendError::ExceedsMaxMessageSize => Error::ExceedsMaxMessageSize,
@@ -326,7 +330,6 @@ pub trait ExecuteXcm<Call> {
 		};
 		Self::execute(origin, pre, id, weight_credit)
 	}
-
 	/// Deduct some `fees` to the sovereign account of the given `location` and place them as per
 	/// the convention for fees.
 	fn charge_fees(location: impl Into<Location>, fees: Assets) -> Result;

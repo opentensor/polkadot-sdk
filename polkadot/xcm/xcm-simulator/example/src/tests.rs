@@ -405,7 +405,7 @@ fn reserve_asset_transfer_nft() {
 		assert_ok!(ParachainPalletXcm::send_xcm(alice, Parent, message));
 	});
 	ParaA::execute_with(|| {
-		log::debug!(target: "xcm-executor", "Hello");
+		tracing::debug!(target: "xcm-executor", "Hello");
 		assert_eq!(
 			parachain::ForeignUniques::owner((Parent, GeneralIndex(2)).into(), 69u32.into()),
 			Some(ALICE),
@@ -544,7 +544,7 @@ fn query_holding() {
 		// Send withdraw and deposit with query holding
 		assert_ok!(ParachainPalletXcm::send_xcm(Here, Parent, message.clone(),));
 
-		VersionedXcm::from(message).using_encoded(sp_core::blake2_256)
+		VersionedXcm::from(message).using_encoded(sp_crypto_hashing::blake2_256)
 	});
 
 	// Check that transfer was executed

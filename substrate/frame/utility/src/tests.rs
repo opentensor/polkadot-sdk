@@ -274,7 +274,7 @@ fn utility_events() -> Vec<Event> {
 #[test]
 fn as_derivative_works() {
 	new_test_ext().execute_with(|| {
-		let sub_1_0 = Utility::derivative_account_id(1, 0).unwrap();
+		let sub_1_0 = derivative_account_id(1, 0);
 		assert_ok!(Balances::transfer_allow_death(RuntimeOrigin::signed(1), sub_1_0, 5));
 		assert_err_ignore_postinfo!(
 			Utility::as_derivative(RuntimeOrigin::signed(1), 1, Box::new(call_transfer(6, 3)),),
@@ -916,11 +916,11 @@ fn with_weight_works() {
 			call: upgrade_code_call,
 			weight: Weight::from_parts(123, 456),
 		};
-		// Weight after is set by Root, while Utility keeps the extension class Normal.
+		// Weight after is set by Root.
 		assert_eq!(with_weight_call.get_dispatch_info().call_weight, Weight::from_parts(123, 456));
 		assert_eq!(
 			with_weight_call.get_dispatch_info().class,
-			frame_support::dispatch::DispatchClass::Normal
+			frame_support::dispatch::DispatchClass::Operational
 		);
 	})
 }

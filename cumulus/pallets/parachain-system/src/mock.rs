@@ -37,7 +37,7 @@ use frame_support::{
 	},
 	weights::{Weight, WeightMeter},
 };
-use frame_system::{pallet_prelude::BlockNumberFor, RawOrigin};
+use frame_system::{limits::BlockWeights, pallet_prelude::BlockNumberFor, RawOrigin};
 use sp_core::ConstU32;
 use sp_runtime::{traits::BlakeTwo256, BuildStorage};
 use sp_version::RuntimeVersion;
@@ -67,6 +67,8 @@ parameter_types! {
 		transaction_version: 1,
 		system_version: 1,
 	};
+	pub RuntimeBlockWeights: BlockWeights =
+		BlockWeights::simple_max(Weight::from_parts(1024, 6 * 1024 * 1024));
 	pub const ParachainId: ParaId = ParaId::new(200);
 	pub const ReservedXcmpWeight: Weight = Weight::zero();
 	pub const ReservedDmpWeight: Weight = Weight::zero();
@@ -74,6 +76,7 @@ parameter_types! {
 
 #[derive_impl(frame_system::config_preludes::TestDefaultConfig)]
 impl frame_system::Config for Test {
+	type BlockWeights = RuntimeBlockWeights;
 	type Block = Block;
 	type Version = Version;
 	type OnSetCode = ParachainSetCode<Self>;
@@ -95,8 +98,8 @@ impl Config for Test {
 	type CheckAssociatedRelayNumber = AnyRelayNumber;
 	type ConsensusHook = TestConsensusHook;
 	type WeightInfo = ();
-	type SelectCore = DefaultCoreSelector<Test>;
 	type RelayParentOffset = ConstU32<0>;
+	type SchedulingSignatureVerifier = ();
 }
 
 std::thread_local! {
@@ -148,8 +151,12 @@ pub fn send_message(dest: ParaId, message: Vec<u8>) {
 }
 
 impl XcmpMessageSource for FromThreadLocal {
-	fn take_outbound_messages(maximum_channels: usize) -> Vec<(ParaId, Vec<u8>)> {
-		let mut ids = std::collections::BTreeSet::<ParaId>::new();
+	fn take_outbound_messages(
+		maximum_channels: usize,
+		excluded_recipients: &[ParaId],
+	) -> Vec<(ParaId, Vec<u8>)> {
+		let mut ids =
+			std::collections::BTreeSet::<ParaId>::from_iter(excluded_recipients.iter().copied());
 		let mut taken_messages = 0;
 		let mut taken_bytes = 0;
 		let mut result = Vec::new();
@@ -226,12 +233,12 @@ pub fn new_test_ext() -> sp_io::TestExternalities {
 }
 
 #[allow(dead_code)]
-pub fn mk_dmp(sent_at: u32) -> InboundDownwardMessage {
-	InboundDownwardMessage { sent_at, msg: format!("down{}", sent_at).into_bytes() }
+pub fn mk_dmp(sent_at: u8, size: usize) -> InboundDownwardMessage {
+	InboundDownwardMessage { sent_at: sent_at as u32, msg: vec![sent_at; size] }
 }
 
-pub fn mk_hrmp(sent_at: u32) -> InboundHrmpMessage {
-	InboundHrmpMessage { sent_at, data: format!("{}", sent_at).into_bytes() }
+pub fn mk_hrmp(sent_at: u8, size: usize) -> InboundHrmpMessage {
+	InboundHrmpMessage { sent_at: sent_at as u32, data: vec![sent_at; size] }
 }
 
 pub struct ReadRuntimeVersion(pub Vec<u8>);
@@ -453,6 +460,7 @@ impl BlockTests {
 			}
 
 			// clean up
+			System::maybe_apply_pending_code_upgrade();
 			let header = System::finalize();
 			let head_data = relay_chain::HeadData(header.encode());
 			parent_head_data = head_data.clone();

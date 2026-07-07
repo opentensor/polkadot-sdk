@@ -99,8 +99,9 @@ impl Polling<TallyOf<Test>> for TestPolls {
 		let mut polls = Polls::get();
 		let entry = polls.get_mut(&index);
 		let r = match entry {
-			Some(Ongoing(ref mut tally_mut_ref, class)) =>
-				f(PollStatus::Ongoing(tally_mut_ref, *class)),
+			Some(Ongoing(ref mut tally_mut_ref, class)) => {
+				f(PollStatus::Ongoing(tally_mut_ref, *class))
+			},
 			Some(Completed(when, succeeded)) => f(PollStatus::Completed(*when, *succeeded)),
 			None => f(PollStatus::None),
 		};
@@ -114,8 +115,9 @@ impl Polling<TallyOf<Test>> for TestPolls {
 		let mut polls = Polls::get();
 		let entry = polls.get_mut(&index);
 		let r = match entry {
-			Some(Ongoing(ref mut tally_mut_ref, class)) =>
-				f(PollStatus::Ongoing(tally_mut_ref, *class)),
+			Some(Ongoing(ref mut tally_mut_ref, class)) => {
+				f(PollStatus::Ongoing(tally_mut_ref, *class))
+			},
 			Some(Completed(when, succeeded)) => f(PollStatus::Completed(*when, *succeeded)),
 			None => f(PollStatus::None),
 		}?;
@@ -244,12 +246,14 @@ fn basic_voting_works() {
 		System::assert_last_event(tests::RuntimeEvent::Voting(Event::Voted {
 			who: 1,
 			vote: aye(2, 5),
+			poll_index: 3,
 		}));
 		assert_eq!(tally(3), Tally::from_parts(10, 0, 2));
 		assert_ok!(Voting::vote(RuntimeOrigin::signed(1), 3, nay(2, 5)));
 		System::assert_last_event(tests::RuntimeEvent::Voting(Event::Voted {
 			who: 1,
 			vote: nay(2, 5),
+			poll_index: 3,
 		}));
 		assert_eq!(tally(3), Tally::from_parts(0, 10, 0));
 		assert_eq!(Balances::usable_balance(1), 8);
@@ -258,6 +262,7 @@ fn basic_voting_works() {
 		System::assert_last_event(tests::RuntimeEvent::Voting(Event::Voted {
 			who: 1,
 			vote: aye(5, 1),
+			poll_index: 3,
 		}));
 		assert_eq!(tally(3), Tally::from_parts(5, 0, 5));
 		assert_ok!(Voting::vote(RuntimeOrigin::signed(1), 3, nay(5, 1)));
@@ -268,6 +273,7 @@ fn basic_voting_works() {
 		System::assert_last_event(tests::RuntimeEvent::Voting(Event::Voted {
 			who: 1,
 			vote: aye(10, 0),
+			poll_index: 3,
 		}));
 		assert_eq!(tally(3), Tally::from_parts(1, 0, 10));
 
@@ -279,6 +285,7 @@ fn basic_voting_works() {
 		System::assert_last_event(tests::RuntimeEvent::Voting(Event::VoteRemoved {
 			who: 1,
 			vote: nay(10, 0),
+			poll_index: 3,
 		}));
 		assert_eq!(tally(3), Tally::from_parts(0, 0, 0));
 
@@ -298,6 +305,7 @@ fn split_voting_works() {
 		System::assert_last_event(tests::RuntimeEvent::Voting(Event::Voted {
 			who: 1,
 			vote: split(10, 0),
+			poll_index: 3,
 		}));
 		assert_eq!(tally(3), Tally::from_parts(1, 0, 10));
 
@@ -305,6 +313,7 @@ fn split_voting_works() {
 		System::assert_last_event(tests::RuntimeEvent::Voting(Event::Voted {
 			who: 1,
 			vote: split(5, 5),
+			poll_index: 3,
 		}));
 		assert_eq!(tally(3), Tally::from_parts(0, 0, 5));
 		assert_eq!(Balances::usable_balance(1), 0);
@@ -313,6 +322,7 @@ fn split_voting_works() {
 		System::assert_last_event(tests::RuntimeEvent::Voting(Event::VoteRemoved {
 			who: 1,
 			vote: split(5, 5),
+			poll_index: 3,
 		}));
 		assert_eq!(tally(3), Tally::from_parts(0, 0, 0));
 
@@ -332,6 +342,7 @@ fn abstain_voting_works() {
 		System::assert_last_event(tests::RuntimeEvent::Voting(Event::Voted {
 			who: 1,
 			vote: split_abstain(0, 0, 10),
+			poll_index: 3,
 		}));
 		assert_eq!(tally(3), Tally::from_parts(0, 0, 10));
 
@@ -339,6 +350,7 @@ fn abstain_voting_works() {
 		System::assert_last_event(tests::RuntimeEvent::Voting(Event::Voted {
 			who: 6,
 			vote: split_abstain(10, 0, 20),
+			poll_index: 3,
 		}));
 		assert_eq!(tally(3), Tally::from_parts(1, 0, 40));
 
@@ -346,6 +358,7 @@ fn abstain_voting_works() {
 		System::assert_last_event(tests::RuntimeEvent::Voting(Event::Voted {
 			who: 6,
 			vote: split_abstain(0, 0, 40),
+			poll_index: 3,
 		}));
 
 		assert_eq!(tally(3), Tally::from_parts(0, 0, 50));
@@ -356,6 +369,7 @@ fn abstain_voting_works() {
 		System::assert_last_event(tests::RuntimeEvent::Voting(Event::VoteRemoved {
 			who: 1,
 			vote: split_abstain(0, 0, 10),
+			poll_index: 3,
 		}));
 		assert_eq!(tally(3), Tally::from_parts(0, 0, 40));
 
@@ -363,6 +377,7 @@ fn abstain_voting_works() {
 		System::assert_last_event(tests::RuntimeEvent::Voting(Event::VoteRemoved {
 			who: 6,
 			vote: split_abstain(0, 0, 40),
+			poll_index: 3,
 		}));
 		assert_eq!(tally(3), Tally::from_parts(0, 0, 0));
 
@@ -1049,5 +1064,28 @@ fn voting_hooks_are_called_correctly() {
 		// Removing unsuccessful vote when completed should lock if given amount from the hook
 		assert_ok!(Voting::unlock(RuntimeOrigin::signed(1), c, 1));
 		assert_eq!(Balances::usable_balance(1), 5);
+	});
+}
+
+#[test]
+fn empty_tally_approval_is_zero() {
+	new_test_ext().execute_with(|| {
+		let empty_tally = Tally::<u64, <Test as Config>::MaxTurnout>::from_parts(0, 0, 0);
+		assert_eq!(
+			<TallyOf<Test> as VoteTally<u64, u8>>::approval(&empty_tally, 0),
+			Perbill::zero(),
+		);
+
+		let only_ayes = Tally::<u64, <Test as Config>::MaxTurnout>::from_parts(10, 0, 10);
+		assert_eq!(<TallyOf<Test> as VoteTally<u64, u8>>::approval(&only_ayes, 0), Perbill::one(),);
+
+		let only_nays = Tally::<u64, <Test as Config>::MaxTurnout>::from_parts(0, 10, 0);
+		assert_eq!(<TallyOf<Test> as VoteTally<u64, u8>>::approval(&only_nays, 0), Perbill::zero(),);
+
+		let mixed = Tally::<u64, <Test as Config>::MaxTurnout>::from_parts(3, 7, 3);
+		assert_eq!(
+			<TallyOf<Test> as VoteTally<u64, u8>>::approval(&mixed, 0),
+			Perbill::from_percent(30),
+		);
 	});
 }

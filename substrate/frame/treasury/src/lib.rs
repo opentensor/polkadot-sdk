@@ -50,10 +50,8 @@
 //!
 //! 1. Multiple local spends approved by spend origins and received by a beneficiary.
 #![doc = docify::embed!("src/tests.rs", spend_local_origin_works)]
-//!
 //! 2. Approve a spend of some asset kind and claim it.
 #![doc = docify::embed!("src/tests.rs", spend_payout_works)]
-//!
 //! ## Pallet API
 //!
 //! See the [`pallet`] module for more information about the interfaces this pallet exposes,
@@ -84,7 +82,7 @@ pub use benchmarking::ArgumentsFactory;
 
 extern crate alloc;
 
-use codec::{Decode, Encode, MaxEncodedLen};
+use codec::{Decode, DecodeWithMemTracking, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 
 use alloc::{boxed::Box, collections::btree_map::BTreeMap};
@@ -93,7 +91,7 @@ use sp_runtime::{
 		AccountIdConversion, BlockNumberProvider, CheckedAdd, One, Saturating, StaticLookup,
 		UniqueSaturatedInto, Zero,
 	},
-	PerThing, Permill, RuntimeDebug,
+	Debug, PerThing, Permill,
 };
 
 use frame_support::{
@@ -151,21 +149,25 @@ pub type ProposalIndex = u32;
 
 /// A spending proposal.
 #[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Encode, Decode, Clone, PartialEq, Eq, MaxEncodedLen, RuntimeDebug, TypeInfo)]
+#[derive(
+	Encode, Decode, DecodeWithMemTracking, Clone, PartialEq, Eq, MaxEncodedLen, Debug, TypeInfo,
+)]
 pub struct Proposal<AccountId, Balance> {
 	/// The account proposing it.
-	proposer: AccountId,
+	pub proposer: AccountId,
 	/// The (total) amount that should be paid if the proposal is accepted.
-	value: Balance,
+	pub value: Balance,
 	/// The account to whom the payment should be made if the proposal is accepted.
-	beneficiary: AccountId,
+	pub beneficiary: AccountId,
 	/// The amount held on deposit (reserved) for making this proposal.
-	bond: Balance,
+	pub bond: Balance,
 }
 
 /// The state of the payment claim.
 #[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Encode, Decode, Clone, PartialEq, Eq, MaxEncodedLen, RuntimeDebug, TypeInfo)]
+#[derive(
+	Encode, Decode, DecodeWithMemTracking, Clone, PartialEq, Eq, MaxEncodedLen, Debug, TypeInfo,
+)]
 pub enum PaymentState<Id> {
 	/// Pending claim.
 	Pending,
@@ -177,20 +179,22 @@ pub enum PaymentState<Id> {
 
 /// Info regarding an approved treasury spend.
 #[cfg_attr(feature = "std", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Encode, Decode, Clone, PartialEq, Eq, MaxEncodedLen, RuntimeDebug, TypeInfo)]
+#[derive(
+	Encode, Decode, DecodeWithMemTracking, Clone, PartialEq, Eq, MaxEncodedLen, Debug, TypeInfo,
+)]
 pub struct SpendStatus<AssetKind, AssetBalance, Beneficiary, BlockNumber, PaymentId> {
 	// The kind of asset to be spent.
-	asset_kind: AssetKind,
+	pub asset_kind: AssetKind,
 	/// The asset amount of the spend.
-	amount: AssetBalance,
+	pub amount: AssetBalance,
 	/// The beneficiary of the spend.
-	beneficiary: Beneficiary,
+	pub beneficiary: Beneficiary,
 	/// The block number from which the spend can be claimed.
-	valid_from: BlockNumber,
+	pub valid_from: BlockNumber,
 	/// The block number by which the spend has to be claimed.
-	expire_at: BlockNumber,
+	pub expire_at: BlockNumber,
 	/// The status of the payout/claim.
-	status: PaymentState<PaymentId>,
+	pub status: PaymentState<PaymentId>,
 }
 
 /// Index of an approved treasury spend.
@@ -785,7 +789,7 @@ pub mod pallet {
 				// spend has expired and no further status update is expected.
 				Spends::<T, I>::remove(index);
 				Self::deposit_event(Event::<T, I>::SpendProcessed { index });
-				return Ok(Pays::No.into())
+				return Ok(Pays::No.into());
 			}
 
 			let payment_id = match spend.status {
@@ -802,11 +806,11 @@ pub mod pallet {
 				Status::Success | Status::Unknown => {
 					Spends::<T, I>::remove(index);
 					Self::deposit_event(Event::<T, I>::SpendProcessed { index });
-					return Ok(Pays::No.into())
+					return Ok(Pays::No.into());
 				},
 				Status::InProgress => return Err(Error::<T, I>::Inconclusive.into()),
 			}
-			return Ok(Pays::Yes.into())
+			return Ok(Pays::Yes.into());
 		}
 
 		/// Void previously approved spend.

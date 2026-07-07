@@ -34,6 +34,7 @@ use frame_benchmarking_cli::SUBSTRATE_REFERENCE_HARDWARE;
 use gum::info;
 use mmr_gadget::MmrGadget;
 use polkadot_availability_recovery::FETCH_CHUNKS_THRESHOLD;
+use polkadot_collator_protocol::ReputationConfig;
 use polkadot_node_core_approval_voting::Config as ApprovalVotingConfig;
 use polkadot_node_core_av_store::Config as AvailabilityConfig;
 use polkadot_node_core_candidate_validation::Config as CandidateValidationConfig;
@@ -49,7 +50,6 @@ use polkadot_node_subsystem_types::DefaultSubsystemClient;
 use polkadot_overseer::{Handle, OverseerConnector};
 use polkadot_primitives::Block;
 use sc_client_api::Backend;
-use sc_consensus_grandpa::warp_proof::HardForks;
 use sc_network::config::FullNetworkConfiguration;
 use sc_network_sync::WarpSyncConfig;
 use sc_service::{Configuration, RpcHandlers, TaskManager};
@@ -57,9 +57,13 @@ use sc_sysinfo::Metric;
 use sc_telemetry::TelemetryWorkerHandle;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sp_consensus_beefy::ecdsa_crypto;
+use sc_consensus_grandpa::warp_proof::HardForks;
 use sp_runtime::traits::Block as BlockT;
-use stc_shield::MemoryShieldKeystore;
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+	collections::{HashMap, HashSet},
+	sync::Arc,
+	time::Duration,
+};
 
 /// Polkadot node service initialization parameters.
 pub struct NewFullParams<OverseerGenerator: OverseerGen> {
@@ -92,8 +96,14 @@ pub struct NewFullParams<OverseerGenerator: OverseerGen> {
 	#[allow(dead_code)]
 	pub malus_finality_delay: Option<u32>,
 	pub hwbench: Option<sc_sysinfo::HwBench>,
-	/// Enable approval voting processing in parallel.
-	pub enable_approval_voting_parallel: bool,
+	/// Set of invulnerable AH collator `PeerId`s
+	pub invulnerable_ah_collators: HashSet<polkadot_node_network_protocol::PeerId>,
+	/// Override for `HOLD_OFF_DURATION` constant .
+	pub collator_protocol_hold_off: Option<Duration>,
+	/// Use experimental collator protocol
+	pub experimental_collator_protocol: bool,
+	/// Collator reputation persistence interval. If None, defaults to 600 seconds.
+	pub collator_reputation_persist_interval: Option<Duration>,
 }
 
 /// Completely built polkadot node service.
@@ -146,7 +156,6 @@ where
 				overseer_handle.clone(),
 				metrics,
 				Some(basics.task_manager.spawn_handle()),
-				params.enable_approval_voting_parallel,
 			)
 		} else {
 			SelectRelayChain::new_longest_chain(basics.backend.clone())
@@ -204,7 +213,10 @@ where
 					prepare_workers_soft_max_num,
 					prepare_workers_hard_max_num,
 					keep_finalized_for,
-					enable_approval_voting_parallel,
+					invulnerable_ah_collators,
+					collator_protocol_hold_off,
+					experimental_collator_protocol,
+					collator_reputation_persist_interval,
 				},
 			overseer_connector,
 			partial_components:
@@ -417,6 +429,10 @@ where
 				stagnant_check_interval: Default::default(),
 				stagnant_check_mode: chain_selection_subsystem::StagnantCheckMode::PruneOnly,
 			};
+			let reputation_config = ReputationConfig {
+				col_reputation_data: parachains_db::REAL_COLUMNS.col_collator_reputation_data,
+				persist_interval: collator_reputation_persist_interval,
+			};
 
 			// Kusama + testnets get a higher threshold, we are conservative on Polkadot for now.
 			let fetch_chunks_threshold =
@@ -446,7 +462,10 @@ where
 				dispute_coordinator_config,
 				chain_selection_config,
 				fetch_chunks_threshold,
-				enable_approval_voting_parallel,
+				invulnerable_ah_collators,
+				collator_protocol_hold_off,
+				experimental_collator_protocol,
+				reputation_config,
 			})
 		};
 
@@ -457,6 +476,7 @@ where
 				client: client.clone(),
 				transaction_pool: transaction_pool.clone(),
 				spawn_handle: task_manager.spawn_handle(),
+				spawn_essential_handle: task_manager.spawn_essential_handle(),
 				import_queue,
 				block_announce_validator_builder: None,
 				warp_sync_config: Some(WarpSyncConfig::WithProvider(warp_sync)),
@@ -501,6 +521,7 @@ where
 			system_rpc_tx,
 			tx_handler_controller,
 			telemetry: telemetry.as_mut(),
+			tracing_execute_block: None,
 		})?;
 
 		if let Some(hwbench) = hwbench {
@@ -515,7 +536,7 @@ where
 						log::warn!(
 						"⚠️  Starting January 2025 the hardware will fail the minimal physical CPU cores requirements {} for role 'Authority',\n\
 						    find out more when this will become mandatory at:\n\
-						    https://wiki.polkadot.network/docs/maintain-guides-how-to-validate-polkadot#reference-hardware",
+						    https://docs.polkadot.com/infrastructure/running-a-validator/requirements/#minimum-hardware-requirements",
 						err
 					);
 					}
@@ -526,7 +547,7 @@ where
 					{
 						log::warn!(
 						"⚠️  The hardware does not meet the minimal requirements {} for role 'Authority' find out more at:\n\
-						https://wiki.polkadot.network/docs/maintain-guides-how-to-validate-polkadot#reference-hardware",
+						https://docs.polkadot.com/infrastructure/running-a-validator/requirements/#minimum-hardware-requirements",
 						err
 					);
 					}
@@ -665,16 +686,16 @@ where
 		};
 
 		if role.is_authority() {
-			let shield_keystore = Arc::new(MemoryShieldKeystore::new());
-
-			let proposer = sc_basic_authorship::ProposerFactory::new(
+			let mut proposer = sc_basic_authorship::ProposerFactory::new(
 				task_manager.spawn_handle(),
 				client.clone(),
 				transaction_pool.clone(),
 				prometheus_registry.as_ref(),
 				telemetry.as_ref().map(|x| x.handle()),
-				shield_keystore,
 			);
+			// We allow `15MiB` on the node side, but the actual block size limit is defined by the
+			// runtime.
+			proposer.set_default_block_size_limit(15 * 1024 * 1024);
 
 			let client_clone = client.clone();
 			let overseer_handle =

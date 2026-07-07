@@ -32,7 +32,6 @@ pub fn expand_outer_dispatch(
 	let mut query_call_part_macros = Vec::new();
 	let mut pallet_names = Vec::new();
 	let mut pallet_attrs = Vec::new();
-	let mut pallet_indices = Vec::new();
 	let system_path = &system_pallet.path;
 
 	let pallets_with_call = pallet_decls.iter().filter(|decl| decl.exists_part("Call"));
@@ -52,7 +51,6 @@ pub fn expand_outer_dispatch(
 		variant_patterns.push(quote!(RuntimeCall::#name(call)));
 		pallet_names.push(name);
 		pallet_attrs.push(attr);
-		pallet_indices.push(index);
 		query_call_part_macros.push(quote! {
 			#path::__substrate_call_check::is_call_part_defined!(#name);
 		});
@@ -68,7 +66,7 @@ pub fn expand_outer_dispatch(
 			#scrate::__private::codec::Decode,
 			#scrate::__private::codec::DecodeWithMemTracking,
 			#scrate::__private::scale_info::TypeInfo,
-			#scrate::__private::RuntimeDebug,
+			#scrate::__private::Debug,
 		)]
 		pub enum RuntimeCall {
 			#variant_defs
@@ -112,18 +110,12 @@ pub fn expand_outer_dispatch(
 		}
 		impl #scrate::dispatch::GetDispatchInfo for RuntimeCall {
 			fn get_dispatch_info(&self) -> #scrate::dispatch::DispatchInfo {
-				let mut info = match self {
+				match self {
 					#(
 						#pallet_attrs
 						#variant_patterns => call.get_dispatch_info(),
 					)*
-				};
-				info.call_weight = info.call_weight.saturating_add(
-					<<#runtime as #system_path::Config>::DispatchExtension
-						as #scrate::dispatch::DispatchExtension<RuntimeCall>
-					>::weight(self)
-				);
-				info
+				}
 			}
 		}
 
@@ -161,12 +153,6 @@ pub fn expand_outer_dispatch(
 				)*]
 			}
 
-			fn get_module_indices() -> &'static [u8] {
-				&[#(
-					#pallet_indices,
-				)*]
-			}
-
 			fn get_call_names(module: &str) -> &'static [&'static str] {
 				use #scrate::{dispatch::Callable, traits::GetCallName};
 				match module {
@@ -175,19 +161,6 @@ pub fn expand_outer_dispatch(
 						stringify!(#pallet_names) =>
 							<<#pallet_names as Callable<#runtime>>::RuntimeCall
 								as GetCallName>::get_call_names(),
-					)*
-					_ => unreachable!(),
-				}
-			}
-
-			fn get_call_indices(module: &str) -> &'static [u8] {
-				use #scrate::{dispatch::Callable, traits::GetCallIndex};
-				match module {
-					#(
-						#pallet_attrs
-						stringify!(#pallet_names) =>
-							<<#pallet_names as Callable<#runtime>>::RuntimeCall
-								as GetCallIndex>::get_call_indices(),
 					)*
 					_ => unreachable!(),
 				}
@@ -205,9 +178,7 @@ pub fn expand_outer_dispatch(
 					);
 				}
 
-				<<#runtime as #system_path::Config>::DispatchExtension
-					as #scrate::traits::ExtendedDispatchable<RuntimeCall>
-				>::dispatch_with_extension(origin, self)
+				#scrate::traits::UnfilteredDispatchable::dispatch_bypass_filter(self, origin)
 			}
 		}
 		impl #scrate::traits::UnfilteredDispatchable for RuntimeCall {

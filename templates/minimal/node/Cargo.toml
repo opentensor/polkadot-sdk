@@ -1,7 +1,7 @@
 [package]
 name = "minimal-template-node"
 description = "A minimal Substrate-based Substrate node, ready for hacking."
-version = "0.1.0"
+version = "0.0.0"
 license = "Unlicense"
 authors.workspace = true
 homepage.workspace = true
@@ -9,6 +9,9 @@ repository.workspace = true
 edition.workspace = true
 publish = false
 build = "build.rs"
+
+[lints]
+workspace = true
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
@@ -19,10 +22,9 @@ docify = { workspace = true }
 futures = { features = ["thread-pool"], workspace = true }
 futures-timer = { workspace = true }
 jsonrpsee = { features = ["server"], workspace = true }
-minimal-template-runtime.workspace = true
+
+minimal-template-runtime = { workspace = true }
 polkadot-sdk = { workspace = true, features = ["experimental", "node"] }
-stc-shield.default-features = true
-stc-shield.workspace = true
 
 [build-dependencies]
 polkadot-sdk = { workspace = true, features = ["substrate-build-script-utils"] }

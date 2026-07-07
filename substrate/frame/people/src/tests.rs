@@ -768,7 +768,7 @@ mod chunks {
 	use sp_runtime::BoundedVec;
 
 	#[test]
-	#[cfg_attr(debug_assertions, should_panic)]
+	#[should_panic]
 	fn no_chunks_first_page() {
 		new_test_ext().execute_with(|| {
 			Chunks::<Test>::remove(0);
@@ -777,7 +777,7 @@ mod chunks {
 	}
 
 	#[test]
-	#[cfg_attr(debug_assertions, should_panic)]
+	#[should_panic]
 	fn no_chunks_second_page() {
 		new_test_ext().execute_with(|| {
 			let chunk_page_size: u32 = <Test as Config>::ChunkPageSize::get();
@@ -790,7 +790,7 @@ mod chunks {
 	}
 
 	#[test]
-	#[cfg_attr(debug_assertions, should_panic)]
+	#[should_panic]
 	fn insufficient_chunks() {
 		new_test_ext().execute_with(|| {
 			let drain = Chunks::<Test>::drain();
@@ -1919,7 +1919,7 @@ mod onboard_people {
 					assert!(record.is_some());
 					match record.unwrap().position {
 						RingPosition::Included { ring_index: record_ring_index, .. } => {
-							assert_eq!(record_ring_index, ring_index, "{}", personal_id);
+							assert_eq!(record_ring_index, ring_index, "{personal_id}");
 						},
 						_ => panic!("Expected RingPosition::Included variant"),
 					}
@@ -1945,7 +1945,7 @@ mod onboard_people {
 					assert!(record.is_some());
 					match record.unwrap().position {
 						RingPosition::Included { ring_index: record_ring_index, .. } => {
-							assert_eq!(record_ring_index, ring_index, "{}", personal_id);
+							assert_eq!(record_ring_index, ring_index, "{personal_id}");
 						},
 						_ => panic!("Expected RingPosition::Included variant"),
 					}

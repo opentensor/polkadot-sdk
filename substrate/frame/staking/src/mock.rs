@@ -151,6 +151,8 @@ impl pallet_session::Config for Test {
 	type DisablingStrategy =
 		pallet_session::disabling::UpToLimitWithReEnablingDisablingStrategy<DISABLING_LIMIT_FACTOR>;
 	type WeightInfo = ();
+	type Currency = Balances;
+	type KeyDeposit = ();
 }
 
 impl pallet_session::historical::Config for Test {
@@ -221,6 +223,7 @@ impl pallet_bags_list::Config<VoterBagsListInstance> for Test {
 	// Staking is the source of truth for voter bags list, since they are not kept up to date.
 	type ScoreProvider = Staking;
 	type BagThresholds = BagThresholds;
+	type MaxAutoRebagPerBlock = ();
 	type Score = VoteWeight;
 }
 
@@ -611,7 +614,10 @@ pub(crate) fn bond_validator(who: AccountId, val: Balance) {
 	assert_ok!(Session::set_keys(
 		RuntimeOrigin::signed(who),
 		SessionKeys { other: who.into() },
-		vec![]
+		SessionKeys { other: who.into() }
+			.create_ownership_proof(&who.encode())
+			.unwrap()
+			.encode(),
 	));
 }
 
@@ -749,9 +755,9 @@ pub(crate) fn on_offence_in_era(
 				slash_fraction,
 				start_session,
 			);
-			return
+			return;
 		} else if bonded_era > era {
-			break
+			break;
 		}
 	}
 

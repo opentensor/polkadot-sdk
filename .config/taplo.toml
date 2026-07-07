@@ -1,10 +1,11 @@
 # all options https://taplo.tamasfe.dev/configuration/formatter-options.html
 
-# ignore upstream dirs we don't maintain + zombienet custom toml
+# ignore zombienet as they do some deliberate custom toml stuff
 exclude = [
-	"bridges/**",
-	"cumulus/**",
-	"polkadot/**",
+	"bridges/testing/**",
+	"cumulus/zombienet/**",
+	"polkadot/node/malus/integrationtests/**",
+	"polkadot/zombienet_tests/**",
 	"substrate/client/transaction-pool/tests/zombienet/**",
 	"substrate/zombienet/**",
 	"target/**",

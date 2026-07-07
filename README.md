@@ -24,6 +24,24 @@ If you want to get an example node running quickly you can execute the following
 curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/paritytech/polkadot-sdk/master/scripts/getting-started.sh | bash
 ```
 
+## 👩🏽‍💻 Building
+
+In order to build this project you need to install some dependencies, follow the instructions in [this guide](https://docs.polkadot.com/develop/parachains/install-polkadot-sdk).
+
+### 🎯 Build targets
+
+When building full runtimes, the WASM builder takes care of all required configuration.  
+For individual crates, however, there are a few caveats when targeting `no_std`.
+
+#### WASM
+Set `RUSTFLAGS="--cfg substrate_runtime"` when building for WASM. See the
+[WASM build](https://paritytech.github.io/polkadot-sdk/master/polkadot_sdk_docs/polkadot_sdk/substrate/index.html#wasm-build)
+in the Polkadot SDK Documentation.
+
+#### PolkaVM
+PolkaVM builds require some `riscv32` or `riscv64` target architecture.  
+See the CI example: [RiscV-build](https://github.com/paritytech/polkadot-sdk/blob/6de451a105ca0a5feb675a215d4e8de5207febf6/.github/workflows/build-misc.yml#L55).
+
 ## 📚 Documentation
 
 * [Polkadot Documentation Portal](https://docs.polkadot.com)

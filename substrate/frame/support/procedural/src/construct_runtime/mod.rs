@@ -209,16 +209,15 @@
 //! expose.
 
 pub(crate) mod expand;
+pub(crate) mod parse;
 
 use crate::pallet::parse::helper::two128_str;
 use cfg_expr::Predicate;
-use frame_support_procedural_core::construct_runtime::parse::{
-	ExplicitRuntimeDeclaration, ImplicitRuntimeDeclaration, Pallet, RuntimeDeclaration,
-};
 use frame_support_procedural_tools::{
 	generate_access_from_frame_or_crate, generate_crate_access, generate_hidden_includes,
 };
 use itertools::Itertools;
+use parse::{ExplicitRuntimeDeclaration, ImplicitRuntimeDeclaration, Pallet, RuntimeDeclaration};
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
@@ -363,7 +362,7 @@ fn construct_runtime_final_expansion(
 		return Err(syn::Error::new(
 			system_pallet.name.span(),
 			"`System` pallet declaration is feature gated, please remove any `#[cfg]` attributes",
-		))
+		));
 	}
 
 	let features = pallets
@@ -446,7 +445,7 @@ fn construct_runtime_final_expansion(
 		};
 
 		#[derive(
-			Clone, Copy, PartialEq, Eq, #scrate::sp_runtime::RuntimeDebug,
+			Clone, Copy, PartialEq, Eq, core::fmt::Debug,
 			#scrate::__private::scale_info::TypeInfo
 		)]
 		pub struct #name;
@@ -801,7 +800,7 @@ pub(crate) fn check_pallet_number(input: TokenStream2, pallet_num: usize) -> Res
 					""
 				},
 			),
-		))
+		));
 	}
 
 	Ok(())

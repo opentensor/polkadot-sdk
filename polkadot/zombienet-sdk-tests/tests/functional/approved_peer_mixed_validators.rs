@@ -9,7 +9,7 @@
 use anyhow::anyhow;
 use tokio::time::Duration;
 
-use cumulus_zombienet_sdk_helpers::{assert_finality_lag, assert_finalized_para_throughput};
+use cumulus_zombienet_sdk_helpers::{assert_finality_lag, assert_para_throughput};
 use polkadot_primitives::Id as ParaId;
 use serde_json::json;
 use zombienet_orchestrator::network::node::LogLineCountOptions;
@@ -44,18 +44,25 @@ async fn approved_peer_mixed_validators_test() -> Result<(), anyhow::Error> {
 						}
 					}
 				}))
-				.with_node(|node| node.with_name("validator-0"));
+				.with_validator(|node| node.with_name("validator-0"));
 
-			let r = (1..7)
-				.fold(r, |acc, i| acc.with_node(|node| node.with_name(&format!("validator-{i}"))));
+			let r = (1..7).fold(r, |acc, i| {
+				acc.with_validator(|node| node.with_name(&format!("validator-{i}")))
+			});
 
 			(7..10).fold(r, |acc, i| {
-				acc.with_node(|node| {
-					node.with_name(&format!("old-validator-{i}")).with_image(
-						std::env::var("OLD_POLKADOT_IMAGE")
-							.expect("OLD_POLKADOT_IMAGE needs to be set")
-							.as_str(),
-					)
+				acc.with_validator(|node| {
+					node.with_name(&format!("old-validator-{i}"))
+						.with_image(
+							std::env::var("OLD_POLKADOT_IMAGE")
+								.expect("OLD_POLKADOT_IMAGE needs to be set")
+								.as_str(),
+						)
+						.with_command(
+							std::env::var("OLD_POLKADOT_COMMAND")
+								.unwrap_or(String::from("polkadot"))
+								.as_str(),
+						)
 				})
 			})
 		})
@@ -103,12 +110,11 @@ async fn approved_peer_mixed_validators_test() -> Result<(), anyhow::Error> {
 
 	// The min throughput for para 2000 is going to be lower, but it depends on how the old
 	// validators are distributed into backing groups.
-	assert_finalized_para_throughput(
+	assert_para_throughput(
 		&relay_client,
 		15,
-		[(ParaId::from(2000), 6..15), (ParaId::from(2001), 11..16)]
-			.into_iter()
-			.collect(),
+		[(ParaId::from(2000), 6..15), (ParaId::from(2001), 11..16)],
+		[],
 	)
 	.await?;
 

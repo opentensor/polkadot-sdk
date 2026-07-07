@@ -20,14 +20,14 @@
 //! [`SizeOnlyRecorderProvider`]. They are used to track the current
 //! proof-size without actually recording the accessed nodes themselves.
 
-use codec::Encode;
-
 use alloc::rc::Rc;
-
+use codec::Encode;
 use core::cell::{RefCell, RefMut};
 use hashbrown::{HashMap, HashSet};
 use sp_trie::{NodeCodec, ProofSizeProvider, RandomState, StorageProof};
 use trie_db::{Hasher, RecordedForKey, TrieAccess};
+
+pub(crate) type SeenNodes<H> = Rc<RefCell<HashSet<<H as Hasher>::Out, RandomState>>>;
 
 /// A trie recorder that only keeps track of the proof size.
 ///
@@ -43,15 +43,17 @@ impl<'a, H: trie_db::Hasher> trie_db::TrieRecorder<H::Out> for SizeOnlyRecorder<
 	fn record(&mut self, access: TrieAccess<'_, H::Out>) {
 		let mut encoded_size_update = 0;
 		match access {
-			TrieAccess::NodeOwned { hash, node_owned } =>
+			TrieAccess::NodeOwned { hash, node_owned } => {
 				if self.seen_nodes.insert(hash) {
 					let node = node_owned.to_encoded::<NodeCodec<H>>();
 					encoded_size_update += node.encoded_size();
-				},
-			TrieAccess::EncodedNode { hash, encoded_node } =>
+				}
+			},
+			TrieAccess::EncodedNode { hash, encoded_node } => {
 				if self.seen_nodes.insert(hash) {
 					encoded_size_update += encoded_node.encoded_size();
-				},
+				}
+			},
 			TrieAccess::Value { hash, value, full_key } => {
 				if self.seen_nodes.insert(hash) {
 					encoded_size_update += value.encoded_size();
@@ -90,7 +92,7 @@ impl<'a, H: trie_db::Hasher> trie_db::TrieRecorder<H::Out> for SizeOnlyRecorder<
 
 #[derive(Clone)]
 pub struct SizeOnlyRecorderProvider<H: Hasher> {
-	seen_nodes: Rc<RefCell<HashSet<H::Out, RandomState>>>,
+	seen_nodes: SeenNodes<H>,
 	encoded_size: Rc<RefCell<usize>>,
 	recorded_keys: Rc<RefCell<HashMap<Rc<[u8]>, RecordedForKey, RandomState>>>,
 }
@@ -102,6 +104,14 @@ impl<H: Hasher> Default for SizeOnlyRecorderProvider<H> {
 			encoded_size: Default::default(),
 			recorded_keys: Default::default(),
 		}
+	}
+}
+
+impl<H: Hasher> SizeOnlyRecorderProvider<H> {
+	/// Use the given `seen_nodes` to populate the internal state.
+	#[cfg(not(feature = "std"))]
+	pub(crate) fn with_seen_nodes(seen_nodes: SeenNodes<H>) -> Self {
+		Self { seen_nodes, ..Default::default() }
 	}
 }
 

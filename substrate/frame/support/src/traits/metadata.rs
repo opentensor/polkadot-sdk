@@ -21,7 +21,7 @@ use alloc::{vec, vec::Vec};
 use codec::{Decode, Encode};
 use core::ops::Add;
 use impl_trait_for_tuples::impl_for_tuples;
-use sp_runtime::RuntimeDebug;
+use Debug;
 
 /// Provides information about the pallet itself and its setup in the runtime.
 ///
@@ -41,7 +41,7 @@ pub trait PalletInfo {
 }
 
 /// Information regarding an instance of a pallet.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, RuntimeDebug)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct PalletInfoData {
 	/// Index of the pallet as configured in the runtime.
 	pub index: usize,
@@ -96,7 +96,7 @@ impl PalletsInfoAccess for Tuple {
 }
 
 /// The function and pallet name of the Call.
-#[derive(Clone, Eq, PartialEq, Default, RuntimeDebug)]
+#[derive(Clone, Eq, PartialEq, Default, Debug)]
 pub struct CallMetadata {
 	/// Name of the function.
 	pub function_name: &'static str,
@@ -122,14 +122,10 @@ pub trait GetCallIndex {
 
 /// Gets the metadata for the Call - function name and pallet name.
 pub trait GetCallMetadata {
-	/// Return all module names in the same order as [`get_module_indices`].
+	/// Return all module names.
 	fn get_module_names() -> &'static [&'static str];
-	/// Return all module indices in the same order as [`get_module_names`].
-	fn get_module_indices() -> &'static [u8];
-	/// Return all function names for the given `module` in the same order as [`get_call_indices`].
+	/// Return all function names for the given `module`.
 	fn get_call_names(module: &str) -> &'static [&'static str];
-	/// Return all function indices for the given `module` in the same order as [`get_call_names`].
-	fn get_call_indices(module: &str) -> &'static [u8];
 	/// Return a [`CallMetadata`], containing function and pallet name of the Call.
 	fn get_call_metadata(&self) -> CallMetadata;
 }
@@ -332,6 +328,7 @@ mod tests {
 	use super::*;
 	use sp_crypto_hashing::twox_128;
 
+	#[allow(dead_code)]
 	struct Pallet1;
 	impl PalletInfoAccess for Pallet1 {
 		fn index() -> usize {
@@ -350,6 +347,7 @@ mod tests {
 			CrateVersion::new(1, 0, 0)
 		}
 	}
+	#[allow(dead_code)]
 	struct Pallet2;
 	impl PalletInfoAccess for Pallet2 {
 		fn index() -> usize {
