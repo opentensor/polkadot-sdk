@@ -274,6 +274,7 @@ where
 }
 
 /// Contains the data needed to verify a warp sync proof for hard forks
+#[derive(Clone)]
 pub enum HardForks<Block: BlockT> {
 	/// Sets new authorities and set ID by block hash and number
 	AuthoritySetHardForks {
@@ -347,7 +348,7 @@ struct VerifierState<Block: BlockT> {
 /// Verifier implementation for GRANDPA warp sync.
 struct GrandpaVerifier<Block: BlockT> {
 	state: VerifierState<Block>,
-	hard_forks: HashMap<(Block::Hash, NumberFor<Block>), (SetId, AuthorityList)>,
+	hard_forks: HardForks<Block>,
 	eras_synced: u64,
 }
 
