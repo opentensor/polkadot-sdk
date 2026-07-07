@@ -128,9 +128,9 @@ use frame_support::traits::BuildGenesisConfig;
 use frame_support::{
 	defensive,
 	dispatch::{
-		extract_actual_pays_fee, extract_actual_weight, DispatchClass, DispatchInfo,
-		DispatchResult, DispatchResultWithPostInfo, GetDispatchInfo, PerDispatchClass,
-		PostDispatchInfo,
+		extract_actual_pays_fee, extract_actual_weight, DispatchClass, DispatchExtension,
+		DispatchInfo, DispatchResult, DispatchResultWithPostInfo, GetDispatchInfo,
+		PerDispatchClass, PostDispatchInfo,
 	},
 	ensure, impl_ensure_origin_with_arg_ignoring_arg,
 	migrations::MultiStepMigrator,
@@ -364,6 +364,7 @@ pub mod pallet {
 			type PreInherents = ();
 			type PostInherents = ();
 			type PostTransactions = ();
+			type DispatchExtension = ();
 		}
 
 		/// Default configurations of this pallet in a solochain environment.
@@ -466,6 +467,7 @@ pub mod pallet {
 			type PreInherents = ();
 			type PostInherents = ();
 			type PostTransactions = ();
+			type DispatchExtension = ();
 		}
 
 		/// Default configurations of this pallet in a relay-chain environment.
@@ -682,6 +684,10 @@ pub mod pallet {
 		///
 		/// See `frame_executive::block_flowchart` for a in-depth explanation when it runs.
 		type PostTransactions: PostTransactions;
+
+		/// The dispatch extension executed around dispatchable calls.
+		#[pallet::no_default_bounds]
+		type DispatchExtension: DispatchExtension<Self::RuntimeCall>;
 	}
 
 	#[pallet::pallet]

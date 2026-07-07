@@ -18,7 +18,7 @@
 //! Dispatch system. Contains a macro for defining runtime modules and
 //! generating values representing lazy module function calls.
 
-use crate::traits::UnfilteredDispatchable;
+pub use crate::traits::{DispatchExtension, ExtendedDispatchable, UnfilteredDispatchable};
 use codec::{Codec, Decode, DecodeWithMemTracking, Encode, EncodeLike, MaxEncodedLen};
 use core::fmt;
 use scale_info::TypeInfo;

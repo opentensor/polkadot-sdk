@@ -17,11 +17,14 @@
 
 //! Traits for dealing with dispatching calls and the origin from which they are dispatched.
 
-use crate::dispatch::{DispatchResultWithPostInfo, Parameter, RawOrigin};
+use crate::{
+	dispatch::{DispatchErrorWithPostInfo, DispatchResultWithPostInfo, Parameter, RawOrigin},
+	storage::{transactional::with_transaction, TransactionOutcome},
+};
 use codec::MaxEncodedLen;
 use core::{cmp::Ordering, marker::PhantomData};
 use sp_runtime::{
-	traits::{BadOrigin, Get, Member, Morph, TryMorph},
+	traits::{BadOrigin, Dispatchable, Get, Member, Morph, TryMorph},
 	transaction_validity::{TransactionSource, TransactionValidityError, ValidTransaction},
 	Either,
 };
@@ -445,6 +448,92 @@ pub trait UnfilteredDispatchable {
 
 	/// Dispatch this call but do not check the filter in origin.
 	fn dispatch_bypass_filter(self, origin: Self::RuntimeOrigin) -> DispatchResultWithPostInfo;
+}
+
+/// Orchestrates a `DispatchExtension` around the call dispatch in a single method.
+/// Pre-dispatch runs in a rolled-back storage layer. Post-dispatch always runs.
+/// Blanket-implemented for all `DispatchExtension` implementors.
+pub trait ExtendedDispatchable<Call: Dispatchable>: DispatchExtension<Call> {
+	fn dispatch_with_extension(
+		origin: <Call as Dispatchable>::RuntimeOrigin,
+		call: Call,
+	) -> DispatchResultWithPostInfo;
+}
+
+impl<T, Call> ExtendedDispatchable<Call> for T
+where
+	T: DispatchExtension<Call>,
+	Call: Dispatchable
+		+ UnfilteredDispatchable<RuntimeOrigin = <Call as Dispatchable>::RuntimeOrigin>,
+	<Call as Dispatchable>::RuntimeOrigin: OriginTrait,
+{
+	fn dispatch_with_extension(
+		origin: <Call as Dispatchable>::RuntimeOrigin,
+		call: Call,
+	) -> DispatchResultWithPostInfo {
+		// Root origin bypasses the extension.
+		if origin.caller().is_root() {
+			return UnfilteredDispatchable::dispatch_bypass_filter(call, origin);
+		}
+
+		let pre = with_transaction(|| {
+			let result = T::pre_dispatch(&origin, &call);
+			TransactionOutcome::Rollback(result)
+		})?;
+
+		let result = UnfilteredDispatchable::dispatch_bypass_filter(call, origin);
+		T::post_dispatch(pre, &result);
+
+		result
+	}
+}
+
+/// A `DispatchExtension` is executed around the `Call` dispatch. It provides:
+/// - `pre_dispatch`: runs in a rolled-back storage layer (no writes persist), can gate the call and
+///   capture state for `post_dispatch`.
+/// - `post_dispatch`: runs after dispatch, can persist storage writes (e.g. rate limiting), cannot
+///   fail.
+///
+/// The trait is implemented for all tuples of up to 30 elements.
+pub trait DispatchExtension<Call: Dispatchable> {
+	/// Data produced by `pre_dispatch` and passed to `post_dispatch`.
+	type Pre;
+
+	/// Worst-case weight consumed by this extension.
+	fn weight(call: &Call) -> Weight;
+
+	/// Called before dispatch. Runs in a rolled-back storage layer (no writes persist).
+	/// Can gate the call or capture state for `post_dispatch`.
+	fn pre_dispatch(
+		origin: &Call::RuntimeOrigin,
+		call: &Call,
+	) -> Result<Self::Pre, DispatchErrorWithPostInfo>;
+
+	/// Called after dispatch. Cannot fail. Storage writes persist.
+	/// Receives the pre-dispatch data and the dispatch result.
+	fn post_dispatch(_pre: Self::Pre, _result: &DispatchResultWithPostInfo) {}
+}
+
+#[impl_trait_for_tuples::impl_for_tuples(30)]
+impl<Call: Dispatchable> DispatchExtension<Call> for Tuple {
+	for_tuples!( type Pre = ( #( Tuple::Pre ),* ); );
+
+	fn weight(call: &Call) -> Weight {
+		let mut weight = Weight::zero();
+		for_tuples!( #( weight = weight.saturating_add(Tuple::weight(call)); )* );
+		weight
+	}
+
+	fn pre_dispatch(
+		origin: &Call::RuntimeOrigin,
+		call: &Call,
+	) -> Result<Self::Pre, DispatchErrorWithPostInfo> {
+		Ok(for_tuples!( ( #( Tuple::pre_dispatch(origin, call)? ),* ) ))
+	}
+
+	fn post_dispatch(pre: Self::Pre, result: &DispatchResultWithPostInfo) {
+		for_tuples!( #( Tuple::post_dispatch(pre.Tuple, result); )* );
+	}
 }
 
 /// The trait implemented by the overarching enumeration of the different pallets' origins.
