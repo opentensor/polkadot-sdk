@@ -779,6 +779,17 @@ impl<N: Ord + Clone> AuthoritySetChanges<N> {
 
 		Some(self.0[idx..].iter())
 	}
+
+	/// Returns recorded authority changes after a trusted checkpoint. Unlike [`Self::iter_from`],
+	/// this intentionally permits an incomplete historical prefix because the caller already knows
+	/// the authority set at `set_id` and `block_number`.
+	pub(crate) fn iter_after_known(
+		&self,
+		set_id: SetId,
+		block_number: N,
+	) -> impl Iterator<Item = &(u64, N)> {
+		self.0.iter().filter(move |(id, block)| *id > set_id && *block > block_number)
+	}
 }
 
 #[cfg(test)]
