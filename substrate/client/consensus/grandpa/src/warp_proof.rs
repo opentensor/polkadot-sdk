@@ -118,8 +118,12 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 		let mut proofs_encoded_len = 0;
 		let mut proof_limit_reached = false;
 
-		let set_change_blocks =
-			hard_forks.warp_sync_change_blocks(begin_number, finalized_number, set_changes)?;
+		let set_change_blocks = hard_forks.warp_sync_change_blocks(
+			begin_number,
+			finalized_number,
+			set_changes,
+			|hash, number| Ok(blockchain.hash(number)?.as_ref() == Some(hash)),
+		)?;
 
 		for last_block in set_change_blocks {
 			let hash = match blockchain.block_hash_from_id(&BlockId::Number(*last_block))? {
@@ -330,6 +334,7 @@ impl<Block: BlockT> HardForks<Block> {
 		begin: NumberFor<Block>,
 		finalized: NumberFor<Block>,
 		set_changes: &'a AuthoritySetChanges<NumberFor<Block>>,
+		mut is_canonical: impl FnMut(&Block::Hash, NumberFor<Block>) -> Result<bool, Error>,
 	) -> Result<Vec<&'a NumberFor<Block>>, Error> {
 		let HardForks::AuthoritySetHardForks { hard_forks } = self else {
 			return set_changes
@@ -338,13 +343,13 @@ impl<Block: BlockT> HardForks<Block> {
 				.ok_or(Error::MissingData);
 		};
 
-		let mut checkpoints = hard_forks
-			.iter()
-			.map(|((_, number), (set_id, _))| (number, *set_id))
-			.filter(|(number, _)| **number <= finalized)
-			.collect::<Vec<_>>();
+		let mut checkpoints = Vec::new();
+		for ((hash, number), (set_id, _)) in hard_forks {
+			if *number <= finalized && is_canonical(hash, *number)? {
+				checkpoints.push((number, *set_id));
+			}
+		}
 		checkpoints.sort_unstable_by_key(|(number, _)| *number);
-		checkpoints.dedup_by_key(|(number, _)| *number);
 
 		let Some((last_checkpoint, last_checkpoint_set_id)) = checkpoints.last().copied() else {
 			return set_changes
@@ -358,7 +363,7 @@ impl<Block: BlockT> HardForks<Block> {
 			.map(|(block, _)| block)
 			.filter(|checkpoint| **checkpoint > begin)
 			.collect::<Vec<_>>();
-		let suffix_begin = if begin > *last_checkpoint { begin } else { last_checkpoint.clone() };
+		let suffix_begin = if begin > *last_checkpoint { begin } else { *last_checkpoint };
 		blocks.extend(
 			set_changes
 				.iter_after_known(last_checkpoint_set_id, suffix_begin)
@@ -567,6 +572,19 @@ mod tests {
 		let warp_sync_proof =
 			WarpSyncProof::generate(&*backend, genesis_hash, &authority_set_changes, &hard_forks)
 				.unwrap();
+		let legacy_proof = warp_sync_proof.encode();
+
+		// Reinitializing the starting set ID is Subtensor mainnet's existing mode. Supplying that
+		// mode must not alter which proof fragments the server generates.
+		let reinitialized_set_id = HardForks::new_initial_set_id(3);
+		let reinitialized_proof = WarpSyncProof::generate(
+			&*backend,
+			genesis_hash,
+			&authority_set_changes,
+			&reinitialized_set_id,
+		)
+		.unwrap();
+		assert_eq!(reinitialized_proof.encode(), legacy_proof);
 
 		// verifying the proof should yield the last set id and authorities
 		let (new_set_id, new_authorities) =
@@ -584,13 +602,23 @@ mod tests {
 		// and verification. This allows a chain to skip historical transitions that cannot produce
 		// a valid warp fragment without changing the proof's wire format.
 		let hard_fork = hard_fork.expect("block 50 is an authority-set transition");
+		let noncanonical_hard_fork = AuthoritySetHardFork {
+			set_id: 99,
+			block: (Default::default(), hard_fork.block.1),
+			authorities: hard_fork.authorities.clone(),
+			last_finalized: None,
+		};
 		let future_hard_fork = AuthoritySetHardFork {
 			set_id: 10,
 			block: (Default::default(), 110),
 			authorities: hard_fork.authorities.clone(),
 			last_finalized: None,
 		};
-		let hard_forks = HardForks::new_hard_forked_authorities(vec![hard_fork, future_hard_fork]);
+		let hard_forks = HardForks::new_hard_forked_authorities(vec![
+			hard_fork,
+			noncanonical_hard_fork,
+			future_hard_fork,
+		]);
 		let poisoned_authority_set_changes = AuthoritySetChanges::from({
 			// Model a node that warp-synced to the checkpoint and therefore has no set-0 prefix.
 			let mut changes = authority_set_change_records
@@ -610,6 +638,14 @@ mod tests {
 		)
 		.unwrap();
 		assert_eq!(*warp_sync_proof.proofs[0].header.number(), 50);
+		assert_eq!(
+			warp_sync_proof
+				.proofs
+				.iter()
+				.filter(|proof| *proof.header.number() == 50)
+				.count(),
+			1,
+		);
 
 		let (new_set_id, new_authorities) =
 			warp_sync_proof.verify(0, genesis_authorities, &hard_forks).unwrap();
