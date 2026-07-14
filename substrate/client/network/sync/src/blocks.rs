@@ -199,6 +199,19 @@ impl<B: BlockT> BlockCollection<B> {
 			return None;
 		}
 
+		if range.end <= range.start {
+			debug_assert!(
+				false,
+				"Empty range {:?}, count={}, peer_best={}, common={}, blocks={:?}",
+				range, count, peer_best, common, self.blocks
+			);
+			trace!(
+				target: LOG_TARGET,
+				"Empty range for peer {who}: {range:?}, count={count}, peer_best={peer_best}, common={common}",
+			);
+			return None;
+		}
+
 		self.peer_requests.insert(who, range.start);
 		self.blocks.insert(
 			range.start,
@@ -312,6 +325,14 @@ mod test {
 		assert!(!is_empty(&bc));
 		bc.clear();
 		assert!(is_empty(&bc));
+	}
+
+	#[test]
+	fn peer_advertising_max_block_number_does_not_panic() {
+		let mut bc: BlockCollection<Block> = BlockCollection::new();
+		let peer = PeerId::random();
+
+		assert_eq!(bc.needed_blocks(peer, 5, u64::MAX, 0, 1, 200), Some(1..6));
 	}
 
 	#[test]
