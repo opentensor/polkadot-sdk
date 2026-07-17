@@ -509,6 +509,11 @@ pub const TEST_RUNTIME_BABE_EPOCH_CONFIGURATION: BabeEpochConfiguration = BabeEp
 	allowed_slots: AllowedSlots::PrimaryAndSecondaryPlainSlots,
 };
 
+/// Storage keys used by basic-authorship's shielded-transaction tests.
+pub const SHIELD_TEST_DECODE_KEY: &[u8] = b"shield_test:decode_result";
+pub const SHIELD_TEST_UNSHIELD_KEY: &[u8] = b"shield_test:unshield_result";
+pub const SHIELD_TEST_CURRENT_KEY: &[u8] = b"shield_test:is_current_key";
+
 impl_runtime_apis! {
 	impl sp_api::Core<Block> for Runtime {
 		fn version() -> RuntimeVersion {
@@ -823,6 +828,29 @@ impl_runtime_apis! {
 
 		fn preset_names() -> Vec<PresetId> {
 			vec![PresetId::from("foobar"), PresetId::from("staging")]
+		}
+	}
+
+	impl stp_shield::ShieldApi<Block> for Runtime {
+		fn try_decode_shielded_tx(
+			_uxt: <Block as BlockT>::Extrinsic,
+		) -> Option<stp_shield::ShieldedTransaction> {
+			sp_io::storage::get(SHIELD_TEST_DECODE_KEY)
+				.and_then(|bytes| Decode::decode(&mut &bytes[..]).ok())
+		}
+
+		fn is_shielded_using_current_key(_key_hash: &[u8; 16]) -> bool {
+			sp_io::storage::get(SHIELD_TEST_CURRENT_KEY)
+				.and_then(|bytes| Decode::decode(&mut &bytes[..]).ok())
+				.unwrap_or(true)
+		}
+
+		fn try_unshield_tx(
+			_dec_key_bytes: Vec<u8>,
+			_shielded_tx: stp_shield::ShieldedTransaction,
+		) -> Option<<Block as BlockT>::Extrinsic> {
+			sp_io::storage::get(SHIELD_TEST_UNSHIELD_KEY)
+				.and_then(|bytes| Decode::decode(&mut &bytes[..]).ok())
 		}
 	}
 }

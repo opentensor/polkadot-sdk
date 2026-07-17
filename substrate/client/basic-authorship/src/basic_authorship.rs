@@ -729,6 +729,26 @@ mod tests {
 	const MEDIUM: u32 = 250000000;
 	const TINY: u32 = 1000;
 
+	struct TestShieldKeystore;
+
+	impl stp_shield::ShieldKeystore for TestShieldKeystore {
+		fn roll_for_next_slot(&self) -> stp_shield::Result<()> {
+			Ok(())
+		}
+
+		fn next_enc_key(&self) -> stp_shield::Result<Vec<u8>> {
+			Ok(Vec::new())
+		}
+
+		fn current_dec_key(&self) -> stp_shield::Result<Vec<u8>> {
+			Ok(Vec::new())
+		}
+	}
+
+	fn test_shield_keystore() -> ShieldKeystorePtr {
+		Arc::new(TestShieldKeystore)
+	}
+
 	fn extrinsic(nonce: u64) -> Extrinsic {
 		ExtrinsicBuilder::new_fill_block(Perbill::from_parts(TINY)).nonce(nonce).build()
 	}
@@ -762,8 +782,14 @@ mod tests {
 			)),
 		);
 
-		let mut proposer_factory =
-			ProposerFactory::new(spawner.clone(), client.clone(), txpool.clone(), None, None);
+		let mut proposer_factory = ProposerFactory::new(
+			spawner.clone(),
+			client.clone(),
+			txpool.clone(),
+			None,
+			None,
+			test_shield_keystore(),
+		);
 
 		let cell = Mutex::new((false, time::Instant::now()));
 		let proposer = proposer_factory.init_with_now(
@@ -807,8 +833,14 @@ mod tests {
 			client.clone(),
 		));
 
-		let mut proposer_factory =
-			ProposerFactory::new(spawner.clone(), client.clone(), txpool.clone(), None, None);
+		let mut proposer_factory = ProposerFactory::new(
+			spawner.clone(),
+			client.clone(),
+			txpool.clone(),
+			None,
+			None,
+			test_shield_keystore(),
+		);
 
 		let cell = Mutex::new((false, time::Instant::now()));
 		let proposer = proposer_factory.init_with_now(
@@ -858,8 +890,14 @@ mod tests {
 			)),
 		);
 
-		let mut proposer_factory =
-			ProposerFactory::new(spawner.clone(), client.clone(), txpool.clone(), None, None);
+		let mut proposer_factory = ProposerFactory::new(
+			spawner.clone(),
+			client.clone(),
+			txpool.clone(),
+			None,
+			None,
+			test_shield_keystore(),
+		);
 
 		let proposer = proposer_factory.init_with_now(
 			&client.header(genesis_hash).unwrap().unwrap(),
@@ -919,8 +957,14 @@ mod tests {
 		))
 		.unwrap();
 
-		let mut proposer_factory =
-			ProposerFactory::new(spawner.clone(), client.clone(), txpool.clone(), None, None);
+		let mut proposer_factory = ProposerFactory::new(
+			spawner.clone(),
+			client.clone(),
+			txpool.clone(),
+			None,
+			None,
+			test_shield_keystore(),
+		);
 		let mut propose_block = |client: &TestClient,
 		                         parent_number,
 		                         expected_block_extrinsics,
@@ -1040,8 +1084,14 @@ mod tests {
 
 		block_on(txpool.maintain(chain_event(genesis_header.clone())));
 
-		let mut proposer_factory =
-			ProposerFactory::new(spawner.clone(), client.clone(), txpool.clone(), None, None);
+		let mut proposer_factory = ProposerFactory::new(
+			spawner.clone(),
+			client.clone(),
+			txpool.clone(),
+			None,
+			None,
+			test_shield_keystore(),
+		);
 
 		let proposer = block_on(proposer_factory.init(&genesis_header)).unwrap();
 
@@ -1069,8 +1119,14 @@ mod tests {
 		// Without a block limit we should include all of them
 		assert_eq!(block.extrinsics().len(), extrinsics_num);
 
-		let mut proposer_factory =
-			ProposerFactory::new(spawner.clone(), client.clone(), txpool.clone(), None, None);
+		let mut proposer_factory = ProposerFactory::new(
+			spawner.clone(),
+			client.clone(),
+			txpool.clone(),
+			None,
+			None,
+			test_shield_keystore(),
+		);
 
 		let proposer = block_on(proposer_factory.init(&genesis_header)).unwrap();
 
@@ -1143,8 +1199,14 @@ mod tests {
 		)));
 		assert_eq!(txpool.ready().count(), MAX_SKIPPED_TRANSACTIONS * 3);
 
-		let mut proposer_factory =
-			ProposerFactory::new(spawner.clone(), client.clone(), txpool.clone(), None, None);
+		let mut proposer_factory = ProposerFactory::new(
+			spawner.clone(),
+			client.clone(),
+			txpool.clone(),
+			None,
+			None,
+			test_shield_keystore(),
+		);
 
 		let cell = Mutex::new(time::Instant::now());
 		let proposer = proposer_factory.init_with_now(
@@ -1215,8 +1277,14 @@ mod tests {
 		)));
 		assert_eq!(txpool.ready().count(), MAX_SKIPPED_TRANSACTIONS * 2 + 4);
 
-		let mut proposer_factory =
-			ProposerFactory::new(spawner.clone(), client.clone(), txpool.clone(), None, None);
+		let mut proposer_factory = ProposerFactory::new(
+			spawner.clone(),
+			client.clone(),
+			txpool.clone(),
+			None,
+			None,
+			test_shield_keystore(),
+		);
 
 		let deadline = time::Duration::from_secs(600);
 		let cell = Arc::new(Mutex::new((0, time::Instant::now())));

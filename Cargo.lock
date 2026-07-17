@@ -20948,6 +20948,8 @@ dependencies = [
  "sp-runtime 48.0.0",
  "sp-state-machine 0.53.0",
  "sp-trie 46.0.0",
+ "stc-shield",
+ "stp-shield",
  "substrate-prometheus-endpoint 0.17.0",
  "substrate-test-runtime-client",
 ]
@@ -26891,6 +26893,7 @@ dependencies = [
  "sp-transaction-pool",
  "sp-trie 46.0.0",
  "sp-version 46.0.0",
+ "stp-shield",
  "substrate-test-runtime-client",
  "substrate-wasm-builder",
  "tracing",

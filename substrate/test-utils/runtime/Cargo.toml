@@ -50,6 +50,7 @@ sp-statement-store = { workspace = true }
 sp-transaction-pool = { workspace = true }
 sp-trie = { workspace = true }
 sp-version = { workspace = true }
+stp-shield = { workspace = true }
 trie-db = { workspace = true }
 
 # 3rd party
@@ -117,6 +118,7 @@ std = [
 	"sp-transaction-pool/std",
 	"sp-trie/std",
 	"sp-version/std",
+	"stp-shield/std",
 	"substrate-wasm-builder",
 	"tracing/std",
 	"trie-db/std",
