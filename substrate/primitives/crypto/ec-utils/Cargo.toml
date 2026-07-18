@@ -19,9 +19,11 @@ ark-bls12-377 = { features = ["curve"], optional = true, workspace = true }
 ark-bls12-377-ext = { optional = true, workspace = true }
 ark-bls12-381 = { features = ["curve"], optional = true, workspace = true }
 ark-bls12-381-ext = { optional = true, workspace = true }
+ark-bls12-381-v4 = { package = "ark-bls12-381", version = "=0.4.0", default-features = false, features = ["curve"], optional = true }
 ark-bw6-761 = { optional = true, workspace = true }
 ark-bw6-761-ext = { optional = true, workspace = true }
 ark-ec = { optional = true, workspace = true }
+ark-ec-v4 = { package = "ark-ec", version = "=0.4.2", default-features = false, optional = true }
 ark-ed-on-bls12-377 = { optional = true, workspace = true }
 ark-ed-on-bls12-377-ext = { optional = true, workspace = true }
 ark-ed-on-bls12-381-bandersnatch = { optional = true, workspace = true }
@@ -30,6 +32,7 @@ ark-ff = { optional = true, workspace = true }
 ark-pallas = { optional = true, workspace = true }
 ark-pallas-ext = { optional = true, workspace = true }
 ark-scale = { features = ["hazmat"], optional = true, workspace = true }
+ark-scale-v4 = { package = "ark-scale", version = "=0.0.12", default-features = false, features = ["hazmat"], optional = true }
 ark-vesta = { optional = true, workspace = true }
 ark-vesta-ext = { optional = true, workspace = true }
 sp-runtime-interface = { optional = true, workspace = true }
@@ -44,10 +47,12 @@ std = [
 	"ark-bls12-377?/std",
 	"ark-bls12-381-ext?/std",
 	"ark-bls12-381?/std",
+	"ark-bls12-381-v4?/std",
 	"ark-bw6-761-ext?/std",
 	"ark-bw6-761?/std",
 	"ark-ec?/parallel",
 	"ark-ec?/std",
+	"ark-ec-v4?/std",
 	"ark-ed-on-bls12-377-ext?/std",
 	"ark-ed-on-bls12-377?/std",
 	"ark-ed-on-bls12-381-bandersnatch-ext?/std",
@@ -56,6 +61,7 @@ std = [
 	"ark-pallas-ext?/std",
 	"ark-pallas?/std",
 	"ark-scale?/std",
+	"ark-scale-v4?/std",
 	"ark-std/std",
 	"ark-vesta-ext?/std",
 	"ark-vesta?/std",
@@ -63,7 +69,14 @@ std = [
 ]
 common = ["ark-ec", "ark-ff", "ark-scale", "sp-runtime-interface"]
 bls12-377 = ["ark-bls12-377", "ark-bls12-377-ext", "common"]
-bls12-381 = ["ark-bls12-381", "ark-bls12-381-ext", "common"]
+bls12-381 = [
+	"ark-bls12-381",
+	"ark-bls12-381-ext",
+	"ark-bls12-381-v4",
+	"ark-ec-v4",
+	"ark-scale-v4",
+	"common",
+]
 bw6-761 = ["ark-bw6-761", "ark-bw6-761-ext", "common"]
 ed-on-bls12-377 = ["ark-ed-on-bls12-377", "ark-ed-on-bls12-377-ext", "common"]
 ed-on-bls12-381-bandersnatch = [
