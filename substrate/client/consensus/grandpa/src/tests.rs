@@ -1409,20 +1409,30 @@ async fn voter_catches_up_to_latest_round_when_behind() {
 
 			let start_time = std::time::Instant::now();
 			let timeout = Duration::from_secs(5 * 60);
-			let wait_for_catch_up = futures::future::poll_fn(move |_| {
+			let wait_for_catch_up_and_cleanup = futures::future::poll_fn(move |_| {
 				// The voter will start at round 1 and since everyone else is
 				// already at a later round the only way to get to round 4 (or
-				// later) is by issuing a catch up request.
-				if set_state.read().last_completed_round().number >= 4 {
+				// later) is by issuing a catch up request. Once its background
+				// rounds conclude, no completed round may remain tracked as live.
+				let caught_up_and_clean = match &*set_state.read() {
+					VoterSetState::Live { completed_rounds, current_rounds } => {
+						let last_completed = completed_rounds.last().number;
+						last_completed >= 4 &&
+							current_rounds.keys().all(|round| *round > last_completed)
+					},
+					VoterSetState::Paused { .. } => false,
+				};
+
+				if caught_up_and_clean {
 					Poll::Ready(())
 				} else if start_time.elapsed() > timeout {
-					panic!("Timed out while waiting for catch up to happen")
+					panic!("Timed out while waiting for catch up cleanup")
 				} else {
 					Poll::Pending
 				}
 			});
 
-			wait_for_catch_up
+			wait_for_catch_up_and_cleanup
 		})
 	};
 
@@ -2001,6 +2011,71 @@ async fn grandpa_environment_never_overwrites_round_voter_state() {
 	environment.completed(1, round_state(), base(), &historical_votes()).unwrap();
 
 	assert_matches!(get_current_round(2).unwrap(), HasVoted::Yes(_, _));
+}
+
+#[tokio::test]
+async fn grandpa_environment_removes_concluded_round_voter_state() {
+	use finality_grandpa::voter::Environment;
+
+	let peers = &[Ed25519Keyring::Alice];
+	let voters = make_ids(peers);
+
+	let mut net = GrandpaTestNet::new(TestApi::new(voters), 1, 0);
+	let peer = net.peer(0);
+	let network_service = peer.network_service().clone();
+	let sync_service = peer.sync_service().clone();
+	let notification_service =
+		peer.take_notification_service(&grandpa_protocol_name::NAME.into()).unwrap();
+	let link = peer.data.lock().take().unwrap();
+
+	let keystore = create_keystore(peers[0]);
+	let environment = test_environment(
+		&link,
+		Some(keystore),
+		network_service,
+		sync_service,
+		notification_service,
+		(),
+	);
+
+	let round_state = || finality_grandpa::round::State::genesis(Default::default());
+	let base = || Default::default();
+	let historical_votes = || finality_grandpa::HistoricalVotes::new();
+	let get_current_round = |round| {
+		let state = environment.voter_set_state.read();
+		let (_, current_rounds) = state.with_current_round(round).ok()?;
+		current_rounds.get(&round).cloned()
+	};
+
+	// Simulate a catch-up from round 1 to round 5. The skipped round remains
+	// live in the background until GRANDPA concludes it.
+	environment.round_data(1);
+	assert!(environment.voter_set_state.voting_on(1).is_some());
+	let info = peer.client().info();
+	environment
+		.proposed(
+			1,
+			PrimaryPropose::<<Block as BlockT>::Header> {
+				target_hash: info.best_hash,
+				target_number: info.best_number,
+			},
+		)
+		.unwrap();
+	environment.completed(5, round_state(), base(), &historical_votes()).unwrap();
+	assert_matches!(get_current_round(1), Some(HasVoted::Yes(_, _)));
+	assert_eq!(get_current_round(6), Some(HasVoted::No));
+
+	// Concluding the skipped round must clean up only that round. The new best
+	// round and its voter state must remain tracked.
+	environment.concluded(1, round_state(), base(), &historical_votes()).unwrap();
+	assert_eq!(get_current_round(1), None);
+	assert_eq!(get_current_round(6), Some(HasVoted::No));
+	assert!(environment.voter_set_state.voting_on(1).is_none());
+
+	// Delayed or duplicate callbacks are harmless and do not disturb newer rounds.
+	environment.concluded(1, round_state(), base(), &historical_votes()).unwrap();
+	assert_eq!(get_current_round(1), None);
+	assert_eq!(get_current_round(6), Some(HasVoted::No));
 }
 
 #[tokio::test]
