@@ -160,6 +160,24 @@ pub(crate) struct PersistentData<Block: BlockT> {
 	pub(crate) set_state: SharedVoterSetState<Block>,
 }
 
+fn prepare_persistent_data<Block: BlockT, B: AuxStore>(
+	backend: &B,
+	authority_set: AuthoritySet<Block::Hash, NumberFor<Block>>,
+	mut set_state: VoterSetState<Block>,
+) -> ClientResult<PersistentData<Block>> {
+	let removed = set_state.remove_stale_unvoted_rounds();
+	if removed > 0 {
+		write_voter_set_state(backend, &set_state)?;
+		info!(
+			target: LOG_TARGET,
+			"Removed {} stale unvoted GRANDPA round entries from persistent client state",
+			removed,
+		);
+	}
+
+	Ok(PersistentData { authority_set: authority_set.into(), set_state: set_state.into() })
+}
+
 fn migrate_from_version0<Block: BlockT, B, G>(
 	backend: &B,
 	genesis_round: &G,
@@ -333,30 +351,21 @@ where
 			if let Some((new_set, set_state)) =
 				migrate_from_version0::<Block, _, _>(backend, &make_genesis_round)?
 			{
-				return Ok(PersistentData {
-					authority_set: new_set.into(),
-					set_state: set_state.into(),
-				})
+				return prepare_persistent_data(backend, new_set, set_state)
 			}
 		},
 		Some(1) => {
 			if let Some((new_set, set_state)) =
 				migrate_from_version1::<Block, _, _>(backend, &make_genesis_round)?
 			{
-				return Ok(PersistentData {
-					authority_set: new_set.into(),
-					set_state: set_state.into(),
-				})
+				return prepare_persistent_data(backend, new_set, set_state)
 			}
 		},
 		Some(2) => {
 			if let Some((new_set, set_state)) =
 				migrate_from_version2::<Block, _, _>(backend, &make_genesis_round)?
 			{
-				return Ok(PersistentData {
-					authority_set: new_set.into(),
-					set_state: set_state.into(),
-				})
+				return prepare_persistent_data(backend, new_set, set_state)
 			}
 		},
 		Some(3) => {
@@ -376,7 +385,7 @@ where
 						},
 					};
 
-				return Ok(PersistentData { authority_set: set.into(), set_state: set_state.into() })
+				return prepare_persistent_data(backend, set, set_state)
 			}
 		},
 		Some(other) =>
@@ -408,7 +417,7 @@ where
 		&[],
 	)?;
 
-	Ok(PersistentData { authority_set: genesis_set.into(), set_state: genesis_state.into() })
+	prepare_persistent_data(backend, genesis_set, genesis_state)
 }
 
 /// Update the authority set on disk after a change.
@@ -479,16 +488,21 @@ pub(crate) fn write_voter_set_state<Block: BlockT, B: AuxStore>(
 	backend.insert_aux(&[(SET_STATE_KEY, state.encode().as_slice())], &[])
 }
 
-/// Write concluded round.
-pub(crate) fn write_concluded_round<Block: BlockT, B: AuxStore>(
+/// Atomically write a concluded round and the corresponding voter set state.
+pub(crate) fn write_concluded_round_and_voter_set_state<Block: BlockT, B: AuxStore>(
 	backend: &B,
 	round_data: &CompletedRound<Block>,
+	state: &VoterSetState<Block>,
 ) -> ClientResult<()> {
-	let mut key = CONCLUDED_ROUNDS.to_vec();
-	let round_number = round_data.number;
-	round_number.using_encoded(|n| key.extend(n));
+	let mut round_key = CONCLUDED_ROUNDS.to_vec();
+	round_data.number.using_encoded(|number| round_key.extend(number));
+	let encoded_round = round_data.encode();
+	let encoded_state = state.encode();
 
-	backend.insert_aux(&[(&key[..], round_data.encode().as_slice())], &[])
+	backend.insert_aux(
+		&[(&round_key[..], encoded_round.as_slice()), (SET_STATE_KEY, encoded_state.as_slice())],
+		&[],
+	)
 }
 
 #[cfg(test)]
@@ -501,12 +515,53 @@ pub(crate) fn load_authorities<B: AuxStore, H: Decode, N: Decode + Clone + Ord>(
 #[cfg(test)]
 mod test {
 	use super::*;
+	use crate::environment::Vote;
+	use finality_grandpa::PrimaryPropose;
 	use sp_consensus_grandpa::AuthorityId;
 	use sp_core::{crypto::UncheckedFrom, H256};
 	use substrate_test_runtime_client::{self, runtime::Block};
 
 	fn dummy_id() -> AuthorityId {
 		AuthorityId::unchecked_from([1; 32])
+	}
+
+	fn voter_set_state_with_stale_rounds(
+		authority_set: &AuthoritySet<H256, u64>,
+	) -> (VoterSetState<Block>, HasVoted<<Block as BlockT>::Header>) {
+		let round_state = RoundState::genesis((H256::random(), 0));
+		let completed_rounds = CompletedRounds::new(
+			CompletedRound::<Block> {
+				number: 5,
+				state: round_state.clone(),
+				base: round_state.prevote_ghost.unwrap(),
+				votes: vec![],
+			},
+			authority_set.set_id,
+			authority_set,
+		);
+		let persisted_vote =
+			HasVoted::Yes(dummy_id(), Vote::Propose(PrimaryPropose::new(H256::random(), 2)));
+		let mut current_rounds = CurrentRounds::<Block>::new();
+		current_rounds.insert(1, HasVoted::No);
+		current_rounds.insert(2, persisted_vote.clone());
+		current_rounds.insert(5, HasVoted::No);
+		current_rounds.insert(6, HasVoted::No);
+
+		(VoterSetState::Live { completed_rounds, current_rounds }, persisted_vote)
+	}
+
+	fn assert_stale_rounds_repaired(
+		set_state: &VoterSetState<Block>,
+		persisted_vote: &HasVoted<<Block as BlockT>::Header>,
+	) {
+		let VoterSetState::Live { current_rounds, .. } = set_state else {
+			panic!("persisted voter set state should remain live")
+		};
+
+		assert_eq!(current_rounds.get(&1), None);
+		assert_eq!(current_rounds.get(&2), Some(persisted_vote));
+		assert_eq!(current_rounds.get(&5), None);
+		assert_eq!(current_rounds.get(&6), Some(&HasVoted::No));
 	}
 
 	#[test]
@@ -697,95 +752,130 @@ mod test {
 
 		let authorities = vec![(dummy_id(), 100)];
 		let set_id = 3;
+		let authority_set = V2AuthoritySet::<H256, u64> {
+			current_authorities: authorities.clone(),
+			set_id,
+			pending_standard_changes: ForkTree::new(),
+			pending_forced_changes: Vec::new(),
+		};
+		let migrated_authority_set = authority_set.clone().into();
+		let (voter_set_state, persisted_vote) =
+			voter_set_state_with_stale_rounds(&migrated_authority_set);
 
-		{
-			let authority_set = V2AuthoritySet::<H256, u64> {
-				current_authorities: authorities.clone(),
-				set_id,
-				pending_standard_changes: ForkTree::new(),
-				pending_forced_changes: Vec::new(),
-			};
-
-			let genesis_state = (H256::random(), 32);
-			let voter_set_state: VoterSetState<substrate_test_runtime_client::runtime::Block> =
-				VoterSetState::live(
-					set_id,
-					&authority_set.clone().into(), // Note the conversion!
-					genesis_state,
-				);
-
-			client
-				.insert_aux(
-					&[
-						(AUTHORITY_SET_KEY, authority_set.encode().as_slice()),
-						(SET_STATE_KEY, voter_set_state.encode().as_slice()),
-						(VERSION_KEY, 2u32.encode().as_slice()),
-					],
-					&[],
-				)
-				.unwrap();
-		}
+		client
+			.insert_aux(
+				&[
+					(AUTHORITY_SET_KEY, authority_set.encode().as_slice()),
+					(SET_STATE_KEY, voter_set_state.encode().as_slice()),
+					(VERSION_KEY, 2u32.encode().as_slice()),
+				],
+				&[],
+			)
+			.unwrap();
 
 		assert_eq!(load_decode::<_, u32>(&client, VERSION_KEY).unwrap(), Some(2));
 
-		// should perform the migration
-		load_persistent::<substrate_test_runtime_client::runtime::Block, _, _>(
-			&client,
-			H256::random(),
-			0,
-			|| unreachable!(),
-		)
-		.unwrap();
+		// The first load should perform both the migration and stale-round repair.
+		let PersistentData { authority_set, set_state } =
+			load_persistent::<Block, _, _>(&client, H256::random(), 0, || unreachable!()).unwrap();
 
 		assert_eq!(load_decode::<_, u32>(&client, VERSION_KEY).unwrap(), Some(3));
-
-		let PersistentData { authority_set, .. } = load_persistent::<
-			substrate_test_runtime_client::runtime::Block,
-			_,
-			_,
-		>(
-			&client, H256::random(), 0, || unreachable!()
-		)
-		.unwrap();
-
 		assert_eq!(
 			*authority_set.inner(),
 			AuthoritySet::new(
-				authorities.clone(),
+				authorities,
 				set_id,
 				ForkTree::new(),
 				Vec::new(),
-				AuthoritySetChanges::empty(),
+				AuthoritySetChanges::empty()
 			)
 			.unwrap(),
 		);
+		assert_stale_rounds_repaired(&set_state.read(), &persisted_vote);
 	}
 
 	#[test]
-	fn write_read_concluded_rounds() {
+	fn load_persistent_removes_only_stale_unvoted_rounds() {
 		let client = substrate_test_runtime_client::new();
+		let authorities = vec![(dummy_id(), 100)];
+		let set_id = 3;
+		let authority_set = AuthoritySet::<H256, u64>::new(
+			authorities,
+			set_id,
+			ForkTree::new(),
+			Vec::new(),
+			AuthoritySetChanges::empty(),
+		)
+		.unwrap();
+
+		let (voter_set_state, persisted_vote) = voter_set_state_with_stale_rounds(&authority_set);
+		let encoded_before = voter_set_state.encode();
+
+		client
+			.insert_aux(
+				&[
+					(AUTHORITY_SET_KEY, authority_set.encode().as_slice()),
+					(SET_STATE_KEY, encoded_before.as_slice()),
+					(VERSION_KEY, CURRENT_VERSION.encode().as_slice()),
+				],
+				&[],
+			)
+			.unwrap();
+
+		let PersistentData { set_state, .. } =
+			load_persistent::<Block, _, _>(&client, H256::random(), 0, || unreachable!()).unwrap();
+		assert_stale_rounds_repaired(&set_state.read(), &persisted_vote);
+
+		let encoded_after_first_load =
+			load_decode::<_, VoterSetState<Block>>(&client, SET_STATE_KEY)
+				.unwrap()
+				.unwrap()
+				.encode();
+		assert_ne!(encoded_before, encoded_after_first_load);
+		assert_eq!(load_decode::<_, u32>(&client, VERSION_KEY).unwrap(), Some(CURRENT_VERSION));
+
+		load_persistent::<Block, _, _>(&client, H256::random(), 0, || unreachable!()).unwrap();
+		let encoded_after_second_load =
+			load_decode::<_, VoterSetState<Block>>(&client, SET_STATE_KEY)
+				.unwrap()
+				.unwrap()
+				.encode();
+		assert_eq!(encoded_after_first_load, encoded_after_second_load);
+	}
+
+	#[test]
+	fn writes_concluded_round_and_voter_set_state_together() {
+		let client = substrate_test_runtime_client::new();
+		let authority_set = AuthoritySet::<H256, u64>::new(
+			vec![(dummy_id(), 100)],
+			3,
+			ForkTree::new(),
+			Vec::new(),
+			AuthoritySetChanges::empty(),
+		)
+		.unwrap();
+		let (voter_set_state, _) = voter_set_state_with_stale_rounds(&authority_set);
 		let hash = H256::random();
 		let round_state = RoundState::genesis((hash, 0));
-
-		let completed_round = CompletedRound::<substrate_test_runtime_client::runtime::Block> {
+		let completed_round = CompletedRound::<Block> {
 			number: 42,
 			state: round_state.clone(),
 			base: round_state.prevote_ghost.unwrap(),
 			votes: vec![],
 		};
 
-		assert!(write_concluded_round(&client, &completed_round).is_ok());
+		write_concluded_round_and_voter_set_state(&client, &completed_round, &voter_set_state)
+			.unwrap();
 
-		let round_number = completed_round.number;
-		let mut key = CONCLUDED_ROUNDS.to_vec();
-		round_number.using_encoded(|n| key.extend(n));
-
+		let mut round_key = CONCLUDED_ROUNDS.to_vec();
+		completed_round.number.using_encoded(|number| round_key.extend(number));
 		assert_eq!(
-			load_decode::<_, CompletedRound::<substrate_test_runtime_client::runtime::Block>>(
-				&client, &key
-			)
-			.unwrap(),
+			load_decode::<_, CompletedRound<Block>>(&client, &round_key).unwrap(),
 			Some(completed_round),
+		);
+		assert_eq!(
+			load_decode::<_, VoterSetState<Block>>(&client, SET_STATE_KEY).unwrap(),
+			Some(voter_set_state),
 		);
 	}
 }
