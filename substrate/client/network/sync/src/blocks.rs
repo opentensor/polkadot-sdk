@@ -212,6 +212,19 @@ impl<B: BlockT> BlockCollection<B> {
 			return None;
 		}
 
+		if range.end <= range.start {
+			debug_assert!(
+				false,
+				"Empty range {:?}, count={}, peer_best={}, common={}, blocks={:?}",
+				range, count, peer_best, common, self.blocks
+			);
+			trace!(
+				target: LOG_TARGET,
+				"Empty range for peer {who}: {range:?}, count={count}, peer_best={peer_best}, common={common}",
+			);
+			return None;
+		}
+
 		self.peer_requests.insert(who, range.start);
 		self.blocks.insert(
 			range.start,
