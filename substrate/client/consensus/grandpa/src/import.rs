@@ -31,7 +31,9 @@ use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::{Core, RuntimeApiInfo};
 use sp_blockchain::BlockStatus;
 use sp_consensus::{BlockOrigin, Error as ConsensusError, SelectChain};
-use sp_consensus_grandpa::{ConsensusLog, GrandpaApi, ScheduledChange, SetId, GRANDPA_ENGINE_ID};
+use sp_consensus_grandpa::{
+	AuthorityList, ConsensusLog, GrandpaApi, ScheduledChange, SetId, GRANDPA_ENGINE_ID,
+};
 use sp_runtime::{
 	generic::OpaqueDigestItemId,
 	traits::{Block as BlockT, Header as HeaderT, NumberFor, Zero},
@@ -483,39 +485,73 @@ where
 	) -> Result<ImportResult, ConsensusError> {
 		let hash = block.post_hash();
 		let number = *block.header.number();
+		let new_authority_set = |set_id, authorities: AuthorityList| -> Result<_, ConsensusError> {
+			let authority_set = AuthoritySet::new(
+				authorities.clone(),
+				set_id,
+				fork_tree::ForkTree::new(),
+				Vec::new(),
+				AuthoritySetChanges::empty(),
+			)
+			.ok_or_else(|| ConsensusError::ClientImport("Invalid authority list".into()))?;
+			let new_set =
+				NewAuthoritySet { canon_number: number, canon_hash: hash, set_id, authorities };
+			Ok((authority_set, new_set))
+		};
+		let warp_sync_authority_set = if let Some((set_id, authorities)) =
+			self.authority_set.warp_sync_authority_set(&hash)
+		{
+			log::debug!(
+				target: LOG_TARGET,
+				"Using GRANDPA set ID {} verified by the warp proof for imported state at {:?}.",
+				set_id,
+				hash,
+			);
+			let (authority_set, new_set) = new_authority_set(set_id, authorities)?;
+			crate::aux_schema::update_authority_set::<Block, _, _>(
+				&authority_set,
+				Some(&new_set),
+				|insert| {
+					block.auxiliary.extend(
+						insert.iter().map(|(key, value)| (key.to_vec(), Some(value.to_vec()))),
+					)
+				},
+			);
+			Some((authority_set, new_set))
+		} else {
+			None
+		};
+
 		// Force imported state finality.
 		block.finalized = true;
 		let import_result = (&*self.inner).import_block(block).await;
 		match import_result {
 			Ok(ImportResult::Imported(aux)) => {
 				// We've just imported a new state. We trust the sync module has verified
-				// finality proofs and that the state is correct and final.
-				// So we can read the authority list and set id from the state.
+				// finality proofs and that the state is correct and final. A warp proof also
+				// authenticates the authority set; other state sync modes read it from state.
 				self.authority_set_hard_forks.lock().clear();
-				let authorities = self
-					.inner
-					.runtime_api()
-					.grandpa_authorities(hash)
-					.map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
-				let set_id = self.current_set_id(hash)?;
-				let authority_set = AuthoritySet::new(
-					authorities.clone(),
-					set_id,
-					fork_tree::ForkTree::new(),
-					Vec::new(),
-					AuthoritySetChanges::empty(),
-				)
-				.ok_or_else(|| ConsensusError::ClientImport("Invalid authority list".into()))?;
-				*self.authority_set.inner_locked() = authority_set.clone();
-
-				crate::aux_schema::update_authority_set::<Block, _, _>(
-					&authority_set,
-					None,
-					|insert| self.inner.insert_aux(insert, []),
-				)
-				.map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
-				let new_set =
-					NewAuthoritySet { canon_number: number, canon_hash: hash, set_id, authorities };
+				let (authority_set, new_set) = match warp_sync_authority_set {
+					Some(authority_set) => authority_set,
+					None => {
+						let authorities = self
+							.inner
+							.runtime_api()
+							.grandpa_authorities(hash)
+							.map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
+						let set_id = self.current_set_id(hash)?;
+						let (authority_set, new_set) = new_authority_set(set_id, authorities)?;
+						crate::aux_schema::update_authority_set::<Block, _, _>(
+							&authority_set,
+							Some(&new_set),
+							|insert| self.inner.insert_aux(insert, []),
+						)
+						.map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
+						(authority_set, new_set)
+					},
+				};
+				*self.authority_set.inner_locked() = authority_set;
+				self.authority_set.clear_warp_sync_authority_set();
 				let _ = self
 					.send_voter_commands
 					.unbounded_send(VoterCommand::ChangeAuthorities(new_set));

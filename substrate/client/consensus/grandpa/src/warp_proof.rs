@@ -348,6 +348,7 @@ struct VerifierState<Block: BlockT> {
 /// Verifier implementation for GRANDPA warp sync.
 struct GrandpaVerifier<Block: BlockT> {
 	state: VerifierState<Block>,
+	authority_set: SharedAuthoritySet<Block::Hash, NumberFor<Block>>,
 	hard_forks: HardForks<Block>,
 	eras_synced: u64,
 }
@@ -396,6 +397,11 @@ where
 			.collect::<Vec<_>>();
 
 		if proof.is_finished {
+			self.authority_set.set_warp_sync_authority_set(
+				last_header.hash(),
+				self.state.set_id,
+				self.state.authorities.clone(),
+			);
 			Ok(VerificationResult::Complete(last_header, justifications))
 		} else {
 			Ok(VerificationResult::Partial(justifications))
@@ -438,6 +444,7 @@ where
 				authorities: authority_set.current_authorities.clone(),
 				next_proof_context: genesis_hash,
 			},
+			authority_set: self.authority_set.clone(),
 			hard_forks: self.hard_forks.clone(),
 			eras_synced: 0,
 		})
@@ -446,11 +453,12 @@ where
 
 #[cfg(test)]
 mod tests {
-	use super::{HardForks, WarpSyncProof};
-	use crate::{AuthoritySetChanges, GrandpaJustification};
+	use super::{HardForks, NetworkProvider, WarpSyncProof};
+	use crate::{AuthoritySet, AuthoritySetChanges, GrandpaJustification, SharedAuthoritySet};
 	use codec::Encode;
 	use rand::prelude::*;
 	use sc_block_builder::BlockBuilderBuilder;
+	use sc_network_sync::strategy::warp::{EncodedProof, VerificationResult, WarpSyncProvider};
 	use sp_blockchain::HeaderBackend;
 	use sp_consensus::BlockOrigin;
 	use sp_consensus_grandpa::GRANDPA_ENGINE_ID;
@@ -565,8 +573,7 @@ mod tests {
 		// verifying the proof should yield the last set id and authorities
 		let hard_forks = HardForks::new_hard_forked_authorities(vec![]);
 		let (new_set_id, new_authorities) =
-			warp_sync_proof.verify(0, genesis_authorities, &hard_forks).unwrap();
-
+			warp_sync_proof.verify(0, genesis_authorities.clone(), &hard_forks).unwrap();
 		let expected_authorities = current_authorities
 			.iter()
 			.map(|keyring| (keyring.public().into(), 1))
@@ -574,5 +581,20 @@ mod tests {
 
 		assert_eq!(new_set_id, current_set_id);
 		assert_eq!(new_authorities, expected_authorities);
+
+		let shared_authority_set: SharedAuthoritySet<_, u64> =
+			AuthoritySet::genesis(genesis_authorities).unwrap().into();
+		let provider = NetworkProvider::new(backend, shared_authority_set.clone(), hard_forks);
+		let mut verifier = provider.create_verifier();
+		let VerificationResult::Complete(header, _) =
+			verifier.verify(&EncodedProof(warp_sync_proof.encode())).unwrap()
+		else {
+			panic!("generated complete proof must verify as complete");
+		};
+
+		assert_eq!(
+			shared_authority_set.warp_sync_authority_set(&header.hash()),
+			Some((current_set_id, expected_authorities)),
+		);
 	}
 }

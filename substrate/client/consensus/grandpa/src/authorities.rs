@@ -70,11 +70,22 @@ impl<N, E: std::error::Error> From<E> for Error<N, E> {
 /// A shared authority set.
 pub struct SharedAuthoritySet<H, N> {
 	inner: SharedData<AuthoritySet<H, N>>,
+	warp_sync_authority_set: SharedData<Option<WarpSyncAuthoritySet<H>>>,
+}
+
+#[derive(Clone)]
+struct WarpSyncAuthoritySet<H> {
+	target_hash: H,
+	set_id: SetId,
+	authorities: AuthorityList,
 }
 
 impl<H, N> Clone for SharedAuthoritySet<H, N> {
 	fn clone(&self) -> Self {
-		SharedAuthoritySet { inner: self.inner.clone() }
+		SharedAuthoritySet {
+			inner: self.inner.clone(),
+			warp_sync_authority_set: self.warp_sync_authority_set.clone(),
+		}
 	}
 }
 
@@ -89,6 +100,31 @@ impl<H, N> SharedAuthoritySet<H, N> {
 	/// For more information see [`SharedDataLocked`].
 	pub(crate) fn inner_locked(&self) -> SharedDataLocked<'_, AuthoritySet<H, N>> {
 		self.inner.shared_data_locked()
+	}
+
+	pub(crate) fn set_warp_sync_authority_set(
+		&self,
+		target_hash: H,
+		set_id: SetId,
+		authorities: AuthorityList,
+	) {
+		*self.warp_sync_authority_set.shared_data() =
+			Some(WarpSyncAuthoritySet { target_hash, set_id, authorities });
+	}
+
+	pub(crate) fn warp_sync_authority_set(&self, target_hash: &H) -> Option<(SetId, AuthorityList)>
+	where
+		H: PartialEq,
+	{
+		self.warp_sync_authority_set
+			.shared_data()
+			.as_ref()
+			.filter(|set| &set.target_hash == target_hash)
+			.map(|set| (set.set_id, set.authorities.clone()))
+	}
+
+	pub(crate) fn clear_warp_sync_authority_set(&self) {
+		*self.warp_sync_authority_set.shared_data() = None;
 	}
 }
 
@@ -130,7 +166,10 @@ where
 
 impl<H, N> From<AuthoritySet<H, N>> for SharedAuthoritySet<H, N> {
 	fn from(set: AuthoritySet<H, N>) -> Self {
-		SharedAuthoritySet { inner: SharedData::new(set) }
+		SharedAuthoritySet {
+			inner: SharedData::new(set),
+			warp_sync_authority_set: SharedData::new(None),
+		}
 	}
 }
 
@@ -785,7 +824,10 @@ impl<N: Ord + Clone> AuthoritySetChanges<N> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use sp_core::crypto::{ByteArray, UncheckedFrom};
+	use sp_core::{
+		crypto::{ByteArray, UncheckedFrom},
+		H256,
+	};
 
 	fn static_is_descendent_of<A>(value: bool) -> impl Fn(&A, &A) -> Result<bool, std::io::Error> {
 		move |_, _| Ok(value)
@@ -796,6 +838,22 @@ mod tests {
 		F: Fn(&A, &A) -> bool,
 	{
 		move |base, hash| Ok(f(base, hash))
+	}
+
+	#[test]
+	fn warp_sync_authority_set_is_target_scoped_and_clearable() {
+		let authorities = vec![(AuthorityId::from_slice(&[1; 32]).unwrap(), 1)];
+		let shared: SharedAuthoritySet<H256, u64> =
+			AuthoritySet::genesis(authorities.clone()).unwrap().into();
+		let target_hash = H256::repeat_byte(1);
+
+		shared.set_warp_sync_authority_set(target_hash, 4, authorities.clone());
+
+		assert_eq!(shared.warp_sync_authority_set(&target_hash), Some((4, authorities)),);
+		assert_eq!(shared.warp_sync_authority_set(&H256::repeat_byte(2)), None);
+
+		shared.clear_warp_sync_authority_set();
+		assert_eq!(shared.warp_sync_authority_set(&target_hash), None);
 	}
 
 	#[test]
