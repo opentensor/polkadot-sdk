@@ -142,19 +142,19 @@ jobs:
         id: set_runner
         shell: bash
         run: |
-          echo "RUNNER_DEFAULT=parity-default" >> $GITHUB_OUTPUT
-          echo "RUNNER_WEIGHTS=parity-weights" >> $GITHUB_OUTPUT
-          echo "RUNNER_MACOS=parity-macos" >> $GITHUB_OUTPUT
+          echo "RUNNER_DEFAULT=fireactions-turbo-8" >> $GITHUB_OUTPUT
+          echo "RUNNER_WEIGHTS=fireactions-turbo-16" >> $GITHUB_OUTPUT
+          echo "RUNNER_MACOS=macos-latest" >> $GITHUB_OUTPUT
           #
           # Run merge queues on persistent runners
           if [[ $GITHUB_REF_NAME == *"gh-readonly-queue"* ]]; then
-            echo "RUNNER=parity-large-persistent" >> $GITHUB_OUTPUT
-            echo "RUNNER_OLDLINUX=parity-oldlinux-persistent" >> $GITHUB_OUTPUT
-            echo "RUNNER_BENCHMARK=parity-benchmark-persistent" >> $GITHUB_OUTPUT
+            echo "RUNNER=fireactions-turbo-16" >> $GITHUB_OUTPUT
+            echo "RUNNER_OLDLINUX=fireactions-turbo-16" >> $GITHUB_OUTPUT
+            echo "RUNNER_BENCHMARK=fireactions-turbo-16" >> $GITHUB_OUTPUT
           else
-            echo "RUNNER=parity-large" >> $GITHUB_OUTPUT
-            echo "RUNNER_OLDLINUX=parity-oldlinux" >> $GITHUB_OUTPUT
-            echo "RUNNER_BENCHMARK=parity-benchmark" >> $GITHUB_OUTPUT
+            echo "RUNNER=fireactions-turbo-16" >> $GITHUB_OUTPUT
+            echo "RUNNER_OLDLINUX=fireactions-turbo-16" >> $GITHUB_OUTPUT
+            echo "RUNNER_BENCHMARK=fireactions-turbo-16" >> $GITHUB_OUTPUT
           fi
 
       #
