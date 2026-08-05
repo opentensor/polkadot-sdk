@@ -24,9 +24,10 @@ use async_trait::async_trait;
 use environment::HasVoted;
 use futures_timer::Delay;
 use parking_lot::{Mutex, RwLock};
+use sc_client_api::{KeyValueStates, StorageProvider};
 use sc_consensus::{
 	BlockImport, BlockImportParams, BoxJustificationImport, ForkChoiceStrategy, ImportResult,
-	ImportedAux,
+	ImportedAux, ImportedState, StateAction, StorageChanges,
 };
 use sc_network::config::Role;
 use sc_network_test::{
@@ -947,6 +948,60 @@ async fn allows_reimporting_change_blocks() {
 }
 
 #[tokio::test]
+async fn state_import_uses_warp_verified_authority_set() {
+	let runtime_authorities =
+		make_ids(&[Ed25519Keyring::Alice, Ed25519Keyring::Bob, Ed25519Keyring::Charlie]);
+	let warp_authorities = make_ids(&[Ed25519Keyring::Dave, Ed25519Keyring::Eve]);
+	let warp_set_id = 7;
+
+	let mut source = GrandpaTestNet::new(TestApi::new(runtime_authorities.clone()), 0, 1);
+	let target_hash = source.peer(0).push_blocks(1, false)[0];
+	let source_client = source.peer(0).client().as_client();
+	let target_header = source_client.header(target_hash).unwrap().unwrap();
+	let key_values = source_client
+		.storage_pairs(target_hash, None, None)
+		.unwrap()
+		.map(|(key, value)| (key.0, value.0))
+		.collect();
+	let imported_state = ImportedState {
+		block: target_hash,
+		state: KeyValueStates::from([(Vec::new(), (key_values, Vec::new()))]),
+	};
+
+	let mut target = GrandpaTestNet::new(TestApi::new(runtime_authorities), 0, 1);
+	let target_peer_client = target.peer(0).client().clone();
+	let target_client = target_peer_client.as_client();
+	let (block_import, _, link) = target.make_block_import(target_peer_client);
+	let authority_set = link.lock().as_ref().unwrap().shared_authority_set().clone();
+	authority_set.set_warp_sync_authority_set(target_hash, warp_set_id, warp_authorities.clone());
+
+	let mut import = BlockImportParams::new(BlockOrigin::NetworkInitialSync, target_header);
+	import.state_action = StateAction::ApplyChanges(StorageChanges::Import(imported_state));
+	import.fork_choice = Some(ForkChoiceStrategy::LongestChain);
+	assert_matches!(block_import.import_block(import).await.unwrap(), ImportResult::Imported(_));
+
+	assert_eq!(authority_set.inner().current(), (warp_set_id, warp_authorities.as_slice()),);
+	assert_eq!(authority_set.warp_sync_authority_set(&target_hash), None);
+
+	let persistent_data: PersistentData<Block> = aux_schema::load_persistent(
+		&*target_client,
+		target_client.info().genesis_hash,
+		0,
+		|| unreachable!(),
+	)
+	.unwrap();
+	assert_eq!(
+		persistent_data.authority_set.inner().current(),
+		(warp_set_id, warp_authorities.as_slice()),
+	);
+	let voter_set_state = persistent_data.set_state.read();
+	let completed_rounds = voter_set_state.completed_rounds();
+	let expected_voters = warp_authorities.iter().map(|(id, _)| id.clone()).collect::<Vec<_>>();
+	assert_eq!(completed_rounds.set_info(), (warp_set_id, expected_voters.as_slice()));
+	assert_eq!(voter_set_state.last_completed_round().base, (target_hash, 1));
+}
+
+#[tokio::test]
 async fn test_bad_justification() {
 	let peers_a = &[Ed25519Keyring::Alice, Ed25519Keyring::Bob, Ed25519Keyring::Charlie];
 	let peers_b = &[Ed25519Keyring::Alice, Ed25519Keyring::Bob];
@@ -1232,8 +1287,8 @@ async fn voter_persists_its_votes() {
 					Pin::new(&mut *round_tx.lock())
 						.start_send(finality_grandpa::Message::Prevote(prevote))
 						.unwrap();
-				} else if state.compare_exchange(1, 2, Ordering::SeqCst, Ordering::SeqCst).unwrap() ==
-					1
+				} else if state.compare_exchange(1, 2, Ordering::SeqCst, Ordering::SeqCst).unwrap()
+					== 1
 				{
 					// the next message we receive should be our own prevote
 					let prevote = match signed.message {
@@ -1247,8 +1302,8 @@ async fn voter_persists_its_votes() {
 				// after alice restarts it should send its previous prevote
 				// therefore we won't ever receive it again since it will be a
 				// known message on the gossip layer
-				} else if state.compare_exchange(2, 3, Ordering::SeqCst, Ordering::SeqCst).unwrap() ==
-					2
+				} else if state.compare_exchange(2, 3, Ordering::SeqCst, Ordering::SeqCst).unwrap()
+					== 2
 				{
 					// we then receive a precommit from alice for block 15
 					// even though we casted a prevote for block 30

@@ -539,7 +539,7 @@ where
 						let (authority_set, new_set) = new_authority_set(set_id, authorities)?;
 						crate::aux_schema::update_authority_set::<Block, _, _>(
 							&authority_set,
-							Some(&new_set),
+							None,
 							|insert| self.inner.insert_aux(insert, []),
 						)
 						.map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
