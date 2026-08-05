@@ -322,6 +322,15 @@ impl<Block: BlockT> HardForks<Block> {
 			None
 		}
 	}
+
+	fn authority_set_checkpoints(
+		&self,
+	) -> Option<&HashMap<(Block::Hash, NumberFor<Block>), (SetId, AuthorityList)>> {
+		match self {
+			Self::AuthoritySetHardForks { hard_forks } => Some(hard_forks),
+			Self::ReinitializeSetId { .. } => None,
+		}
+	}
 }
 
 impl<Block: BlockT, Backend: ClientBackend<Block>> NetworkProvider<Block, Backend>
@@ -396,12 +405,14 @@ where
 			})
 			.collect::<Vec<_>>();
 
-		if proof.is_finished {
+		if proof.is_finished && self.hard_forks.authority_set_checkpoints().is_some() {
 			self.authority_set.set_warp_sync_authority_set(
 				last_header.hash(),
 				self.state.set_id,
 				self.state.authorities.clone(),
 			);
+		}
+		if proof.is_finished {
 			Ok(VerificationResult::Complete(last_header, justifications))
 		} else {
 			Ok(VerificationResult::Partial(justifications))
@@ -583,8 +594,9 @@ mod tests {
 		assert_eq!(new_authorities, expected_authorities);
 
 		let shared_authority_set: SharedAuthoritySet<_, u64> =
-			AuthoritySet::genesis(genesis_authorities).unwrap().into();
-		let provider = NetworkProvider::new(backend, shared_authority_set.clone(), hard_forks);
+			AuthoritySet::genesis(genesis_authorities.clone()).unwrap().into();
+		let provider =
+			NetworkProvider::new(backend.clone(), shared_authority_set.clone(), hard_forks);
 		let mut verifier = provider.create_verifier();
 		let VerificationResult::Complete(header, _) =
 			verifier.verify(&EncodedProof(warp_sync_proof.encode())).unwrap()
@@ -596,5 +608,20 @@ mod tests {
 			shared_authority_set.warp_sync_authority_set(&header.hash()),
 			Some((current_set_id, expected_authorities)),
 		);
+
+		let shared_authority_set: SharedAuthoritySet<_, u64> =
+			AuthoritySet::genesis(genesis_authorities.clone()).unwrap().into();
+		let provider = NetworkProvider::new(
+			backend,
+			shared_authority_set.clone(),
+			HardForks::new_initial_set_id(0),
+		);
+		let mut verifier = provider.create_verifier();
+		let VerificationResult::Complete(header, _) =
+			verifier.verify(&EncodedProof(warp_sync_proof.encode())).unwrap()
+		else {
+			panic!("generated complete proof must verify as complete");
+		};
+		assert_eq!(shared_authority_set.warp_sync_authority_set(&header.hash()), None);
 	}
 }
