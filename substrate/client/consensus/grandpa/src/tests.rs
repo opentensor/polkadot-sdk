@@ -973,24 +973,14 @@ async fn state_import_uses_warp_verified_authority_set() {
 	let target_client = target_peer_client.as_client();
 	let (block_import, _, link) = target.make_block_import(target_peer_client);
 	let authority_set = link.lock().as_ref().unwrap().shared_authority_set().clone();
-	authority_set.set_warp_sync_authority_set(
-		target_hash,
-		warp_set_id,
-		warp_authorities.clone(),
-	);
+	authority_set.set_warp_sync_authority_set(target_hash, warp_set_id, warp_authorities.clone());
 
 	let mut import = BlockImportParams::new(BlockOrigin::NetworkInitialSync, target_header);
 	import.state_action = StateAction::ApplyChanges(StorageChanges::Import(imported_state));
 	import.fork_choice = Some(ForkChoiceStrategy::LongestChain);
-	assert_matches!(
-		block_import.import_block(import).await.unwrap(),
-		ImportResult::Imported(_)
-	);
+	assert_matches!(block_import.import_block(import).await.unwrap(), ImportResult::Imported(_));
 
-	assert_eq!(
-		authority_set.inner().current(),
-		(warp_set_id, warp_authorities.as_slice()),
-	);
+	assert_eq!(authority_set.inner().current(), (warp_set_id, warp_authorities.as_slice()),);
 	assert_eq!(authority_set.warp_sync_authority_set(&target_hash), None);
 
 	let persistent_data: PersistentData<Block> = aux_schema::load_persistent(
