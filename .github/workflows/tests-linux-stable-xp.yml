@@ -25,7 +25,7 @@ jobs:
   test-linux-stable-no-try-runtime:
     needs: [preflight]
     if: ${{ needs.preflight.outputs.changes_rust }}
-    runs-on: parity-large-test
+    runs-on: [self-hosted, fireactions-turbo-16]
     timeout-minutes: 60
     container:
       image: ${{ needs.preflight.outputs.IMAGE }}
