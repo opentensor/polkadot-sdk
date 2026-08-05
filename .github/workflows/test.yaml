@@ -43,18 +43,22 @@ jobs:
           VERSION="0.8.33"
           ASSET_URL="https://github.com/argotorg/solidity/releases/download/v$VERSION/solc-static-linux"
           echo "Downloading solc v$VERSION from $ASSET_URL"
-          curl -Lsf --show-error -o $HOME/.cargo/bin/solc "$ASSET_URL"
-          chmod +x $HOME/.cargo/bin/solc
-          solc --version
+          mkdir -p "$HOME/.cargo/bin"
+          curl -Lsf --show-error -o "$HOME/.cargo/bin/solc" "$ASSET_URL"
+          chmod +x "$HOME/.cargo/bin/solc"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          "$HOME/.cargo/bin/solc" --version
 
       - name: Install revive compiler (Polkadot VM)
         run: |
           VERSION="0.6.0"
           ASSET_URL="https://github.com/paritytech/revive/releases/download/v$VERSION/resolc-x86_64-unknown-linux-musl"
           echo "Downloading resolc v$VERSION from $ASSET_URL"
-          curl -Lsf --show-error -o $HOME/.cargo/bin/resolc "$ASSET_URL"
-          chmod +x $HOME/.cargo/bin/resolc
-          resolc --version
+          mkdir -p "$HOME/.cargo/bin"
+          curl -Lsf --show-error -o "$HOME/.cargo/bin/resolc" "$ASSET_URL"
+          chmod +x "$HOME/.cargo/bin/resolc"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          "$HOME/.cargo/bin/resolc" --version
 
       - name: Cargo nextest
         run: |
