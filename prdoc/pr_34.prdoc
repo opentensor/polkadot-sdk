@@ -1,0 +1,11 @@
+title: Preserve warp-verified GRANDPA authorities during state import
+
+doc:
+  - audience: Node Operator
+    description: |
+      Apply the authority set verified by a GRANDPA warp proof when importing the downloaded state.
+      This prevents a stale checkpoint authority set from leaving finality stuck at the warp point.
+
+crates:
+  - name: sc-consensus-grandpa
+    bump: patch
