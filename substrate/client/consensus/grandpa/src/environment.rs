@@ -232,19 +232,17 @@ impl<Block: BlockT> VoterSetState<Block> {
 		}
 	}
 
-	/// Remove obsolete unvoted round markers left behind by older clients.
+	/// Remove obsolete current-round entries left behind by older clients.
 	///
 	/// On restart, GRANDPA resumes from the last completed round. Rounds at or
-	/// below it cannot become live again, but any persisted vote is retained as
-	/// an anti-equivocation safeguard.
-	pub(crate) fn remove_stale_unvoted_rounds(&mut self) -> usize {
+	/// below it cannot become live again, regardless of whether they contain a
+	/// persisted vote.
+	pub(crate) fn remove_stale_current_rounds(&mut self) -> usize {
 		let VoterSetState::Live { completed_rounds, current_rounds } = self else { return 0 };
 
 		let last_completed = completed_rounds.last().number;
 		let previous_len = current_rounds.len();
-		current_rounds.retain(|round, has_voted| {
-			*round > last_completed || matches!(&*has_voted, HasVoted::Yes(_, _))
-		});
+		current_rounds.retain(|round, _| *round > last_completed);
 
 		previous_len - current_rounds.len()
 	}

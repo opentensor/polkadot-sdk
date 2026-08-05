@@ -165,12 +165,12 @@ fn prepare_persistent_data<Block: BlockT, B: AuxStore>(
 	authority_set: AuthoritySet<Block::Hash, NumberFor<Block>>,
 	mut set_state: VoterSetState<Block>,
 ) -> ClientResult<PersistentData<Block>> {
-	let removed = set_state.remove_stale_unvoted_rounds();
+	let removed = set_state.remove_stale_current_rounds();
 	if removed > 0 {
 		write_voter_set_state(backend, &set_state)?;
 		info!(
 			target: LOG_TARGET,
-			"Removed {} stale unvoted GRANDPA round entries from persistent client state",
+			"Removed {} stale GRANDPA current-round entries from persistent client state",
 			removed,
 		);
 	}
@@ -531,7 +531,7 @@ mod test {
 
 	fn voter_set_state_with_stale_rounds(
 		authority_set: &AuthoritySet<H256, u64>,
-	) -> (VoterSetState<Block>, HasVoted<<Block as BlockT>::Header>) {
+	) -> VoterSetState<Block> {
 		let round_state = RoundState::genesis((H256::random(), 0));
 		let completed_rounds = CompletedRounds::new(
 			CompletedRound::<Block> {
@@ -543,27 +543,25 @@ mod test {
 			authority_set.set_id,
 			authority_set,
 		);
-		let persisted_vote =
-			HasVoted::Yes(dummy_id(), Vote::Propose(PrimaryPropose::new(H256::random(), 2)));
 		let mut current_rounds = CurrentRounds::<Block>::new();
 		current_rounds.insert(1, HasVoted::No);
-		current_rounds.insert(2, persisted_vote.clone());
+		current_rounds.insert(
+			2,
+			HasVoted::Yes(dummy_id(), Vote::Propose(PrimaryPropose::new(H256::random(), 2))),
+		);
 		current_rounds.insert(5, HasVoted::No);
 		current_rounds.insert(6, HasVoted::No);
 
-		(VoterSetState::Live { completed_rounds, current_rounds }, persisted_vote)
+		VoterSetState::Live { completed_rounds, current_rounds }
 	}
 
-	fn assert_stale_rounds_repaired(
-		set_state: &VoterSetState<Block>,
-		persisted_vote: &HasVoted<<Block as BlockT>::Header>,
-	) {
+	fn assert_stale_rounds_repaired(set_state: &VoterSetState<Block>) {
 		let VoterSetState::Live { current_rounds, .. } = set_state else {
 			panic!("persisted voter set state should remain live")
 		};
 
 		assert_eq!(current_rounds.get(&1), None);
-		assert_eq!(current_rounds.get(&2), Some(persisted_vote));
+		assert_eq!(current_rounds.get(&2), None);
 		assert_eq!(current_rounds.get(&5), None);
 		assert_eq!(current_rounds.get(&6), Some(&HasVoted::No));
 	}
@@ -831,7 +829,7 @@ mod test {
 			AuthoritySetChanges::empty(),
 		)
 		.unwrap();
-		let (voter_set_state, _) = voter_set_state_with_stale_rounds(&authority_set);
+		let voter_set_state = voter_set_state_with_stale_rounds(&authority_set);
 		let hash = H256::random();
 		let round_state = RoundState::genesis((hash, 0));
 
@@ -867,7 +865,7 @@ mod test {
 	}
 
 	#[test]
-	fn load_persistent_removes_only_stale_unvoted_rounds() {
+	fn load_persistent_removes_all_stale_current_rounds() {
 		let client = substrate_test_runtime_client::new();
 		let authority_set = AuthoritySet::<H256, u64>::new(
 			vec![(dummy_id(), 100)],
@@ -877,7 +875,7 @@ mod test {
 			AuthoritySetChanges::empty(),
 		)
 		.unwrap();
-		let (voter_set_state, persisted_vote) = voter_set_state_with_stale_rounds(&authority_set);
+		let voter_set_state = voter_set_state_with_stale_rounds(&authority_set);
 		let encoded_before = voter_set_state.encode();
 
 		client
@@ -893,7 +891,7 @@ mod test {
 
 		let PersistentData { set_state, .. } =
 			load_persistent::<Block, _, _>(&client, H256::random(), 0, || unreachable!()).unwrap();
-		assert_stale_rounds_repaired(&set_state.read(), &persisted_vote);
+		assert_stale_rounds_repaired(&set_state.read());
 
 		let encoded_after_first_load =
 			load_decode::<_, VoterSetState<Block>>(&client, SET_STATE_KEY)
