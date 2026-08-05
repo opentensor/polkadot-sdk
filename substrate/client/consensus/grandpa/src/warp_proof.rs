@@ -443,6 +443,13 @@ where
 			.ok_or_else(|| "Empty proof".to_string())?;
 		let (next_set_id, next_authorities) =
 			proof.verify(set_id, authorities, &self.hard_forks).map_err(Box::new)?;
+		if proof.is_finished && self.hard_forks.authority_set_checkpoints().is_some() {
+			self.authority_set.set_warp_sync_authority_set(
+				last_header.hash(),
+				next_set_id,
+				next_authorities.clone(),
+			);
+		}
 		if proof.is_finished {
 			Ok(VerificationResult::<Block>::Complete(next_set_id, next_authorities, last_header))
 		} else {
@@ -461,13 +468,15 @@ where
 
 #[cfg(test)]
 mod tests {
-	use super::{Error, HardForks, WarpSyncProof};
+	use super::{Error, HardForks, NetworkProvider, WarpSyncProof};
 	use crate::{
-		find_scheduled_change, AuthoritySetChanges, AuthoritySetHardFork, GrandpaJustification,
+		find_scheduled_change, AuthoritySet, AuthoritySetChanges, AuthoritySetHardFork,
+		GrandpaJustification, SharedAuthoritySet,
 	};
 	use codec::Encode;
 	use rand::prelude::*;
 	use sc_block_builder::BlockBuilderBuilder;
+	use sc_network_sync::strategy::warp::{EncodedProof, VerificationResult, WarpSyncProvider};
 	use sp_blockchain::HeaderBackend;
 	use sp_consensus::BlockOrigin;
 	use sp_consensus_grandpa::{AuthorityList, SetId, GRANDPA_ENGINE_ID};
@@ -703,6 +712,62 @@ mod tests {
 		let (new_set_id, new_authorities) = chain.verify(&warp_sync_proof, &hard_forks);
 		assert_eq!(new_set_id, chain.expected_set_id);
 		assert_eq!(new_authorities, chain.expected_authorities);
+	}
+
+	#[test]
+	fn network_provider_preserves_complete_proof_authority_set() {
+		let chain = test_chain();
+		let hard_forks = HardForks::new_hard_forked_authorities(vec![]);
+		let proof = WarpSyncProof::generate(
+			&*chain.backend,
+			chain.genesis_hash,
+			&chain.authority_set_changes(),
+			&hard_forks,
+		)
+		.unwrap();
+		let shared_authority_set: SharedAuthoritySet<BlockHash, u64> =
+			AuthoritySet::genesis(chain.genesis_authorities.clone()).unwrap().into();
+		let provider =
+			NetworkProvider::new(chain.backend, shared_authority_set.clone(), hard_forks);
+
+		let VerificationResult::Complete(set_id, authorities, header) = provider
+			.verify(&EncodedProof(proof.encode()), 0, chain.genesis_authorities)
+			.unwrap()
+		else {
+			panic!("generated complete proof must verify as complete");
+		};
+
+		assert_eq!(set_id, chain.expected_set_id);
+		assert_eq!(authorities, chain.expected_authorities);
+		assert_eq!(
+			shared_authority_set.warp_sync_authority_set(&header.hash()),
+			Some((set_id, authorities)),
+		);
+	}
+
+	#[test]
+	fn network_provider_does_not_override_reinitialized_authority_set() {
+		let chain = test_chain();
+		let hard_forks = HardForks::new_initial_set_id(0);
+		let proof = WarpSyncProof::generate(
+			&*chain.backend,
+			chain.genesis_hash,
+			&chain.authority_set_changes(),
+			&hard_forks,
+		)
+		.unwrap();
+		let shared_authority_set: SharedAuthoritySet<BlockHash, u64> =
+			AuthoritySet::genesis(chain.genesis_authorities.clone()).unwrap().into();
+		let provider =
+			NetworkProvider::new(chain.backend, shared_authority_set.clone(), hard_forks);
+
+		let VerificationResult::Complete(_, _, header) = provider
+			.verify(&EncodedProof(proof.encode()), 0, chain.genesis_authorities)
+			.unwrap()
+		else {
+			panic!("generated complete proof must verify as complete");
+		};
+		assert_eq!(shared_authority_set.warp_sync_authority_set(&header.hash()), None);
 	}
 
 	#[test]
