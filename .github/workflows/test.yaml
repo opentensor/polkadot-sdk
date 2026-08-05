@@ -16,7 +16,7 @@ env:
 jobs:
   test:
     name: cargo nextest
-    runs-on: [self-hosted, fireactions-heavy]
+    runs-on: [self-hosted, fireactions-turbo-8]
     env:
       RUSTFLAGS: -Cdebug-assertions=y
 
