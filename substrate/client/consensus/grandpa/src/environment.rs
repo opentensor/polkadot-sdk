@@ -232,6 +232,21 @@ impl<Block: BlockT> VoterSetState<Block> {
 		}
 	}
 
+	/// Remove obsolete current-round entries left behind by older clients.
+	///
+	/// On restart, GRANDPA resumes from the last completed round. Rounds at or
+	/// below it cannot become live again, regardless of whether they contain a
+	/// persisted vote.
+	pub(crate) fn remove_stale_current_rounds(&mut self) -> usize {
+		let VoterSetState::Live { completed_rounds, current_rounds } = self else { return 0 };
+
+		let last_completed = completed_rounds.last().number;
+		let previous_len = current_rounds.len();
+		current_rounds.retain(|round, _| *round > last_completed);
+
+		previous_len - current_rounds.len()
+	}
+
 	/// Returns the voter set state validating that it includes the given round
 	/// in current rounds and that the voter isn't paused.
 	pub fn with_current_round(
@@ -1052,8 +1067,8 @@ where
 		);
 
 		self.update_voter_set_state(|voter_set_state| {
-			// NOTE: we don't use `with_current_round` here, because a concluded
-			// round is completed and cannot be current.
+			// NOTE: we don't use `with_current_round` here. A round skipped by
+			// catch-up remains tracked until its background task concludes.
 			let (completed_rounds, current_rounds) =
 				if let VoterSetState::Live { completed_rounds, current_rounds } = voter_set_state {
 					(completed_rounds, current_rounds)
@@ -1064,7 +1079,7 @@ where
 
 			let mut completed_rounds = completed_rounds.clone();
 
-			if let Some(already_completed) =
+			let concluded_round = if let Some(already_completed) =
 				completed_rounds.rounds.iter_mut().find(|r| r.number == round)
 			{
 				let n_existing_votes = already_completed.votes.len();
@@ -1075,18 +1090,34 @@ where
 					.votes
 					.extend(historical_votes.seen().iter().skip(n_existing_votes).cloned());
 				already_completed.state = state;
-				crate::aux_schema::write_concluded_round(&*self.client, already_completed)?;
-			}
-
-			let set_state = VoterSetState::<Block>::Live {
-				completed_rounds,
-				current_rounds: current_rounds.clone(),
+				Some(already_completed.clone())
+			} else {
+				None
 			};
 
-			crate::aux_schema::write_voter_set_state(&*self.client, &set_state)?;
+			// A caught-up-to round is completed without completing the skipped
+			// background round. Remove that skipped round when it concludes, while
+			// leaving any other live rounds untouched.
+			let mut current_rounds = current_rounds.clone();
+			current_rounds.remove(&round);
+
+			let set_state = VoterSetState::<Block>::Live { completed_rounds, current_rounds };
+
+			if let Some(concluded_round) = concluded_round {
+				crate::aux_schema::write_concluded_round_and_voter_set_state(
+					&*self.client,
+					&concluded_round,
+					&set_state,
+				)?;
+			} else {
+				crate::aux_schema::write_voter_set_state(&*self.client, &set_state)?;
+			}
 
 			Ok(Some(set_state))
 		})?;
+
+		// clear any cached local authority id associated with this round
+		self.voter_set_state.finished_voting_on(round);
 
 		Ok(())
 	}

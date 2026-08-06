@@ -1,0 +1,12 @@
+title: Clean up stale GRANDPA current-round state on startup
+
+doc:
+  - audience: Node Operator
+    description: |
+      Remove persisted GRANDPA current-round entries at or below the last completed round when a
+      node starts. This includes entries containing old votes, preventing leaked legacy state from
+      remaining large and being rewritten with every subsequent vote.
+
+crates:
+  - name: sc-consensus-grandpa
+    bump: patch
