@@ -819,6 +819,36 @@ impl<N: Ord + Clone> AuthoritySetChanges<N> {
 
 		Some(self.0[idx..].iter())
 	}
+
+	/// Returns a contiguous sequence of recorded authority changes after a trusted checkpoint.
+	/// Unlike [`Self::iter_from`], this intentionally permits an incomplete historical prefix
+	/// because the caller knows the checkpoint at `block_number`. `expected_set_id` is the first
+	/// authority set whose terminal change record may follow that checkpoint. Returns `None` when
+	/// the retained suffix skips an authority set.
+	pub(crate) fn contiguous_changes_after(
+		&self,
+		expected_set_id: SetId,
+		block_number: N,
+	) -> Option<Vec<&(u64, N)>> {
+		let minimum_set_id = expected_set_id;
+		let mut expected_set_id = Some(expected_set_id);
+		let mut changes = Vec::new();
+
+		for change in self
+			.0
+			.iter()
+			.filter(|(id, block)| *id >= minimum_set_id && *block > block_number)
+		{
+			if expected_set_id != Some(change.0) {
+				return None;
+			}
+
+			expected_set_id = change.0.checked_add(1);
+			changes.push(change);
+		}
+
+		Some(changes)
+	}
 }
 
 #[cfg(test)]
@@ -1805,5 +1835,26 @@ mod tests {
 		assert_eq!(0, authority_set_changes.iter_from(121).unwrap().count());
 
 		assert_eq!(0, authority_set_changes.iter_from(200).unwrap().count());
+	}
+
+	#[test]
+	fn contiguous_changes_after_ignores_obsolete_history() {
+		let authority_set_changes =
+			AuthoritySetChanges::from(vec![(0, 5), (2, 10), (3, 30), (4, 40)]);
+		assert_eq!(
+			authority_set_changes
+				.contiguous_changes_after(3, 20)
+				.map(|changes| changes.into_iter().cloned().collect::<Vec<_>>()),
+			Some(vec![(3, 30), (4, 40)]),
+		);
+	}
+
+	#[test]
+	fn contiguous_changes_after_rejects_leading_and_internal_gaps() {
+		let leading_gap = AuthoritySetChanges::from(vec![(4, 30), (5, 40)]);
+		assert!(leading_gap.contiguous_changes_after(3, 20).is_none());
+
+		let internal_gap = AuthoritySetChanges::from(vec![(3, 30), (5, 40)]);
+		assert!(internal_gap.contiguous_changes_after(3, 20).is_none());
 	}
 }
