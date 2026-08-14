@@ -66,7 +66,8 @@ pub(super) const MAX_WARP_SYNC_PROOF_SIZE: usize = 8 * 1024 * 1024;
 #[derive(Decode, Encode, Debug)]
 pub struct WarpSyncFragment<Block: BlockT> {
 	/// The last block that the given authority set finalized. This block should contain a digest
-	/// signaling an authority set change from which we can fetch the next authority set.
+	/// signaling an authority set change from which we can fetch the next authority set, unless it
+	/// is an explicitly configured off-chain authority-set checkpoint.
 	pub header: Block::Header,
 	/// A justification for the header above which proves its finality. In order to validate it the
 	/// verifier must be aware of the authorities and set id for which the justification refers to.
@@ -80,7 +81,53 @@ pub struct WarpSyncProof<Block: BlockT> {
 	is_finished: bool,
 }
 
+/// A trusted authority-set checkpoint used only for GRANDPA warp sync.
+///
+/// The checkpoint justification is verified with `set_id` and `authorities`. After the
+/// checkpoint header is processed, `resulting_set_id` can override the normally derived set ID.
+/// This supports historical transitions where the authority list changed without advancing the
+/// on-chain GRANDPA set ID.
+#[derive(Clone)]
+pub struct WarpSyncCheckpoint<Block: BlockT> {
+	/// The authority set ID that signed the checkpoint justification.
+	pub set_id: SetId,
+	/// The checkpoint block hash and number.
+	pub block: (Block::Hash, NumberFor<Block>),
+	/// The authorities that signed the checkpoint justification.
+	pub authorities: AuthorityList,
+	/// An optional override for the set ID after processing the checkpoint header.
+	pub resulting_set_id: Option<SetId>,
+}
+
 impl<Block: BlockT> WarpSyncProof<Block> {
+	fn push_fragment<Blockchain>(
+		blockchain: &Blockchain,
+		header: Block::Header,
+		proofs: &mut Vec<WarpSyncFragment<Block>>,
+		proofs_encoded_len: &mut usize,
+	) -> Result<bool, Error>
+	where
+		Blockchain: BlockchainBackend<Block>,
+	{
+		let justification = blockchain
+			.justifications(header.hash())?
+			.and_then(|just| just.into_justification(GRANDPA_ENGINE_ID))
+			.ok_or(Error::MissingData)?;
+		let justification = GrandpaJustification::<Block>::decode_all(&mut &justification[..])?;
+		let proof = WarpSyncFragment { header, justification };
+		let proof_size = proof.encoded_size();
+
+		// Leave room for the encoded `Vec` length and `is_finished` flag, which are not part of
+		// the fragment sizes accumulated here.
+		if *proofs_encoded_len + proof_size >= MAX_WARP_SYNC_PROOF_SIZE - 50 {
+			return Ok(false);
+		}
+
+		*proofs_encoded_len += proof_size;
+		proofs.push(proof);
+		Ok(true)
+	}
+
 	/// Generates a warp sync proof starting at the given block. It will generate authority set
 	/// change proofs for all changes that happened from `begin` until the current authority set
 	/// (capped by MAX_WARP_SYNC_PROOF_SIZE).
@@ -88,6 +135,7 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 		backend: &Backend,
 		begin: Block::Hash,
 		set_changes: &AuthoritySetChanges<NumberFor<Block>>,
+		hard_forks: &HardForks<Block>,
 	) -> Result<WarpSyncProof<Block>, Error>
 	where
 		Backend: ClientBackend<Block>,
@@ -99,7 +147,8 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 			.block_number_from_id(&BlockId::Hash(begin))?
 			.ok_or_else(|| Error::InvalidRequest("Missing start block".to_string()))?;
 
-		if begin_number > blockchain.info().finalized_number {
+		let finalized_number = blockchain.info().finalized_number;
+		if begin_number > finalized_number {
 			return Err(Error::InvalidRequest("Start block is not finalized".to_string()));
 		}
 
@@ -115,18 +164,61 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 			));
 		}
 
+		let mut latest_checkpoint = None;
+		if let Some(checkpoints) = hard_forks.authority_set_checkpoints() {
+			for ((hash, number), checkpoint) in checkpoints {
+				if *number <= begin_number || *number > finalized_number {
+					continue;
+				}
+				if latest_checkpoint
+					.as_ref()
+					.is_some_and(|(_, latest_number, _)| number <= *latest_number)
+				{
+					continue;
+				}
+				if blockchain.hash(*number)?.as_ref() == Some(hash) {
+					latest_checkpoint = Some((hash, number, checkpoint));
+				}
+			}
+		}
+
+		let (checkpoint_header, set_change_blocks) = if let Some((hash, number, checkpoint)) =
+			latest_checkpoint
+		{
+			let header = blockchain.header(*hash)?.ok_or(Error::MissingData)?;
+			let expected_set_id = if let Some(resulting_set_id) = checkpoint.resulting_set_id {
+				resulting_set_id
+			} else if find_scheduled_change::<Block>(&header).is_some() {
+				checkpoint.set_id.checked_add(1).ok_or(Error::MissingData)?
+			} else {
+				checkpoint.set_id
+			};
+			let changes = set_changes
+				.contiguous_changes_after(expected_set_id, *number)
+				.ok_or(Error::MissingData)?;
+			(Some(header), changes)
+		} else {
+			let changes = set_changes.iter_from(begin_number).ok_or(Error::MissingData)?.collect();
+			(None, changes)
+		};
+
 		let mut proofs = Vec::new();
 		let mut proofs_encoded_len = 0;
-		let mut proof_limit_reached = false;
+		let mut proof_limit_reached = if let Some(header) = checkpoint_header {
+			!Self::push_fragment(blockchain, header, &mut proofs, &mut proofs_encoded_len)?
+		} else {
+			false
+		};
 
-		let set_changes = set_changes.iter_from(begin_number).ok_or(Error::MissingData)?;
-
-		for (_, last_block) in set_changes {
+		for (_, last_block) in set_change_blocks {
+			if proof_limit_reached {
+				break;
+			}
 			let hash = match blockchain.block_hash_from_id(&BlockId::Number(*last_block))? {
 				Some(hash) => hash,
 				None => {
 					log::debug!(target: LOG_TARGET, "Ignorning warp proof with invalid block number.");
-					return Err(Error::InvalidRequest("header number comes from previously applied set changes; corresponding hash must exist in db.".to_string()))
+					return Err(Error::InvalidRequest("header number comes from previously applied set changes; corresponding hash must exist in db.".to_string()));
 				},
 			};
 
@@ -134,12 +226,13 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 				Some(header) => header,
 				None => {
 					log::debug!(target: LOG_TARGET, "Ignorning warp proof with invalid block hash.");
-					return Err(Error::InvalidRequest("header hash obtained from header number exists in db; corresponding header must exist in db too.".to_string()))
+					return Err(Error::InvalidRequest("header hash obtained from header number exists in db; corresponding header must exist in db too.".to_string()));
 				},
 			};
 
-			// the last block in a set is the one that triggers a change to the next set,
-			// therefore the block must have a digest that signals the authority set change
+			// Recorded changes must contain the runtime signal that hands authority to the next
+			// set. Configured hard-fork checkpoints are emitted separately above and need no such
+			// signal.
 			if find_scheduled_change::<Block>(&header).is_none() {
 				// if it doesn't contain a signal for standard change then the set must have changed
 				// through a forced changed, in which case we stop collecting proofs as the chain of
@@ -147,26 +240,10 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 				break;
 			}
 
-			let justification = blockchain
-				.justifications(header.hash())?
-				.and_then(|just| just.into_justification(GRANDPA_ENGINE_ID))
-				.ok_or_else(|| Error::MissingData)?;
-
-			let justification = GrandpaJustification::<Block>::decode_all(&mut &justification[..])?;
-
-			let proof = WarpSyncFragment { header: header.clone(), justification };
-			let proof_size = proof.encoded_size();
-
-			// Check for the limit. We remove some bytes from the maximum size, because we're only
-			// counting the size of the `WarpSyncFragment`s. The extra margin is here to leave
-			// room for rest of the data (the size of the `Vec` and the boolean).
-			if proofs_encoded_len + proof_size >= MAX_WARP_SYNC_PROOF_SIZE - 50 {
+			if !Self::push_fragment(blockchain, header, &mut proofs, &mut proofs_encoded_len)? {
 				proof_limit_reached = true;
 				break;
 			}
-
-			proofs_encoded_len += proof_size;
-			proofs.push(proof);
 		}
 
 		let is_finished = if proof_limit_reached {
@@ -229,12 +306,17 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 			let hash = proof.header.hash();
 			let number = *proof.header.number();
 
-			if let Some((set_id, list)) = hard_forks.get_hard_forked_authorities(&(hash, number)) {
-				current_set_id = set_id;
-				current_authorities = list.clone();
+			let checkpoint = hard_forks.get_hard_forked_authorities(&(hash, number));
+			let is_checkpoint = if let Some(checkpoint) = checkpoint.as_ref() {
+				current_set_id = checkpoint.set_id;
+				current_authorities = checkpoint.authorities.clone();
+				true
 			} else if let Some(initial_set_id) = hard_forks.get_new_initial_set_id() {
 				current_set_id += initial_set_id;
-			}
+				false
+			} else {
+				false
+			};
 			{
 				proof
 					.justification
@@ -250,12 +332,20 @@ impl<Block: BlockT> WarpSyncProof<Block> {
 				if let Some(scheduled_change) = find_scheduled_change::<Block>(&proof.header) {
 					current_authorities = scheduled_change.next_authorities;
 					current_set_id += 1;
-				} else if fragment_num != self.proofs.len() - 1 || !self.is_finished {
+				} else if !is_checkpoint &&
+					(fragment_num != self.proofs.len() - 1 || !self.is_finished)
+				{
 					// Only the last fragment of the last proof message is allowed to be missing the
 					// authority set change.
 					return Err(Error::InvalidProof(
 						"Header is missing authority set change digest".to_string(),
 					));
+				}
+
+				if let Some(resulting_set_id) =
+					checkpoint.and_then(|checkpoint| checkpoint.resulting_set_id)
+				{
+					current_set_id = resulting_set_id;
 				}
 			}
 		}
@@ -279,7 +369,7 @@ pub enum HardForks<Block: BlockT> {
 	/// Sets new authorities and set ID by block hash and number
 	AuthoritySetHardForks {
 		/// Maps block to authority list and set ID
-		hard_forks: HashMap<(Block::Hash, NumberFor<Block>), (SetId, AuthorityList)>,
+		hard_forks: HashMap<(Block::Hash, NumberFor<Block>), WarpSyncCheckpoint<Block>>,
 	},
 	/// Provides new initial set ID for granpda block import
 	ReinitializeSetId {
@@ -291,10 +381,25 @@ pub enum HardForks<Block: BlockT> {
 impl<Block: BlockT> HardForks<Block> {
 	/// Create a new instance for a given hard fork authorities
 	pub fn new_hard_forked_authorities(hard_forks: Vec<AuthoritySetHardFork<Block>>) -> Self {
-		HardForks::AuthoritySetHardForks {
-			hard_forks: hard_forks
+		Self::new_authority_set_checkpoints(
+			hard_forks
 				.into_iter()
-				.map(|fork| (fork.block, (fork.set_id, fork.authorities)))
+				.map(|fork| WarpSyncCheckpoint {
+					set_id: fork.set_id,
+					block: fork.block,
+					authorities: fork.authorities,
+					resulting_set_id: None,
+				})
+				.collect(),
+		)
+	}
+
+	/// Create trusted authority-set checkpoints for GRANDPA warp sync.
+	pub fn new_authority_set_checkpoints(checkpoints: Vec<WarpSyncCheckpoint<Block>>) -> Self {
+		HardForks::AuthoritySetHardForks {
+			hard_forks: checkpoints
+				.into_iter()
+				.map(|checkpoint| (checkpoint.block.clone(), checkpoint))
 				.collect(),
 		}
 	}
@@ -307,9 +412,9 @@ impl<Block: BlockT> HardForks<Block> {
 	fn get_hard_forked_authorities(
 		&self,
 		block: &(Block::Hash, NumberFor<Block>),
-	) -> Option<(SetId, AuthorityList)> {
+	) -> Option<&WarpSyncCheckpoint<Block>> {
 		if let HardForks::AuthoritySetHardForks { hard_forks } = self {
-			hard_forks.get(block).cloned()
+			hard_forks.get(block)
 		} else {
 			None
 		}
@@ -325,7 +430,7 @@ impl<Block: BlockT> HardForks<Block> {
 
 	fn authority_set_checkpoints(
 		&self,
-	) -> Option<&HashMap<(Block::Hash, NumberFor<Block>), (SetId, AuthorityList)>> {
+	) -> Option<&HashMap<(Block::Hash, NumberFor<Block>), WarpSyncCheckpoint<Block>>> {
 		match self {
 			Self::AuthoritySetHardForks { hard_forks } => Some(hard_forks),
 			Self::ReinitializeSetId { .. } => None,
@@ -441,6 +546,7 @@ where
 			&*self.backend,
 			start,
 			&self.authority_set.authority_set_changes(),
+			&self.hard_forks,
 		)
 		.map_err(Box::new)?;
 		Ok(EncodedProof(proof.encode()))
@@ -464,16 +570,21 @@ where
 
 #[cfg(test)]
 mod tests {
-	use super::{HardForks, NetworkProvider, WarpSyncProof};
-	use crate::{AuthoritySet, AuthoritySetChanges, GrandpaJustification, SharedAuthoritySet};
+	use super::{HardForks, NetworkProvider, WarpSyncCheckpoint, WarpSyncProof};
+	use crate::{
+		AuthoritySet, AuthoritySetChanges, AuthoritySetHardFork, GrandpaJustification,
+		SharedAuthoritySet,
+	};
 	use codec::Encode;
 	use rand::prelude::*;
 	use sc_block_builder::BlockBuilderBuilder;
 	use sc_network_sync::strategy::warp::{EncodedProof, VerificationResult, WarpSyncProvider};
 	use sp_blockchain::HeaderBackend;
 	use sp_consensus::BlockOrigin;
-	use sp_consensus_grandpa::GRANDPA_ENGINE_ID;
+	use sp_consensus_grandpa::{AuthorityList, SetId, GRANDPA_ENGINE_ID};
+	use sp_core::H256;
 	use sp_keyring::Ed25519Keyring;
+	use sp_runtime::traits::Header as _;
 	use std::sync::Arc;
 	use substrate_test_runtime_client::{
 		BlockBuilderExt, ClientBlockImportExt, ClientExt, DefaultTestClientBuilderExt,
@@ -482,6 +593,15 @@ mod tests {
 
 	#[test]
 	fn warp_sync_proof_generate_verify() {
+		run_warp_sync_proof_test(false);
+	}
+
+	#[test]
+	fn warp_sync_checkpoint_can_preserve_set_id_across_authority_change() {
+		run_warp_sync_proof_test(true);
+	}
+
+	fn run_warp_sync_proof_test(reuse_scheduled_checkpoint_set_id: bool) {
 		let mut rng = rand::rngs::StdRng::from_seed([0; 32]);
 		let builder = TestClientBuilder::new();
 		let backend = builder.backend();
@@ -493,6 +613,7 @@ mod tests {
 		let mut current_authorities = vec![Ed25519Keyring::Alice];
 		let mut current_set_id = 0;
 		let mut authority_set_changes = Vec::new();
+		let mut checkpoint: Option<(SetId, (H256, u64), AuthorityList)> = None;
 
 		for n in 1..=100 {
 			let mut builder = BlockBuilderBuilder::new(&*client)
@@ -562,27 +683,79 @@ mod tests {
 
 				let justification = GrandpaJustification::from_commit(&client, 42, commit).unwrap();
 
+				if reuse_scheduled_checkpoint_set_id && n == 50 {
+					checkpoint = Some((
+						current_set_id,
+						(target_hash, target_number),
+						current_authorities
+							.iter()
+							.map(|keyring| (keyring.public().into(), 1))
+							.collect(),
+					));
+				}
+
 				client
 					.finalize_block(target_hash, Some((GRANDPA_ENGINE_ID, justification.encode())))
 					.unwrap();
 
 				authority_set_changes.push((current_set_id, n));
 
-				current_set_id += 1;
+				if !(reuse_scheduled_checkpoint_set_id && n == 50) {
+					current_set_id += 1;
+				}
 				current_authorities = new_authorities;
 			}
 		}
 
+		if reuse_scheduled_checkpoint_set_id {
+			// Model a node that retained only the suffix at and after the trusted checkpoint,
+			// together with an obsolete lower-set record from the affected history.
+			authority_set_changes.retain(|(_, block)| *block >= 50);
+			authority_set_changes.push((0, 55));
+			authority_set_changes.sort_unstable_by_key(|(_, block)| *block);
+		}
 		let authority_set_changes = AuthoritySetChanges::from(authority_set_changes);
 
 		// generate a warp sync proof
 		let genesis_hash = client.hash(0).unwrap().unwrap();
 
+		if let Some((set_id, block, authorities)) = checkpoint.as_ref() {
+			let legacy_hard_forks =
+				HardForks::new_hard_forked_authorities(vec![AuthoritySetHardFork {
+					set_id: *set_id,
+					block: *block,
+					authorities: authorities.clone(),
+					last_finalized: None,
+				}]);
+			let legacy_proof = WarpSyncProof::generate(
+				&*backend,
+				genesis_hash,
+				&authority_set_changes,
+				&legacy_hard_forks,
+			)
+			.unwrap();
+			assert!(!legacy_proof.proofs.iter().any(|proof| *proof.header.number() == 60));
+		}
+
+		let hard_forks = if let Some((set_id, block, authorities)) = checkpoint {
+			HardForks::new_authority_set_checkpoints(vec![WarpSyncCheckpoint {
+				set_id,
+				block,
+				authorities,
+				resulting_set_id: Some(set_id),
+			}])
+		} else {
+			HardForks::new_hard_forked_authorities(vec![])
+		};
 		let warp_sync_proof =
-			WarpSyncProof::generate(&*backend, genesis_hash, &authority_set_changes).unwrap();
+			WarpSyncProof::generate(&*backend, genesis_hash, &authority_set_changes, &hard_forks)
+				.unwrap();
+		if reuse_scheduled_checkpoint_set_id {
+			assert_eq!(*warp_sync_proof.proofs[0].header.number(), 50);
+			assert!(warp_sync_proof.proofs.iter().any(|proof| *proof.header.number() == 60));
+		}
 
 		// verifying the proof should yield the last set id and authorities
-		let hard_forks = HardForks::new_hard_forked_authorities(vec![]);
 		let (new_set_id, new_authorities) =
 			warp_sync_proof.verify(0, genesis_authorities.clone(), &hard_forks).unwrap();
 		let expected_authorities = current_authorities
@@ -609,19 +782,21 @@ mod tests {
 			Some((current_set_id, expected_authorities)),
 		);
 
-		let shared_authority_set: SharedAuthoritySet<_, u64> =
-			AuthoritySet::genesis(genesis_authorities.clone()).unwrap().into();
-		let provider = NetworkProvider::new(
-			backend,
-			shared_authority_set.clone(),
-			HardForks::new_initial_set_id(0),
-		);
-		let mut verifier = provider.create_verifier();
-		let VerificationResult::Complete(header, _) =
-			verifier.verify(&EncodedProof(warp_sync_proof.encode())).unwrap()
-		else {
-			panic!("generated complete proof must verify as complete");
-		};
-		assert_eq!(shared_authority_set.warp_sync_authority_set(&header.hash()), None);
+		if !reuse_scheduled_checkpoint_set_id {
+			let shared_authority_set: SharedAuthoritySet<_, u64> =
+				AuthoritySet::genesis(genesis_authorities.clone()).unwrap().into();
+			let provider = NetworkProvider::new(
+				backend,
+				shared_authority_set.clone(),
+				HardForks::new_initial_set_id(0),
+			);
+			let mut verifier = provider.create_verifier();
+			let VerificationResult::Complete(header, _) =
+				verifier.verify(&EncodedProof(warp_sync_proof.encode())).unwrap()
+			else {
+				panic!("generated complete proof must verify as complete");
+			};
+			assert_eq!(shared_authority_set.warp_sync_authority_set(&header.hash()), None);
+		}
 	}
 }
